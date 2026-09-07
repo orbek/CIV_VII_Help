@@ -7,26 +7,55 @@
 <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-<header class="bar">
-  <div class="turn"><span id="turn">Turn —</span><span id="progress" class="badge hidden"></span></div>
-  <div id="ranks" class="ranks"></div>
-  <div id="top" class="top"></div>
-  <label class="toggle" title="Show advice that uses AI-internal data the game hides from you">
-    <input type="checkbox" id="oracle" checked> Oracle
-  </label>
-  <div id="files" class="files"></div>
+<header class="masthead">
+  <div class="wrap">
+    <div class="hero">
+      <p class="hero-marker" id="progress"></p>
+      <p class="turn-figure"><span class="sr-only">Complete through turn </span><span id="turn">&mdash;</span></p>
+      <p class="hero-headline" id="headline"></p>
+    </div>
+    <p class="ranks" id="ranks"></p>
+    <div class="files" id="files"></div>
+  </div>
 </header>
-<nav class="tabs">
-  <button data-tab="checklist" class="active">Checklist</button>
-  <button data-tab="threats">Threats</button>
-  <button data-tab="victory">Victory</button>
-  <button data-tab="economy">Economy</button>
-</nav>
-<main>
-  <section id="checklist" class="tab active"></section>
-  <section id="threats" class="tab"><div id="threats-table"></div><div id="threats-cards"></div></section>
-  <section id="victory" class="tab"><div id="victory-table"></div><div id="victory-cards"></div></section>
-  <section id="economy" class="tab"><div id="economy-table"></div><div id="economy-cards"></div></section>
+
+<div class="controls">
+  <div class="wrap">
+    <nav class="tabs" role="tablist" aria-label="Advisor sections">
+      <button role="tab" id="tab-checklist" data-tab="checklist" aria-controls="checklist" aria-selected="true" class="active">This turn</button>
+      <button role="tab" id="tab-threats" data-tab="threats" aria-controls="threats" aria-selected="false" tabindex="-1">Threats</button>
+      <button role="tab" id="tab-victory" data-tab="victory" aria-controls="victory" aria-selected="false" tabindex="-1">Victory</button>
+      <button role="tab" id="tab-economy" data-tab="economy" aria-controls="economy" aria-selected="false" tabindex="-1">Economy</button>
+    </nav>
+    <div class="oracle">
+      <label class="oracle-switch" for="oracle">Oracle<input type="checkbox" id="oracle" checked></label>
+      <p class="oracle-note">Advice from the AI&rsquo;s own logs, which the game hides from you.</p>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <section class="tab active" id="checklist" role="tabpanel" aria-labelledby="tab-checklist" tabindex="0"></section>
+  <section class="tab" id="threats" role="tabpanel" aria-labelledby="tab-threats" tabindex="0">
+    <h2 class="section-head">Rivals</h2>
+    <div id="threats-table"></div>
+    <h2 class="section-head">Advice</h2>
+    <div id="threats-cards"></div>
+  </section>
+  <section class="tab" id="victory" role="tabpanel" aria-labelledby="tab-victory" tabindex="0">
+    <h2 class="section-head">Legacy paths each rival is following</h2>
+    <div id="victory-table"></div>
+    <h2 class="section-head">Standings on each path</h2>
+    <div id="victory-boards"></div>
+    <h2 class="section-head">Advice</h2>
+    <div id="victory-cards"></div>
+  </section>
+  <section class="tab" id="economy" role="tabpanel" aria-labelledby="tab-economy" tabindex="0">
+    <h2 class="section-head">Your yields against the field</h2>
+    <div id="economy-table"></div>
+    <h2 class="section-head">Advice</h2>
+    <div id="economy-cards"></div>
+  </section>
 </main>
 <script src="/static/app.js"></script>
 </body>

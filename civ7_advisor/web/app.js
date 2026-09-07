@@ -20,6 +20,7 @@
   };
   const SEVERITY_WORD = { CRITICAL: "Critical.", WARN: "Warning.", ADVISE: "Advice.", INFO: "Note." };
   const NOTHING_AT_ALL = "Nothing to report yet. Start a game, or point the advisor at another log folder.";
+  const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
 
   const state = { data: null, insights: [], showOracle: true, shownTurn: null, viaEvent: false };
 
@@ -77,10 +78,12 @@
     const title = el("h3", "insight-title");
     title.append(el("span", "sr-only", SEVERITY_WORD[ins.severity] || ins.severity),
       el("span", "title-text", ins.title));
-    if (ins.provenance === "oracle") title.append(el("span", "tag", "intercept"));
+    if (ins.provenance === "oracle") title.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     node.append(title, el("p", "insight-rec", ins.recommendation), el("p", "insight-why", ins.why));
     return node;
   }
+
+  const withheld = () => el("p", "oracle-off", ORACLE_OFF);
 
   function stream(list, advisor) {
     const wrap = el("div", "stream");
@@ -134,7 +137,7 @@
       const top = ins[0];
       headline.className = `hero-headline sev-${top.severity.toLowerCase()}`;
       headline.replaceChildren(el("span", "headline-text", top.title));
-      if (top.provenance === "oracle") headline.append(el("span", "tag", "intercept"));
+      if (top.provenance === "oracle") headline.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     } else {
       headline.className = "hero-headline quiet";
       headline.replaceChildren(el("span", "headline-text",
@@ -178,25 +181,35 @@
     const byAdvisor = (a) => ins.filter((i) => i.advisor === a);
     $("#checklist").replaceChildren(stream(ins, undefined));
 
+    /* The toggle gates table content as well as cards: with Oracle off the
+       AI-internal columns are dropped outright, not blanked. */
+    const seen = state.showOracle;
     $("#threats-table").replaceChildren(table([
       { label: "Rival" }, { label: "Land units", num: true }, { label: "vs you", num: true },
-      { label: "War score", num: true }, { label: "Held since turn", num: true }, { label: "At war" },
-      { label: "Kills", num: true }, { label: "Your losses", num: true }, { label: "Targeting" },
+      ...(seen ? [{ label: "War score", num: true }, { label: "Held since turn", num: true },
+        { label: "At war" }] : []),
+      { label: "Kills", num: true }, { label: "Your losses", num: true },
+      ...(seen ? [{ label: "Targeting" }] : []),
     ], d.threats.map((t) => [
       t.name,
       t.land_units,
       `${fmt(t.military_ratio)}x`,
-      t.war_score === null ? { text: "—", cls: "dim" } : fmt(t.war_score, 0),
-      t.war_score_since === null ? { text: "—", cls: "dim" } : t.war_score_since,
-      t.at_war_since === null ? { text: "no", cls: "dim" } : `since turn ${t.at_war_since}`,
+      ...(seen ? [
+        t.war_score === null ? { text: "—", cls: "dim" } : fmt(t.war_score, 0),
+        t.war_score_since === null ? { text: "—", cls: "dim" } : t.war_score_since,
+        t.at_war_since === null ? { text: "no", cls: "dim" } : `since turn ${t.at_war_since}`,
+      ] : []),
       t.kills, t.losses,
-      (t.city_tiles_targeted || t.units_targeted)
-        ? `${t.city_tiles_targeted} city tiles, ${t.units_targeted} units`
-        : { text: "—", cls: "dim" },
-    ])));
+      ...(seen ? [
+        (t.city_tiles_targeted || t.units_targeted)
+          ? `${t.city_tiles_targeted} city tiles, ${t.units_targeted} units`
+          : { text: "—", cls: "dim" },
+      ] : []),
+    ])), ...(seen ? [] : [withheld()]));
     $("#threats-cards").replaceChildren(stream(byAdvisor("threat"), "threat"));
 
-    $("#victory-table").replaceChildren(table(
+    $("#victory-head").hidden = !seen;
+    $("#victory-table").replaceChildren(seen ? table(
       [{ label: "Rival" }, ...PATHS.map((p) => ({ label: PATH_LABEL[p] }))],
       d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...PATHS.map((p) => {
         const st = s.strategies.find((x) => x.strategy === p);
@@ -205,7 +218,7 @@
         const span = el("span");
         span.append(document.createTextNode(st.status), el("span", "fig", String(st.weight)));
         return span;
-      })])));
+      })])) : withheld());
 
     const boards = Object.keys(d.leaderboards);
     const depth = boards.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);

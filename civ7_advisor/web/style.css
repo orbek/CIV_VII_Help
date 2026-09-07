@@ -31,6 +31,7 @@ body {
 
 .wrap {
   max-width: var(--measure);
+  margin-inline: auto;
   padding-inline: var(--inset);
 }
 
@@ -77,18 +78,13 @@ body {
 .hero-headline {
   grid-column: 2; grid-row: 2;
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 1.5rem;
-  row-gap: 0.25rem;
+  max-width: 40ch;
   font-family: var(--display);
   font-size: clamp(1.5rem, 3.2vw, 1.875rem);
   font-weight: 400;
   line-height: 1.25;
   color: var(--vellum);
 }
-.hero-headline .headline-text { max-width: 40ch; }
 .hero-headline.sev-critical { color: var(--oxide); }
 .hero-headline.sev-warn { color: var(--brass); }
 .hero-headline.sev-advise { color: var(--verdigris); }
@@ -229,23 +225,26 @@ main { padding-bottom: 5rem; }
 }
 
 .insight-title {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  column-gap: 1.5rem;
-  row-gap: 0.2rem;
   margin: 0;
+  max-width: 46ch;
   font-family: var(--display);
   font-size: 1.3125rem;
   font-weight: 400;
   line-height: 1.3;
   color: var(--vellum);
 }
-.insight-title .title-text { max-width: 46ch; }
 .insight-rec { margin: 0.55rem 0 0; max-width: 66ch; }
 .insight-why { margin: 0.4rem 0 0; max-width: 68ch; font-size: 0.8125rem; color: var(--muted); }
 
-.tag { margin-left: auto; font-size: 0.75rem; color: var(--brass); }
+.tag { margin-left: 0.2rem; font-size: 0.75rem; color: var(--brass); }
+
+/* What the Oracle toggle is withholding, said where the content would be. */
+.oracle-off {
+  margin: 1.5rem 0 0;
+  max-width: 60ch;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
 
 .empty { margin: 1.75rem 0; max-width: 60ch; color: var(--muted); }
 
@@ -300,7 +299,6 @@ td.behind { color: var(--brass); }
   .hero-marker { grid-column: 1; grid-row: 1; }
   .turn-figure { grid-column: 1; grid-row: 2; }
   .hero-headline { grid-column: 1; grid-row: 3; margin-top: 0.5rem; }
-  .hero-headline .tag, .insight-title .tag { margin-left: 0; }
   .controls .wrap { align-items: flex-start; }
   .oracle { padding-bottom: 0.9rem; }
 }

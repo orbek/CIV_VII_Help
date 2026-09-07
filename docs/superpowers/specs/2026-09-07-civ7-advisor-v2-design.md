@@ -167,10 +167,12 @@ FAIR/ORACLE provenance, non-empty `title`/`recommendation`/`why`).
 
 **`threat.py` gains**
 
-- `threat.combat_record.{r}` WARN/FAIR — the after-action read from
-  `CombatLog`: fights, wins, losses, net units per turn, and the worst
-  matchup observed ("his Jaguar Slayer out-damaged your Warrior 34 to 12").
-  Replaces the bare kill count as the fair-mode combat evidence.
+- `threat.combat_record.{r}` WARN/FAIR when you are losing, INFO otherwise —
+  the after-action read from `CombatLog` within `RECENT_TURNS`: fights, your
+  losses, their losses, and the latest fight's turn, tile and unit kinds
+  ("your Warrior against their Spearman at (62,32)"). Damage figures are not
+  quoted until the fixture task pins the log's damage-direction semantics.
+  Complements, and does not replace, the Historian-based kill count.
 - **Peace detection** — a `DiplomacyDeals` `Peace` item between the human
   and a rival after the last executed `DECLARE_WAR` clears
   `at_war_since`. Closes the parked v1 finding; the "War declared" column

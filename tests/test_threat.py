@@ -4,7 +4,7 @@ import pytest
 
 from civ7_advisor.advisors import threat
 from civ7_advisor.advisors.base import Provenance, Severity
-from tests.factories import city_target, executed_war, game_state, kill, scored_war
+from tests.factories import city_target, combat, executed_war, game_state, kill, scored_war
 
 
 def ids(insights):
@@ -173,3 +173,72 @@ def test_fixture_summary_numbers(fixture_state):
     assert by_player[1].war_score == 202.0 and by_player[1].war_score_since == 72
     assert by_player[1].at_war_since is None and by_player[1].military_ratio == pytest.approx(2.2)
     assert by_player[7].war_score is None and by_player[7].kills == 0
+
+
+def test_peace_at_or_after_the_declaration_clears_war_and_is_fair():
+    s = game_state(turn=20)
+    s.intents = [executed_war(15, 1)]
+    s.peace_turns = {frozenset({0, 1}): 17}
+    got = ids(threat.advise(s))
+    assert "threat.at_war.1" not in got
+    peace = got["threat.peace.1"]
+    assert peace.severity is Severity.INFO and peace.provenance is Provenance.FAIR and "turn 17" in peace.why
+
+
+def test_peace_on_the_declaration_turn_also_clears():
+    s = game_state(turn=20)
+    s.intents = [executed_war(15, 1)]
+    s.peace_turns = {frozenset({0, 1}): 15}
+    assert "threat.at_war.1" not in ids(threat.advise(s))
+
+
+def test_peace_before_the_declaration_does_not_clear_and_is_not_announced():
+    s = game_state(turn=20)
+    s.intents = [executed_war(15, 1)]
+    s.peace_turns = {frozenset({0, 1}): 12}
+    got = ids(threat.advise(s))
+    assert "threat.at_war.1" in got and "threat.peace.1" not in got
+
+
+def test_peace_with_a_third_party_is_ignored():
+    s = game_state(turn=20, rivals={1: "A", 2: "B"})
+    s.intents = [executed_war(15, 1)]
+    s.peace_turns = {frozenset({1, 2}): 17}
+    assert "threat.at_war.1" in ids(threat.advise(s))
+
+
+def test_combat_record_counts_only_by_destroyed_side():
+    s = game_state(turn=20)
+    s.combats = [
+        combat(18, 0, 1, destroyed="Attacker"),   # your attacker died
+        combat(19, 1, 0, destroyed="Attacker"),   # their attacker died
+        combat(20, 0, 1, destroyed=None),         # nobody died
+        combat(9, 0, 1, destroyed="Attacker"),    # outside RECENT_TURNS
+    ]
+    i = ids(threat.advise(s))["threat.combat_record.1"]
+    assert i.severity is Severity.INFO and i.provenance is Provenance.FAIR
+    assert "3 fights" in i.why and "you lost 1" in i.why and "they lost 1" in i.why and "holding" in i.title
+
+
+def test_combat_record_warns_when_you_are_losing_and_orients_units_to_you():
+    s = game_state(turn=20)
+    s.combats = [
+        combat(18, 0, 1, destroyed="Attacker"),
+        combat(20, 1, 0, destroyed="Defender", att_kind="UNIT_SPEARMAN", def_kind="UNIT_WARRIOR", x=62, y=32),
+    ]
+    i = ids(threat.advise(s))["threat.combat_record.1"]
+    assert i.severity is Severity.WARN and "losing" in i.title
+    assert "you lost 2" in i.why and "turn 20 at (62,32), your Warrior against their Spearman" in i.why
+
+
+def test_combat_record_ignores_fights_with_third_parties():
+    s = game_state(turn=20, rivals={1: "A", 2: "B"})
+    s.combats = [combat(20, 2, 1, destroyed="Attacker"), combat(20, 0, 2, destroyed="Attacker")]
+    got = ids(threat.advise(s))
+    assert "threat.combat_record.1" not in got and "threat.combat_record.2" in got
+
+
+def test_summary_carries_the_new_fields_on_the_v1_fixture(fixture_state):
+    by_player = {r.player: r for r in threat.summarize(fixture_state)}
+    assert all(r.fights == 0 and r.latest_combat is None and r.peace_since is None for r in by_player.values())
+    assert by_player[4].at_war_since == 80  # no deals in the v1 fixture, so the war stands

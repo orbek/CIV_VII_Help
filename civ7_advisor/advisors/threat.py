@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 from civ7_advisor.state.models import GameState, IntentKind, Player
 
-from .base import Insight, Provenance, Severity
+from .base import Insight, Provenance, Severity, humanize
 
 WAR_INTENT_WARN = 100.0      # AI DECLARE_WAR score at/above which we warn; committed AIs sit near 200
 WAR_INTENT_WATCH = 50.0      # at/above this (but below WARN) we mention it as INFO
@@ -36,6 +36,11 @@ class RivalThreat:
     city_tiles_targeted: int
     units_targeted: int
     target_box: tuple[int, int, int, int] | None  # (min_x, max_x, min_y, max_y)
+    peace_since: int | None        # Peace deal with the human dated at/after the last declaration
+    fights: int                    # CombatLog rows between the two within RECENT_TURNS
+    fights_won: int                # ... in which the rival's combatant was destroyed
+    fights_lost: int               # ... in which the human's combatant was destroyed
+    latest_combat: tuple[int, int, int, str, str] | None  # (turn, x, y, your unit kind, their unit kind)
 
 
 def summarize(state: GameState) -> list[RivalThreat]:
@@ -58,6 +63,11 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
     executed = [i for i in war_rows if i.kind is IntentKind.EXECUTED and i.turn in window]
     at_war_since = max((i.turn for i in executed), default=None)
 
+    peace = state.peace_between(state.HUMAN, rival.id)
+    peace_since = None
+    if at_war_since is not None and peace is not None and peace >= at_war_since:
+        peace_since, at_war_since = peace, None
+
     scored = sorted((i for i in war_rows if i.kind is IntentKind.SCORED and i.turn <= t), key=lambda i: i.turn)
     war_score = war_since = None
     if scored and scored[-1].turn >= t - 1:  # the AI logs lag the human by up to one turn
@@ -73,6 +83,17 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         if e.type in KILL_EVENTS and e.turn in window and {e.player, e.opponent} == {state.HUMAN, rival.id}
     ]
     latest = max(fights, key=lambda e: e.turn, default=None)
+
+    combats = [
+        c for c in state.combats
+        if c.turn in window and c.parties() == frozenset({state.HUMAN, rival.id})
+    ]
+    latest_combat = None
+    newest = max(combats, key=lambda c: c.turn, default=None)
+    if newest is not None:
+        mine, theirs = ((newest.attacker, newest.defender) if newest.att_player == state.HUMAN
+                        else (newest.defender, newest.attacker))
+        latest_combat = (newest.turn, newest.x, newest.y, mine.kind, theirs.kind)
 
     rows = [g for g in state.targets if g.player == rival.id and g.owner == state.HUMAN and g.turn <= t]
     target_turn = max((g.turn for g in rows), default=None)
@@ -95,6 +116,10 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         latest_fight=(latest.turn, latest.x, latest.y) if latest else None,
         target_turn=target_turn if (cities or units) else None,
         city_tiles_targeted=len(cities), units_targeted=len(units), target_box=box,
+        peace_since=peace_since, fights=len(combats),
+        fights_won=sum(c.loser() == rival.id for c in combats),
+        fights_lost=sum(c.loser() == state.HUMAN for c in combats),
+        latest_combat=latest_combat,
     )
 
 
@@ -150,6 +175,35 @@ def advise(state: GameState) -> list[Insight]:
                 why=f"{r.name}'s AI scores declaring war on you at {r.war_score:.0f} "
                     f"(warn threshold {WAR_INTENT_WARN:.0f}), held for {held} "
                     f"turn{'s' if held != 1 else ''} since turn {r.war_score_since}.",
+                **common,
+            ))
+
+        if r.peace_since is not None:
+            out.append(Insight(
+                id=f"threat.peace.{r.player}", severity=Severity.INFO, provenance=Provenance.FAIR,
+                title=f"Peace with {r.name}",
+                recommendation="Use the breathing room: heal, re-garrison, and decide whether the border "
+                               "needs walls before the next declaration.",
+                why=f"A Peace deal between you and {r.name} was recorded on turn {r.peace_since}, "
+                    f"superseding the war declaration.",
+                **common,
+            ))
+
+        if r.fights:
+            turn, x, y, mine, theirs = r.latest_combat
+            losing = r.fights_lost > r.fights_won
+            state_word = "losing" if losing else "winning" if r.fights_won > r.fights_lost else "holding"
+            out.append(Insight(
+                id=f"threat.combat_record.{r.player}",
+                severity=Severity.WARN if losing else Severity.INFO, provenance=Provenance.FAIR,
+                title=f"You are {state_word} the fighting with {r.name}",
+                recommendation=("Stop trading units one for one: pull back to heal, fortify on defensible "
+                                "terrain, and bring ranged support before re-engaging." if losing else
+                                "Keep the pressure but do not overextend; a unit lost to a counter-attack "
+                                "costs more than it just won."),
+                why=f"Last {RECENT_TURNS} turns: {r.fights} fights with {r.name} — you lost {r.fights_lost} "
+                    f"unit{'s' if r.fights_lost != 1 else ''}, they lost {r.fights_won}. Latest: turn {turn} at ({x},{y}), your "
+                    f"{humanize(mine)} against their {humanize(theirs)}.",
                 **common,
             ))
 

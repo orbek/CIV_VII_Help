@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from .base import Insight
 
-ADVISOR_ORDER = {"threat": 0, "victory": 1, "economy": 2}
+ADVISOR_ORDER = {"threat": 0, "victory": 1, "economy": 2, "production": 3}
 
 
 def rank(insights: list[Insight]) -> list[Insight]:

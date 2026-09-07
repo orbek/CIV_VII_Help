@@ -3,12 +3,13 @@ from __future__ import annotations
 
 from civ7_advisor.state.models import GameState
 
-from . import checklist, economy, threat, victory
+from . import checklist, economy, production, threat, victory
 from .base import Insight, Provenance, Severity
 
-ADVISORS = (threat, victory, economy)
+ADVISORS = (threat, victory, economy, production)
 
-__all__ = ["ADVISORS", "Insight", "Provenance", "Severity", "economy", "run_all", "threat", "victory"]
+__all__ = ["ADVISORS", "Insight", "Provenance", "Severity", "economy", "production", "run_all",
+           "threat", "victory"]
 
 
 def run_all(state: GameState) -> list[Insight]:

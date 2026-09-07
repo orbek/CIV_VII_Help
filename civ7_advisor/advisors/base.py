@@ -28,3 +28,18 @@ class Insight:
     why: str            # the evidence, in plain language, with the numbers
     turn: int           # complete_through_turn it was computed on
     subject_player: int | None = None
+
+
+_DOMAIN_PREFIXES = ("GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_", "WONDER_")
+
+
+def humanize(key: str) -> str:
+    """Turn a game key into words: LOC_DISTRICT_CITY_CENTER_NAME -> 'City Center',
+    GOSSIP_UNIT_DESTROYED -> 'Unit Destroyed'. Strips LOC_, then exactly ONE domain prefix —
+    stripping repeatedly would eat the UNIT_ inside GOSSIP_UNIT_DESTROYED."""
+    s = key.removeprefix("LOC_")
+    for prefix in _DOMAIN_PREFIXES:
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
+    return s.removesuffix("_NAME").replace("_", " ").title()

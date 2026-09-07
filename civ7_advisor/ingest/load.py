@@ -23,6 +23,7 @@ from .readers import (
     read_treasury,
     read_victories,
 )
+from .production import BuildQueueRow, read_build_queue
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +46,7 @@ class RawLogs:
     diplomacy: list[DiplomacyRow] = field(default_factory=list)
     targets: list[TargetRow] = field(default_factory=list)
     historian: list[HistorianRow] = field(default_factory=list)
+    build_queue: list[BuildQueueRow] = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
@@ -57,12 +59,13 @@ READERS: list[tuple[str, str, Callable[[Path], list]]] = [
     ("AI_DiplomaticActions.csv", "diplomacy", read_diplomacy),
     ("AI_Targets.csv", "targets", read_targets),
     ("Historian.csv", "historian", read_historian),
+    ("CityBuildQueue.csv", "build_queue", read_build_queue),
 ]
 LOG_FILES = [name for name, _, _ in READERS]
 
 
 def load_logs(logs_dir: Path) -> RawLogs:
-    """Read all seven logs. A file that fails to parse is dropped for this load
+    """Read every log in READERS. A file that fails to parse is dropped for this load
     (its FileStatus says why) while every other file still contributes."""
     raw = RawLogs()
     for name, attr, reader in READERS:

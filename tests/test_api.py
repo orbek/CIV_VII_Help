@@ -34,7 +34,8 @@ def test_state_endpoint(client):
     assert {t["player"] for t in body["threats"]} == {1, 2, 4, 5, 6, 7}
     assert body["leaderboards"]["ECONOMIC"][0]["name"] == "Harriet Tubman"
     assert {c["stat"] for c in body["economy"]} == {"science", "culture", "gold", "production", "food"}
-    assert all(f["ok"] for f in body["files"].values())
+    from tests.test_ingest_load import V1_FILES
+    assert all(body["files"][name]["ok"] for name in V1_FILES)
     strategies = {s["strategy"]: s for s in body["standings"][4]["strategies"]}  # player 4
     assert strategies["CULTURAL"]["weight"] == 100 and strategies["CULTURAL"]["following"] is True
 

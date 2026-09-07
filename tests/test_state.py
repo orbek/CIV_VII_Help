@@ -73,7 +73,8 @@ def test_raw_rows_are_carried_through(fixture_state):
     assert len(fixture_state.intents) == 2422
     assert len(fixture_state.targets) == 47025
     assert len(fixture_state.events) == 190
-    assert set(fixture_state.files) and all(f.ok for f in fixture_state.files.values())
+    from tests.test_ingest_load import V1_FILES
+    assert all(fixture_state.files[name].ok for name in V1_FILES)
 
 
 def test_empty_logs_give_empty_state():

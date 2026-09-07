@@ -1980,7 +1980,7 @@ def test_committed_strategy_is_info_oracle():
     s.strategies = {1: {"SCIENCE": strategy(1, "SCIENCE", 77, since=12)}}
     i = ids(victory.advise(s))["victory.pursuing.1.SCIENCE"]
     assert i.severity is Severity.INFO and i.provenance is Provenance.ORACLE
-    assert "weight 77 since turn 12" in i.why and i.subject_player == 1
+    assert "weight 77, last changed on turn 12" in i.why and i.subject_player == 1
 
 
 @pytest.mark.parametrize(
@@ -2033,7 +2033,7 @@ def test_fixture_victory_at_turn_81(fixture_state):
         "victory.pursuing.1.SCIENCE", "victory.pursuing.2.MILITARY", "victory.pursuing.4.CULTURAL",
         "victory.pursuing.4.SCIENCE", "victory.pursuing.5.MILITARY", "victory.pursuing.7.SCIENCE",
     ]
-    assert "weight 100 since turn 74" in got["victory.pursuing.4.CULTURAL"].why
+    assert "weight 100, last changed on turn 74" in got["victory.pursuing.4.CULTURAL"].why
     econ = got["victory.leader.ECONOMIC"]
     assert econ.subject_player == 2 and econ.severity is Severity.ADVISE and econ.provenance is Provenance.FAIR
     assert "Harriet Tubman 72.5 vs runner-up Ibn Battuta 30.0" in econ.why
@@ -2113,8 +2113,8 @@ def advise(state: GameState) -> list[Insight]:
             title=f"{rival.name} is committed to the {path.title()} legacy path",
             recommendation=f"Expect {rival.name} to pour effort into {label}. Decide now whether you "
                            f"race them on it or deny them (trade, war, or out-building them).",
-            why=f"{rival.name}'s AI has followed its {path} strategy at weight {st.weight} since "
-                f"turn {st.since_turn} (committed threshold {STRATEGY_COMMITTED}).",
+            why=f"{rival.name}'s AI is following its {path} strategy at weight {st.weight}, "
+                f"last changed on turn {st.since_turn} (committed threshold {STRATEGY_COMMITTED}).",
             turn=t, subject_player=pid,
         ))
 

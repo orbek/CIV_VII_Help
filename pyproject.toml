@@ -27,3 +27,13 @@ packages = ["civ7_advisor"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+filterwarnings = [
+    # Anything new must fail loudly rather than pile up in the summary.
+    "error",
+    # Two deprecations third-party code emits when `fastapi.testclient` is imported.
+    # Both are pinned to the exact message and the exact module that raises them, so
+    # our own deprecations are still errors.
+    # starlette.exceptions.StarletteDeprecationWarning, a UserWarning subclass:
+    'ignore:Using `httpx` with `starlette\.testclient` is deprecated:UserWarning:fastapi\.testclient',
+    'ignore:The anyio\.abc\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\.testclient',
+]

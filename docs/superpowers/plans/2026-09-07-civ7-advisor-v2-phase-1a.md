@@ -819,7 +819,7 @@ def test_new_rows_are_carried_and_peace_is_folded():
 
     raw = RawLogs(
         stats=[stats(1, 0), stats(1, 4), stats(2, 0), stats(2, 4), stats(3, 0)],
-        build_queue=[build_queue_row(2, 0)],
+        build_queue=[build_queue_row(2, 0, city="LOC_CITY_NAME_MAURYA1")],
         combat=[combat(2, 0, 4, destroyed="Attacker")],
         gossip=[gossip_row(2, "Alexander", "Maurya")],
         diplomacy_summary=[diplo_event(2, 0, 4)],
@@ -1108,19 +1108,18 @@ Expected: FAIL with `ImportError: cannot import name 'production'`.
 
 Append to `civ7_advisor/advisors/base.py`:
 ```python
-_KEY_PREFIXES = ("LOC_", "GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_", "WONDER_")
+_DOMAIN_PREFIXES = ("GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_", "WONDER_")
 
 
 def humanize(key: str) -> str:
-    """Turn a game key into words: LOC_DISTRICT_CITY_CENTER_NAME -> 'City Center'."""
-    s = key
-    stripped = True
-    while stripped:
-        stripped = False
-        for prefix in _KEY_PREFIXES:
-            if s.startswith(prefix):
-                s = s[len(prefix):]
-                stripped = True
+    """Turn a game key into words: LOC_DISTRICT_CITY_CENTER_NAME -> 'City Center',
+    GOSSIP_UNIT_DESTROYED -> 'Unit Destroyed'. Strips LOC_, then exactly ONE domain prefix —
+    stripping repeatedly would eat the UNIT_ inside GOSSIP_UNIT_DESTROYED."""
+    s = key.removeprefix("LOC_")
+    for prefix in _DOMAIN_PREFIXES:
+        if s.startswith(prefix):
+            s = s[len(prefix):]
+            break
     return s.removesuffix("_NAME").replace("_", " ").title()
 ```
 
@@ -1432,7 +1431,7 @@ In `advise`, after the `at_war`/`war_intent` `if/elif` block (after line 154) ad
                                 "Keep the pressure but do not overextend; a unit lost to a counter-attack "
                                 "costs more than it just won."),
                 why=f"Last {RECENT_TURNS} turns: {r.fights} fights with {r.name} — you lost {r.fights_lost} "
-                    f"units, they lost {r.fights_won}. Latest: turn {turn} at ({x},{y}), your "
+                    f"unit{'s' if r.fights_lost != 1 else ''}, they lost {r.fights_won}. Latest: turn {turn} at ({x},{y}), your "
                     f"{humanize(mine)} against their {humanize(theirs)}.",
                 **common,
             ))
@@ -1874,6 +1873,7 @@ class Store:
         self._lock = threading.Lock()
         self._subscribers: set[asyncio.Queue] = set()
         self._session: str | None = None  # one archive session per life of the logs directory
+        self._session_seq = 0             # keeps two sessions started in the same second distinct
 
     def rebuild(self) -> GameState:
         """Re-read every log, archive it, and recompute advice. Safe to call from a worker thread."""
@@ -1894,7 +1894,8 @@ class Store:
         try:
             key = game_key(raw)
             if self._session is None:
-                self._session = time.strftime("%Y%m%dT%H%M%S")
+                self._session_seq += 1
+                self._session = f"{time.strftime('%Y%m%dT%H%M%S')}-{self._session_seq}"
             archive_logs(self.logs_dir, self.archive_root / key / self._session, LOG_FILES)
         except Exception:            # archiving must never cost the player their advice
             log.exception("archiving failed; continuing without it")

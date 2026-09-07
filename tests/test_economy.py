@@ -34,6 +34,15 @@ def test_behind_threshold(value, flagged):
     assert ("economy.behind.production" in ids(economy.advise(s))) is flagged
 
 
+@pytest.mark.parametrize(
+    "value,expected",
+    [(9.9, Severity.WARN), (10.0, Severity.ADVISE), (10.1, Severity.ADVISE)],
+)  # far-behind threshold is 0.5 * 20; a ratio of exactly 0.5 is not yet "far" behind
+def test_far_behind_threshold(value, expected):
+    s = game_state(turn=20, human_stats={"food": value})  # the only stat behind, so index == 0
+    assert ids(economy.advise(s))["economy.behind.food"].severity is expected
+
+
 def test_settlement_slack_and_over_cap():
     s = game_state(turn=20, human_stats={"cities": 1, "towns": 1, "settlement_cap": 4})
     assert "2 of 4 settlement slots unused" in ids(economy.advise(s))["economy.settlement_slack"].why
@@ -66,6 +75,13 @@ def test_no_rivals_means_no_comparison_but_own_checks_still_run():
     got = ids(economy.advise(s))
     assert not any(k.startswith("economy.behind") for k in got) and "economy.settlement_slack" in got
     assert economy.comparison(s) == []
+
+
+def test_comparison_skips_a_stat_whose_rival_median_is_zero():
+    s = game_state(turn=20, rival_stats={1: {"culture": 0.0}})  # median 0.0 -> would divide by zero
+    stats = {c.stat for c in economy.comparison(s)}
+    assert "culture" not in stats
+    assert stats == {"science", "gold", "production", "food"}
 
 
 def test_fixture_economy_at_turn_81(fixture_state):

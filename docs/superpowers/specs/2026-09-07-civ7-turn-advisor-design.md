@@ -249,10 +249,17 @@ strategy weights and rival happiness are ORACLE.
   ranks alive majors (human included) per path. Insights:
   `victory.pursuing.{r}.{path}` INFO/ORACLE for each rival strategy
   `Following` with weight ≥ `STRATEGY_COMMITTED = 75`;
-  `victory.leader.{path}` when a rival leads the proxy stat by ≥
-  `LEAD_MARGIN = 1.25` × the runner-up — ADVISE/FAIR, escalated to
-  WARN/ORACLE when that rival's AI is also committed to the same path;
-  `victory.you_lead.{path}` INFO/FAIR when the human leads.
+  `victory.leader.{path}` ADVISE/FAIR when a rival leads the proxy stat
+  by ≥ `LEAD_MARGIN = 1.25` × the runner-up, its `why` carrying only the
+  two yields and the ratio; `victory.leader_committed.{path}`
+  WARN/ORACLE **alongside** it when that leader's AI is also committed
+  to the same path, its `why` carrying only the strategy weight. Two
+  insights rather than one that escalates: escalating the single insight
+  to ORACLE removed fair-derivable evidence from fair mode — a rival
+  leading culture 60 vs 20 while committed produced no victory insight
+  at all with the toggle off, though the 3× lead sits in plain FAIR data
+  in the leaderboard table below it — which contradicts the toggle's
+  purpose. `victory.you_lead.{path}` INFO/FAIR when the human leads.
 - **`economy.py`** — `comparison(state) -> list[YieldComparison]`
   (human value, rival median, leader, ratio for science, culture, gold,
   production, food). Insights: `economy.behind.{stat}` for each stat

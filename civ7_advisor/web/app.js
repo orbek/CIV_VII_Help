@@ -7,17 +7,40 @@
     return e;
   };
   const fmt = (v, digits = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(digits);
+  const dim = (text = "—") => ({ text, cls: "dim" });
   const ordinal = (n) => {
     const tens = n % 100, ones = n % 10;
     const suffix = (tens > 10 && tens < 14) ? "th"
       : ones === 1 ? "st" : ones === 2 ? "nd" : ones === 3 ? "rd" : "th";
     return `${n}${suffix}`;
   };
-  const PATHS = ["SCIENCE", "CULTURAL", "MILITARY", "ECONOMIC"];
   const PATH_LABEL = {
     SCIENCE: "Science", CULTURAL: "Cultural", MILITARY: "Military",
     ECONOMIC: "Economic", ESPIONAGE: "Espionage",
   };
+  /* Threats table. The columns are declared once, here, split by provenance:
+     the Oracle toggle drops THREATS_ORACLE_COLUMNS outright rather than blanking
+     them, so this split *is* the fair/oracle boundary for the table, and
+     tests/test_api.py pins both lists so an AI-internal column cannot drift into
+     the fair set. Each label says exactly what its number is: `kills` counts the
+     dead on both sides, so the rival's share is "Their losses" = kills - losses;
+     and at_war_since only sees declarations inside the advisor's recent window,
+     so the column reports the declaration ("War declared") and never asserts
+     peace. */
+  const THREATS_FAIR_COLUMNS = [
+    { label: "Rival", cell: (t) => t.name },
+    { label: "Land units", num: true, cell: (t) => t.land_units },
+    { label: "vs you", num: true, cell: (t) => `${fmt(t.military_ratio)}x` },
+    { label: "Their losses", num: true, cell: (t) => t.kills - t.losses },
+    { label: "Your losses", num: true, cell: (t) => t.losses },
+  ];
+  const THREATS_ORACLE_COLUMNS = [
+    { label: "War score", num: true, cell: (t) => t.war_score === null ? dim() : fmt(t.war_score, 0) },
+    { label: "Since turn", num: true, cell: (t) => t.war_score_since === null ? dim() : t.war_score_since },
+    { label: "War declared", cell: (t) => t.at_war_since === null ? dim() : `turn ${t.at_war_since}` },
+    { label: "Targeting", cell: (t) => (t.city_tiles_targeted || t.units_targeted)
+        ? `${t.city_tiles_targeted} city tiles, ${t.units_targeted} units` : dim() },
+  ];
   const SEVERITY_WORD = { CRITICAL: "Critical.", WARN: "Warning.", ADVISE: "Advice.", INFO: "Note." };
   const NOTHING_AT_ALL = "Nothing to report yet. Start a game, or point the advisor at another log folder.";
   const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
@@ -92,7 +115,8 @@
     return wrap;
   }
 
-  /* cols: [{label, num}]; a cell is a string, a Node, or {text, cls}. */
+  /* cols: [{label, num}] (a column may carry more, e.g. the threats table's cell fn);
+     a cell is a string, a Node, or {text, cls}. */
   function table(cols, rows) {
     const t = el("table");
     const head = el("tr");
@@ -184,34 +208,21 @@
     /* The toggle gates table content as well as cards: with Oracle off the
        AI-internal columns are dropped outright, not blanked. */
     const seen = state.showOracle;
-    $("#threats-table").replaceChildren(table([
-      { label: "Rival" }, { label: "Land units", num: true }, { label: "vs you", num: true },
-      ...(seen ? [{ label: "War score", num: true }, { label: "Held since turn", num: true },
-        { label: "At war" }] : []),
-      { label: "Kills", num: true }, { label: "Your losses", num: true },
-      ...(seen ? [{ label: "Targeting" }] : []),
-    ], d.threats.map((t) => [
-      t.name,
-      t.land_units,
-      `${fmt(t.military_ratio)}x`,
-      ...(seen ? [
-        t.war_score === null ? { text: "—", cls: "dim" } : fmt(t.war_score, 0),
-        t.war_score_since === null ? { text: "—", cls: "dim" } : t.war_score_since,
-        t.at_war_since === null ? { text: "no", cls: "dim" } : `since turn ${t.at_war_since}`,
-      ] : []),
-      t.kills, t.losses,
-      ...(seen ? [
-        (t.city_tiles_targeted || t.units_targeted)
-          ? `${t.city_tiles_targeted} city tiles, ${t.units_targeted} units`
-          : { text: "—", cls: "dim" },
-      ] : []),
-    ])), ...(seen ? [] : [withheld()]));
+    const threatCols = seen ? [...THREATS_FAIR_COLUMNS, ...THREATS_ORACLE_COLUMNS] : THREATS_FAIR_COLUMNS;
+    $("#threats-table").replaceChildren(
+      table(threatCols, d.threats.map((t) => threatCols.map((c) => c.cell(t)))),
+      ...(seen ? [] : [withheld()]));
     $("#threats-cards").replaceChildren(stream(byAdvisor("threat"), "threat"));
+
+    /* One order for both tables on this tab: the server's PATH_STATS order, which
+       is the order the leaderboards arrive in. */
+    const paths = Object.keys(d.leaderboards);
+    const pathCols = paths.map((p) => ({ label: PATH_LABEL[p] || p }));
 
     $("#victory-head").hidden = !seen;
     $("#victory-table").replaceChildren(seen ? table(
-      [{ label: "Rival" }, ...PATHS.map((p) => ({ label: PATH_LABEL[p] }))],
-      d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...PATHS.map((p) => {
+      [{ label: "Rival" }, ...pathCols],
+      d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...paths.map((p) => {
         const st = s.strategies.find((x) => x.strategy === p);
         if (!st) return { text: "—", cls: "dim" };
         if (!st.following) return { text: st.status, cls: "dim" };
@@ -220,11 +231,10 @@
         return span;
       })])) : withheld());
 
-    const boards = Object.keys(d.leaderboards);
-    const depth = boards.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
+    const depth = paths.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
     $("#victory-boards").replaceChildren(table(
-      [{ label: "Rank", num: true }, ...boards.map((p) => ({ label: PATH_LABEL[p] || p }))],
-      Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...boards.map((p) => {
+      [{ label: "Rank", num: true }, ...pathCols],
+      Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...paths.map((p) => {
         const entry = d.leaderboards[p][i];
         return entry ? named(entry.name, entry.value, entry.id === d.human) : { text: "—", cls: "dim" };
       })])));
@@ -232,7 +242,7 @@
 
     $("#economy-table").replaceChildren(table([
       { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
-      { label: "You vs median", num: true }, { label: "Best", num: true }, { label: "Held by" },
+      { label: "You vs median", num: true }, { label: "Best rival's", num: true }, { label: "Best rival" },
     ], d.economy.map((c) => [
       c.label, fmt(c.human), fmt(c.rival_median),
       { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },

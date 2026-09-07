@@ -1,10 +1,16 @@
 import asyncio
+import re
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from civ7_advisor.api.app import create_app
+
+APP_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "app.js"
+# RivalThreat fields that come from the AI's own logs (AI_DiplomaticActions, AI_Targets).
+ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since",
+                        "city_tiles_targeted", "units_targeted", "target_box", "target_turn")
 
 
 @pytest.fixture(scope="module")
@@ -48,6 +54,34 @@ def test_index_and_static(client):
     js = client.get("/static/app.js")
     assert js.status_code == 200 and "EventSource" in js.text and "/api/insights" in js.text
     assert client.get("/static/style.css").status_code == 200
+
+
+def _array_body(source: str, constant: str) -> str:
+    """The body of a module-level array literal in app.js, without its brackets."""
+    block = re.search(rf"\bconst {constant} = \[(.*?)^\s*\];", source, re.S | re.M)
+    assert block, f"{constant} is not declared as an array literal in app.js"
+    return block.group(1)
+
+
+def _labels(body: str) -> list[str]:
+    """The column labels declared in such a body, in order."""
+    return re.findall(r'label:\s*"([^"]*)"', body)
+
+
+def test_threats_table_columns_are_split_by_provenance():
+    """The Oracle toggle gates oracle-derived table *columns*, not just cards, and that
+    gating lives only in app.js: /api/state ships the oracle fields either way, so
+    nothing else in the suite would notice `War score` or `Targeting` reappearing in
+    fair mode. Pin both column sets, and pin that the fair set reads none of the
+    AI-internal fields of RivalThreat."""
+    source = APP_JS.read_text(encoding="utf-8")
+    fair, oracle = _array_body(source, "THREATS_FAIR_COLUMNS"), _array_body(source, "THREATS_ORACLE_COLUMNS")
+
+    assert _labels(fair) == ["Rival", "Land units", "vs you", "Their losses", "Your losses"]
+    assert _labels(oracle) == ["War score", "Since turn", "War declared", "Targeting"]
+    assert not set(_labels(fair)) & set(_labels(oracle))
+    assert [f for f in ORACLE_THREAT_FIELDS if f in oracle], "the oracle columns should read oracle fields"
+    assert not [f for f in ORACLE_THREAT_FIELDS if f in fair]
 
 
 def test_state_is_503_before_first_rebuild(fixture_dir: Path):

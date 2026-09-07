@@ -76,18 +76,33 @@ def advise(state: GameState) -> list[Insight]:
                 ))
             continue
         if lv > 0 and lv >= LEAD_MARGIN * sv:
-            st = committed.get((leader.id, path))
             ratio = f" ({lv / sv:.2f}x)" if sv else ""
-            why = f"Turn {t}: {leader.name} {lv:.1f} vs runner-up {second.name} {sv:.1f}{ratio}."
-            if st:
-                why += f" Their AI is also committed to the {path} path (weight {st.weight})."
+            # The yield lead and the AI's commitment to the path are two separate
+            # insights on purpose. Folding the commitment into this one escalated it
+            # to ORACLE, so with the Oracle toggle off the lead itself disappeared —
+            # deleting evidence the player *can* see (it is in the leaderboard table
+            # right below) exactly when it matters most. This one stays FAIR and
+            # quotes only the yields; the commitment gets its own ORACLE insight.
             out.append(Insight(
                 id=f"victory.leader.{path}", advisor="victory",
-                severity=Severity.WARN if st else Severity.ADVISE,
-                provenance=Provenance.ORACLE if st else Provenance.FAIR,
+                severity=Severity.ADVISE, provenance=Provenance.FAIR,
                 title=f"{leader.name} is pulling away in {label}",
                 recommendation=f"Either contest {label} directly or make sure your own path finishes first; "
                                f"consider slowing {leader.name} with diplomacy or denial.",
-                why=why, turn=t, subject_player=leader.id,
+                why=f"Turn {t}: {leader.name} {lv:.1f} vs runner-up {second.name} {sv:.1f}{ratio}.",
+                turn=t, subject_player=leader.id,
             ))
+            st = committed.get((leader.id, path))
+            if st:
+                out.append(Insight(
+                    id=f"victory.leader_committed.{path}", advisor="victory",
+                    severity=Severity.WARN, provenance=Provenance.ORACLE,
+                    title=f"{leader.name}'s AI is committed to the {path.title()} path they lead",
+                    recommendation=f"The lead and the intent point the same way, so treat this as the "
+                                   f"turn to choose: race {leader.name} on {label} now, or spend the "
+                                   f"next few turns denying them — trade leverage, war, or out-building.",
+                    why=f"{leader.name}'s AI is following its {path} strategy at weight {st.weight} "
+                        f"(committed threshold {STRATEGY_COMMITTED}), last changed on turn {st.since_turn}.",
+                    turn=t, subject_player=leader.id,
+                ))
     return out

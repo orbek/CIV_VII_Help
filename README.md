@@ -23,10 +23,11 @@ Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
 
 Advice built only from things you could see in-game is **Fair**. Advice that
 uses the AI's internal logs — its war-intent scores, its target lists, the
-legacy path it has committed to — is **Oracle**, drawn with a dashed border
-and a badge. Untick **Oracle** in the header to see whether the fair evidence
-alone would have told you the same thing. That comparison is the point: it
-shows you where your read of the game was right and where it wasn't.
+legacy path it has committed to — is **Oracle**, drawn over a faint diagonal
+hatch and badged "intercept". Untick **Oracle** in the header to see whether
+the fair evidence alone would have told you the same thing. That comparison is
+the point: it shows you where your read of the game was right and where it
+wasn't. The toggle hides Oracle table columns too, not just the cards.
 
 ## What is verified, and what isn't
 

@@ -45,11 +45,40 @@ def test_leader_below_margin_is_silent():
     assert "victory.leader.SCIENCE" not in ids(victory.advise(s))
 
 
-def test_committed_leader_escalates_to_warn_oracle():
+def test_committed_leader_adds_an_oracle_insight_and_leaves_the_fair_one_alone():
+    """The AI's commitment must not swallow the yield lead: escalating the single
+    insight to ORACLE made a 3x culture lead vanish with the Oracle toggle off, while
+    the same numbers sat in the FAIR leaderboard table below it."""
     s = game_state(turn=20, rivals={1: "A", 2: "B"}, rival_stats={1: {"culture": 60.0}})
+    s.strategies = {1: {"CULTURAL": strategy(1, "CULTURAL", 100, since=14)}}
+    got = ids(victory.advise(s))
+
+    lead = got["victory.leader.CULTURAL"]
+    assert lead.severity is Severity.ADVISE and lead.provenance is Provenance.FAIR
+    assert lead.why == "Turn 20: A 60.0 vs runner-up You 20.0 (3.00x)."  # yields only
+    assert "committed" not in lead.why and "weight" not in lead.why
+
+    both = got["victory.leader_committed.CULTURAL"]
+    assert both.severity is Severity.WARN and both.provenance is Provenance.ORACLE
+    assert both.subject_player == 1 and both.title != lead.title
+    assert both.why == ("A's AI is following its CULTURAL strategy at weight 100 "
+                        "(committed threshold 75), last changed on turn 14.")  # strategy weight only
+
+
+def test_uncommitted_leader_gets_no_oracle_companion():
+    s = game_state(turn=20, rivals={1: "A", 2: "B"}, rival_stats={1: {"culture": 60.0}})
+    s.strategies = {1: {"CULTURAL": strategy(1, "CULTURAL", 74)}}  # below STRATEGY_COMMITTED
+    got = ids(victory.advise(s))
+    assert "victory.leader.CULTURAL" in got and "victory.leader_committed.CULTURAL" not in got
+
+
+def test_a_committed_path_the_rival_does_not_lead_gets_no_companion():
+    """Player 1 is committed to CULTURAL but leads SCIENCE: neither path pairs both."""
+    s = game_state(turn=20, rivals={1: "A", 2: "B"}, rival_stats={1: {"science": 50.0}})
     s.strategies = {1: {"CULTURAL": strategy(1, "CULTURAL", 100)}}
-    i = ids(victory.advise(s))["victory.leader.CULTURAL"]
-    assert i.severity is Severity.WARN and i.provenance is Provenance.ORACLE and "committed" in i.why
+    got = ids(victory.advise(s))
+    assert "victory.leader.SCIENCE" in got
+    assert not any(k.startswith("victory.leader_committed") for k in got)
 
 
 def test_human_strict_lead_is_info_fair_and_ties_are_silent():
@@ -73,6 +102,8 @@ def test_fixture_victory_at_turn_81(fixture_state):
     assert "Harriet Tubman 72.5 vs runner-up Ibn Battuta 30.0" in econ.why
     assert not any(k in got for k in ("victory.leader.SCIENCE", "victory.leader.CULTURAL", "victory.leader.MILITARY"))
     assert not any(k.startswith("victory.you_lead") for k in got)
+    # Tubman leads ECONOMIC but her AI is committed to MILITARY, so nothing pairs the two.
+    assert not any(k.startswith("victory.leader_committed") for k in got)
 
 
 def test_fixture_leaderboards(fixture_state):

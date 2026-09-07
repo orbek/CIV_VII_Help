@@ -18,7 +18,7 @@ _ITEM = re.compile(
 # Until then a header we do not recognise ends the current block rather than continuing it, so
 # its items are dropped instead of being stamped with the previous block's turn. An outgoing
 # `Peace` is an offer, not a concluded peace; reading one as concluded would clear a live war.
-_ANY_BLOCK = re.compile(r"^Turn \d+,")
+_ANY_BLOCK = re.compile(r"^Turn (\d+),")
 
 
 @dataclass(frozen=True)
@@ -62,7 +62,13 @@ def read_deals(path: Path) -> list[DealItem]:
                 turn = last_block_turn = new_turn
                 blocks += 1
                 continue
-            if _ANY_BLOCK.match(line):
+            other = _ANY_BLOCK.match(line)
+            if other:
+                new_turn = int(other.group(1))
+                if last_block_turn is not None and new_turn < last_block_turn:
+                    out.clear()
+                    blocks = 0
+                last_block_turn = new_turn
                 turn = None
                 continue
             item = _ITEM.match(line)

@@ -102,3 +102,18 @@ def test_a_byte_order_mark_does_not_hide_the_first_header(tmp_path: Path):
     p = tmp_path / "DiplomacyDeals.log"
     p.write_text(LIVE_DEALS, encoding="utf-8-sig")
     assert [d.turn for d in read_deals(p)] == [79, 79]
+
+
+def test_a_non_incoming_block_still_advances_the_new_game_watermark(tmp_path: Path):
+    """A block kind we do not read is still evidence of where the file has got to. If it did
+    not advance the watermark, the turn drop that follows it would go unseen and game-1 deals
+    would survive into game 2 — the false-peace direction."""
+    p = tmp_path / "DiplomacyDeals.log"
+    p.write_text(
+        "Turn 79, Incoming for player 4 and 7\n"
+        ", Item ID 2, from player 7, to player 4, type Peace, subType 1 (), value type , amount 0, duration 1\n"
+        "Turn 200, Outgoing for player 0 and 4\n"
+        "Turn 100, Incoming for player 4 and 2\n"
+        ", Item ID 7, from player 2, to player 4, type Open Borders, subType 5 (), value type , amount 0, duration 30\n"
+    )
+    assert read_deals(p) == [DealItem(100, 7, 2, 4, "Open Borders", 0, 30)]

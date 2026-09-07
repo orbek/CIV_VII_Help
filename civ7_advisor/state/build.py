@@ -6,6 +6,7 @@ from dataclasses import asdict
 from civ7_advisor.ingest.load import RawLogs
 
 from .models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from .names import NameResolver
 
 INDEPENDENT_KEY = "LOC_CIVILIZATION_INDEPENDENT_NAME"
 
@@ -101,4 +102,17 @@ def build_state(raw: RawLogs) -> GameState:
     state.intents = list(raw.diplomacy)
     state.targets = list(raw.targets)
     state.events = list(raw.historian)
+    state.build_queues = list(raw.build_queue)
+    state.combats = list(raw.combat)
+    state.gossip = list(raw.gossip)
+    state.diplomacy_events = list(raw.diplomacy_summary)
+    state.deals = list(raw.deals)
+    for d in raw.deals:
+        if d.is_peace:
+            pair = d.parties()
+            state.peace_turns[pair] = max(state.peace_turns.get(pair, 0), d.turn)
+    state.names = NameResolver.build(
+        rival_names={p.id: p.name for p in state.players.values() if p.kind is PlayerKind.RIVAL},
+        human_city_keys=[q.city for q in raw.build_queue if q.player == GameState.HUMAN],
+    )
     return state

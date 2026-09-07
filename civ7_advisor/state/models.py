@@ -93,6 +93,10 @@ class StrategyStatus:
     strategy: str   # SCIENCE, CULTURAL, MILITARY, ECONOMIC, ESPIONAGE
     status: str     # Following | Stopped | Forbidden
     weight: int     # the AI's priority weight, not progress
+    # Turn of the last AI_Victories row for this (player, strategy). That log emits a
+    # row on any change, including a weight-only change, so this is NOT "the status has
+    # held since this turn" — player 4 was Following CULTURAL from turn 1 but its
+    # since_turn is 74. Do not render it as a continuous-pursuit claim.
     since_turn: int
 
     @property
@@ -133,11 +137,18 @@ class GameState:
         return self.turns.get(t, {}).get(player)
 
     def series(self, player: int, attr: str, n: int) -> list[float]:
-        """`attr` over the last n complete turns, oldest first; turns without a row are skipped."""
+        """`attr` over the last n complete turns, oldest first.
+
+        Skips turns with no row for this player, and turns whose `attr` is None (an
+        optional treasury/happiness field the log did not cover), so the result may be
+        shorter than n and is never aligned to turn numbers.
+        """
         t = self.complete_through_turn
         out: list[float] = []
         for turn in range(t - n + 1, t + 1):
             pt = self.turns.get(turn, {}).get(player)
             if pt is not None:
-                out.append(float(getattr(pt, attr)))
+                value = getattr(pt, attr)
+                if value is not None:
+                    out.append(float(value))
         return out

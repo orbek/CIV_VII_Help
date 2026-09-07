@@ -1,8 +1,11 @@
+from dataclasses import fields
+
 import pytest
 
 from civ7_advisor.ingest.load import RawLogs
+from civ7_advisor.ingest.readers import StatsRow
 from civ7_advisor.state.build import build_state, display_name
-from civ7_advisor.state.models import PlayerKind, StrategyStatus
+from civ7_advisor.state.models import PlayerKind, PlayerTurn, StrategyStatus
 
 
 def test_turn_bookkeeping(fixture_state):
@@ -53,6 +56,17 @@ def test_strategies_fold_to_current_status(fixture_state):
 def test_series_reads_backwards_from_complete_turn(fixture_state):
     assert fixture_state.series(0, "land_units", 3) == [7.0, 6.0, 5.0]  # turns 79, 80, 81
     assert fixture_state.series(3, "land_units", 3) == []  # Napoleon is gone
+
+
+def test_series_skips_missing_values(fixture_state):
+    # Player 9 is an independent: it has stats and treasury rows but no happiness row,
+    # so happiness_total is None on every turn. series must skip, not raise.
+    assert fixture_state.series(9, "happiness_total", 3) == []
+    assert fixture_state.series(9, "land_units", 3) == [3.0, 3.0, 3.0]
+
+
+def test_player_turn_covers_every_stats_field():
+    assert {f.name for f in fields(StatsRow)} <= {f.name for f in fields(PlayerTurn)}
 
 
 def test_raw_rows_are_carried_through(fixture_state):

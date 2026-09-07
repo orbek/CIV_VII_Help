@@ -90,3 +90,72 @@ def read_combat_log(path: Path) -> list[CombatRow]:
             r[14] or None, int(r[15]), r[16], r[17],
         ))
     return out
+
+
+# --- Game_Gossip.csv --------------------------------------------------------
+# Ragged: 6 header names, 6 or 7 data columns (the 7th is a free-text detail). `Player`
+# holds the leader's display NAME, not an id — state/names.py resolves it.
+
+GOSSIP_HEADER = ["Game Turn", "Player", "Civilization", "Plot X", "Plot Y", "Type"]
+
+
+@dataclass(frozen=True)
+class GossipRow:
+    turn: int
+    leader: str          # display name as logged, e.g. "Alexander"; resolve via NameResolver
+    civilization: str    # e.g. "Maurya"
+    x: int               # may be negative when the gossip has no plot
+    y: int
+    type: str            # GOSSIP_UNIT_DESTROYED, GOSSIP_CITY_FOUNDED, ...
+    detail: str | None   # the optional 7th column, e.g. "Warrior"
+
+
+def read_gossip(path: Path) -> list[GossipRow]:
+    table = read_table(path)
+    expect_header(table, GOSSIP_HEADER)
+    out: list[GossipRow] = []
+    for r in latest_game_segment(table.rows, turn_col=0):
+        if len(r) not in (6, 7):
+            raise LogFormatError(
+                f"{path.name}: expected 6 or 7 columns but a row has {len(r)} (row starts {r[:2]})"
+            )
+        detail = r[6] if len(r) == 7 and r[6] else None
+        out.append(GossipRow(int(r[0]), r[1], r[2], int(r[3]), int(r[4]), r[5], detail))
+    return out
+
+
+# --- DiplomacySummary.csv ---------------------------------------------------
+# Seven header names, but the captured live row carried six values, so it is not known
+# whether `Mayhem` or `Visibility` is the one missing. Everything after `Details` is kept
+# raw in `extra`; the fixture task names those cells once the distribution is known.
+
+DIPLOMACY_SUMMARY_HEADER = ["Game Turn", "Initiator", "Recipient", "Action", "Details", "Mayhem", "Visibility"]
+
+
+@dataclass(frozen=True)
+class DiplomacySummaryRow:
+    turn: int
+    initiator: int
+    recipient: int
+    action: str
+    details: str
+    extra: tuple[str, ...]   # the cells after Details, unnamed until Task 11 pins them
+
+    def parties(self) -> frozenset[int]:
+        return frozenset({self.initiator, self.recipient})
+
+    def involves(self, player: int) -> bool:
+        return player in self.parties()
+
+
+def read_diplomacy_summary(path: Path) -> list[DiplomacySummaryRow]:
+    table = read_table(path)
+    expect_header(table, DIPLOMACY_SUMMARY_HEADER)
+    out: list[DiplomacySummaryRow] = []
+    for r in latest_game_segment(table.rows, turn_col=0):
+        if len(r) < 5:
+            raise LogFormatError(
+                f"{path.name}: expected at least 5 columns but a row has {len(r)} (row starts {r[:2]})"
+            )
+        out.append(DiplomacySummaryRow(int(r[0]), int(r[1]), int(r[2]), r[3], r[4], tuple(r[5:])))
+    return out

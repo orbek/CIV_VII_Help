@@ -67,6 +67,13 @@ NEW_LOG_SAMPLES = [
      "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n"
      "82,Unit vs Location,(63)(30),0,4,Melee,(14)UNIT_WARRIOR,(-1)LOC_DISTRICT_CITY_CENTER_NAME,"
      "20,30,-5,0,34,12,Attacker,0,(0)100,(8)100\n"),
+    ("Game_Gossip.csv", "gossip",
+     "Game Turn, Player, Civilization, Plot X, Plot Y, Type\n"
+     "82, Alexander, Maurya, 63, 31, GOSSIP_UNIT_DESTROYED, Warrior\n"),
+    ("DiplomacySummary.csv", "diplomacy_summary",
+     "Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility\n"
+     "82, 0, 7, Diplomacy Action Enter Stage, "
+     "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0\n"),
 ]
 
 

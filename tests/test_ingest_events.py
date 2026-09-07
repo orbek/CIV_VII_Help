@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 from civ7_advisor.ingest.csvfile import LogFormatError
-from civ7_advisor.ingest.events import Combatant, CombatRow, read_combat_log
+from civ7_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
 
 COMBAT_HEADER = ("Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, "
                  "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n")
@@ -67,3 +67,59 @@ def test_malformed_location_raises_log_format_error(tmp_path: Path):
     body = LIVE_COMBAT.replace("(63)(30)", "63:30")
     with pytest.raises(LogFormatError, match="Location"):
         read_combat_log(_write(tmp_path, body))
+
+
+GOSSIP_HEADER = "Game Turn, Player, Civilization, Plot X, Plot Y, Type\n"
+# Captured live 2026-09-07. `Player` is a leader NAME; the row has one more column than the header.
+LIVE_GOSSIP = "82, Alexander, Maurya, 63, 31, GOSSIP_UNIT_DESTROYED, Warrior\n"
+
+
+def test_gossip_reads_the_live_row_with_its_trailing_detail(tmp_path: Path):
+    p = tmp_path / "Game_Gossip.csv"
+    p.write_text(GOSSIP_HEADER + LIVE_GOSSIP)
+    assert read_gossip(p) == [GossipRow(82, "Alexander", "Maurya", 63, 31, "GOSSIP_UNIT_DESTROYED", "Warrior")]
+
+
+def test_gossip_accepts_six_columns_with_no_detail(tmp_path: Path):
+    p = tmp_path / "Game_Gossip.csv"
+    p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40, 12, GOSSIP_CITY_FOUNDED\n")
+    [row] = read_gossip(p)
+    assert (row.leader, row.civilization, row.type, row.detail) == ("Confucius", "Han", "GOSSIP_CITY_FOUNDED", None)
+
+
+def test_gossip_rejects_other_widths(tmp_path: Path):
+    p = tmp_path / "Game_Gossip.csv"
+    p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40\n")
+    with pytest.raises(LogFormatError, match="6 or 7 columns"):
+        read_gossip(p)
+
+
+DIPLO_HEADER = "Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility\n"
+# Captured live 2026-09-07: seven header names, six values. The trailing cells are kept raw.
+LIVE_DIPLO = ("82, 0, 7, Diplomacy Action Enter Stage, "
+              "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0\n")
+
+
+def test_diplomacy_summary_keeps_trailing_cells_raw(tmp_path: Path):
+    p = tmp_path / "DiplomacySummary.csv"
+    p.write_text(DIPLO_HEADER + LIVE_DIPLO)
+    [row] = read_diplomacy_summary(p)
+    assert (row.turn, row.initiator, row.recipient) == (82, 0, 7)
+    assert row.action == "Diplomacy Action Enter Stage"
+    assert row.details == "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE"
+    assert row.extra == ("426.0",)
+    assert row.parties() == frozenset({0, 7}) and row.involves(0) and not row.involves(3)
+
+
+def test_diplomacy_summary_seven_values_also_parse(tmp_path: Path):
+    p = tmp_path / "DiplomacySummary.csv"
+    p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce, Denounced publicly, 12.5, VISIBLE\n")
+    [row] = read_diplomacy_summary(p)
+    assert row.extra == ("12.5", "VISIBLE")
+
+
+def test_diplomacy_summary_needs_at_least_the_five_named_cells(tmp_path: Path):
+    p = tmp_path / "DiplomacySummary.csv"
+    p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce\n")
+    with pytest.raises(LogFormatError, match="at least 5 columns"):
+        read_diplomacy_summary(p)

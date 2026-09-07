@@ -6,8 +6,11 @@ free, it needs no extra dependency, and it avoids cross-thread debouncing.
 from __future__ import annotations
 
 import asyncio
+import logging
 from pathlib import Path
 from typing import Callable, Iterable
+
+log = logging.getLogger(__name__)
 
 Snapshot = dict[str, tuple[int, int] | None]
 
@@ -41,13 +44,21 @@ async def watch(
     pending: Snapshot | None = None
     while True:
         await asyncio.sleep(interval)
-        current = snapshot(logs_dir, names)
-        if current == last:
-            pending = None
+        # Neither the stat() calls nor the rebuild may end this coroutine: it is never
+        # awaited, so an escaping exception would silently stop the dashboard updating
+        # for the rest of the session. CancelledError is a BaseException, so cancelling
+        # still works.
+        try:
+            current = snapshot(logs_dir, names)
+            if current == last:
+                pending = None
+                continue
+            if pending is not None and current == pending:
+                last = current
+                pending = None
+                await asyncio.to_thread(on_change)
+            else:
+                pending = current
+        except Exception:
+            log.exception("poll failed; continuing")
             continue
-        if pending is not None and current == pending:
-            last = current
-            pending = None
-            await asyncio.to_thread(on_change)
-        else:
-            pending = current

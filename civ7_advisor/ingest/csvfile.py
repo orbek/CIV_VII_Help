@@ -19,7 +19,7 @@ class RawTable:
 
 def read_table(path: Path) -> RawTable:
     """Read a Civ VII CSV: header on row 0, cells stripped, blank lines skipped."""
-    with path.open(newline="", encoding="utf-8", errors="replace") as fh:
+    with path.open(newline="", encoding="utf-8-sig", errors="replace") as fh:
         reader = csv.reader(fh, skipinitialspace=True)
         rows = [
             [cell.strip() for cell in row]

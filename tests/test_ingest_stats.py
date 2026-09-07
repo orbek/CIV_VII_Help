@@ -59,3 +59,24 @@ def test_player_stats_wrong_column_count_raises(tmp_path: Path, fixture_dir: Pat
     bad.write_text(header + "\n" + ", ".join(["1"] * 24) + "\n")
     with pytest.raises(LogFormatError, match="expected 25 columns"):
         read_player_stats(bad)
+
+
+def test_player_stats_returns_only_the_latest_game(tmp_path: Path, fixture_dir: Path):
+    """The reader must drop everything before the last turn drop, not just parse rows.
+
+    The fixture is a single game, so this builds a two-game log from it: turns
+    1-3 as the first game, then the real turn-1 rows appended as a second game.
+    """
+    lines = (fixture_dir / "Player_Stats.csv").read_text().splitlines()
+    header, body = lines[0], lines[1:]
+    first_game = [ln for ln in body if ln.split(",", 1)[0].strip() in {"1", "2", "3"}]
+    second_game = [ln for ln in body if ln.split(",", 1)[0].strip() == "1"]
+    assert len(first_game) > len(second_game)  # the two games really do differ in size
+    p = tmp_path / "Player_Stats.csv"
+    p.write_text("\n".join([header, *first_game, *second_game]) + "\n")
+
+    rows = read_player_stats(p)
+
+    assert [(r.turn, r.player) for r in rows] == [
+        (1, int(ln.split(",")[1])) for ln in second_game
+    ]

@@ -211,7 +211,7 @@ class TargetRow:
     turn: int
     player: int        # the AI doing the targeting
     target_type: str   # e.g. TARGET_ENEMY_CITY, TARGET_HIGH_PRIORITY_UNIT
-    owner: int         # player who owns the targeted plot or unit
+    owner: int         # player who owns the targeted plot or unit; 63 = NO_PLAYER (unowned) — consumers comparing against player ids must not treat it as a player
     target_id: int
     x: int
     y: int

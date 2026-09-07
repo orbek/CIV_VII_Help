@@ -96,3 +96,26 @@ def test_historian_fixture(fixture_dir: Path):
     assert len(rows) == 190
     assert rows[0] == HistorianRow("DISCOVERY_TRIGGERED", "AGE_ANTIQUITY", 3, 73, 13, 1, None, None, "Ruin")
     assert rows[-1] == HistorianRow("UNIT_KILLED", "AGE_ANTIQUITY", 81, 53, 12, 7, 22, "Hoplite", None)
+
+
+def test_historian_returns_only_the_latest_game(tmp_path: Path, fixture_dir: Path):
+    """Historian.csv keeps Turn at column index 2, not 0, so the latest-game
+    split has to read that column: a file holding two games must yield only the
+    rows of the second one."""
+    lines = (fixture_dir / "Historian.csv").read_text(encoding="utf-8").splitlines()
+    header, body = lines[0], lines[1:]
+
+    def line_for_turn(turn: int) -> str:
+        return next(ln for ln in body if int(ln.split(",")[2]) == turn)
+
+    first_game = [line_for_turn(t) for t in (40, 62, 76)]  # turns ascend ...
+    second_game = [line_for_turn(t) for t in (4, 5, 9)]    # ... then drop back: a new game
+
+    two_games = tmp_path / "Historian.csv"
+    two_games.write_text("\n".join([header, *first_game, *second_game]) + "\n")
+    second_only = tmp_path / "Historian_second_game_only.csv"
+    second_only.write_text("\n".join([header, *second_game]) + "\n")
+
+    rows = read_historian(two_games)
+    assert [r.turn for r in rows] == [4, 5, 9]
+    assert rows == read_historian(second_only)

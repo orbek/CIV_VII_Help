@@ -1,3 +1,4 @@
+import asyncio
 from pathlib import Path
 
 import pytest
@@ -40,10 +41,66 @@ def test_insights_endpoint(client):
 
 
 def test_index_and_static(client):
-    assert "Civ VII Advisor" in client.get("/").text
-    assert client.get("/static/index.html").status_code == 200
+    page = client.get("/").text
+    assert "<title>Civ VII Advisor</title>" in page and 'id="oracle"' in page
+    for tab in ("checklist", "threats", "victory", "economy"):
+        assert f'data-tab="{tab}"' in page
+    js = client.get("/static/app.js")
+    assert js.status_code == 200 and "EventSource" in js.text and "/api/insights" in js.text
+    assert client.get("/static/style.css").status_code == 200
 
 
 def test_state_is_503_before_first_rebuild(fixture_dir: Path):
     app = create_app(fixture_dir)  # no lifespan entered -> never rebuilt
     assert TestClient(app).get("/api/state").status_code == 503
+
+
+def test_events_stream_delivers_and_drops_its_subscriber_on_disconnect(fixture_dir: Path):
+    """Drive /events over raw ASGI: a published event reaches the client, and the queue is
+    released when the client goes away — a leak here costs one queue per page refresh."""
+    app = create_app(fixture_dir)  # no lifespan needed: /events reads no state
+    store = app.state.store
+    scope = {
+        "type": "http",
+        "asgi": {"version": "3.0", "spec_version": "2.3"},  # what uvicorn's HTTP protocols send
+        "http_version": "1.1",
+        "method": "GET",
+        "scheme": "http",
+        "path": "/events",
+        "raw_path": b"/events",
+        "root_path": "",
+        "query_string": b"",
+        "headers": [(b"host", b"testserver")],
+        "client": ("testclient", 50000),
+        "server": ("testserver", 80),
+    }
+
+    async def scenario():
+        disconnect, chunks = asyncio.Event(), []
+
+        async def receive() -> dict:
+            await disconnect.wait()
+            return {"type": "http.disconnect"}
+
+        async def send(message: dict) -> None:
+            if message["type"] == "http.response.body":
+                chunks.append(message["body"].decode())
+
+        async def until(ready, what: str) -> None:
+            for _ in range(200):  # 2 s
+                if ready():
+                    return
+                await asyncio.sleep(0.01)
+            raise AssertionError(f"timed out waiting for {what}")
+
+        task = asyncio.create_task(app(scope, receive, send))
+        await until(lambda: store._subscribers, "the stream to subscribe")
+        store.publish({"type": "state_changed", "turn": 82})
+        await until(lambda: any(c.startswith("data:") for c in chunks), "the published event")
+        assert '{"type": "state_changed", "turn": 82}' in "".join(chunks)
+
+        disconnect.set()
+        await asyncio.wait_for(task, 2)
+        assert store._subscribers == set()  # no queue left behind
+
+    asyncio.run(scenario())

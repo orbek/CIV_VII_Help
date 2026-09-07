@@ -69,8 +69,9 @@ def load_logs(logs_dir: Path) -> RawLogs:
         path = logs_dir / name
         try:
             rows = reader(path)
-        except FileNotFoundError:
-            raw.files[name] = FileStatus(name, False, 0, None, "file not found")
+        except OSError as exc:
+            error = "file not found" if isinstance(exc, FileNotFoundError) else str(exc)
+            raw.files[name] = FileStatus(name, False, 0, None, error)
             continue
         except (LogFormatError, ValueError, IndexError) as exc:
             log.warning("%s: dropping file for this rebuild: %s", name, exc)

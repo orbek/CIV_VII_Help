@@ -101,13 +101,19 @@ def test_targeting_uses_previous_turn_when_ai_lags_but_not_older():
     s = game_state(turn=20)
     s.targets = [city_target(19, 1)]
     assert "On turn 19" in ids(threat.advise(s))["threat.targeting.1"].why
-    s.targets = [city_target(17, 1)]
+    s.targets = [city_target(18, 1)]  # 18 is the first turn too old to quote
     assert "threat.targeting.1" not in ids(threat.advise(s))
 
 
-@pytest.mark.parametrize("rival_units,expected", [(7, False), (8, True), (12, True)])  # human has 5
-def test_military_gap_threshold(rival_units, expected):
-    s = game_state(turn=20, rival_stats={1: {"land_units": rival_units}})
+@pytest.mark.parametrize(
+    "rival_units,human_units,expected",  # MILITARY_RATIO_ADVISE = 1.5
+    [(7, 5, False), (8, 5, True), (12, 5, True), (5, 4, False), (6, 4, True)],  # 1.4, 1.6, 2.4, 1.25, 1.5
+)
+def test_military_gap_threshold(rival_units, human_units, expected):
+    s = game_state(
+        turn=20, human_stats={"land_units": human_units},
+        rival_stats={1: {"land_units": rival_units}},
+    )
     assert ("threat.military_gap.1" in ids(threat.advise(s))) is expected
 
 
@@ -119,6 +125,22 @@ def test_army_growth_compares_deltas():
     assert "from 5 to 8" in i.why
     s.turns[20][1] = replace(s.turns[20][1], land_units=7)  # +2 is below ARMY_GROWTH_DELTA
     assert "threat.army_growth.1" not in ids(threat.advise(s))
+
+
+def test_army_growth_only_uses_turns_both_players_have_rows_for():
+    s = game_state(turn=20, history_turns=10)
+    for t, units in zip(range(11, 21), [2, 2, 3, 3, 4, 5, 5, 6, 7, 8]):
+        s.turns[t][1] = replace(s.turns[t][1], land_units=units)  # rival 2 -> 8 across the window
+    for t in range(11, 18):
+        del s.turns[t][0]  # the human is logged only for turns 18-20, flat at 5
+    # Unaligned, the rival's +6 against a flat human would fire and misquote the human's
+    # own numbers; over turns 18-20, which both players have, the rival gained only 2.
+    assert "threat.army_growth.1" not in ids(threat.advise(s))
+
+    s.turns[20][1] = replace(s.turns[20][1], land_units=10)  # +4 over those same three turns
+    i = ids(threat.advise(s))["threat.army_growth.1"]
+    assert "Over the last 3 turns" in i.why  # the shared window, not the rival's 10
+    assert "from 6 to 10" in i.why and "you went from 5 to 5" in i.why
 
 
 def test_no_human_row_means_no_threats():

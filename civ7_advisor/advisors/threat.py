@@ -99,9 +99,25 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
 
 
 def _army_growth(state: GameState, rival_id: int) -> tuple[list[float], list[float]] | None:
-    rs = state.series(rival_id, "land_units", ARMY_GROWTH_TURNS)
-    hs = state.series(state.HUMAN, "land_units", ARMY_GROWTH_TURNS)
-    if len(rs) < 2 or len(hs) < 2:
+    """Rival and human land units over the same turns, oldest first.
+
+    Not `GameState.series()`: that drops turns with no row for its player, so two calls
+    can cover different turn ranges and the deltas would not be comparable — we would
+    credit the rival with growth over turns the human has no row for, and then quote the
+    human's numbers as if they came from the same window. Only turns where *both* players
+    have a row are kept, so the pair is aligned and `len()` is the window we can claim.
+    """
+    t = state.complete_through_turn
+    rs: list[float] = []
+    hs: list[float] = []
+    for turn in range(t - ARMY_GROWTH_TURNS + 1, t + 1):
+        rows = state.turns.get(turn, {})
+        rival_row, human_row = rows.get(rival_id), rows.get(state.HUMAN)
+        if rival_row is None or human_row is None:
+            continue
+        rs.append(float(rival_row.land_units))
+        hs.append(float(human_row.land_units))
+    if len(rs) < 2:
         return None
     return rs, hs
 
@@ -181,12 +197,13 @@ def advise(state: GameState) -> list[Insight]:
         growth = _army_growth(state, r.player)
         if growth is not None:
             rs, hs = growth
+            window = len(rs)  # turns you both have a row for; both deltas cover exactly these
             if (rs[-1] - rs[0]) - (hs[-1] - hs[0]) >= ARMY_GROWTH_DELTA:
                 out.append(Insight(
                     id=f"threat.army_growth.{r.player}", severity=Severity.INFO, provenance=Provenance.FAIR,
                     title=f"{r.name} is arming faster than you",
                     recommendation="Match the build-up or make sure your defences don't depend on parity.",
-                    why=f"Over the last {len(rs)} turns {r.name} went from {rs[0]:.0f} to {rs[-1]:.0f} "
+                    why=f"Over the last {window} turns {r.name} went from {rs[0]:.0f} to {rs[-1]:.0f} "
                         f"land units while you went from {hs[0]:.0f} to {hs[-1]:.0f}.",
                     **common,
                 ))

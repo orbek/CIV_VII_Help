@@ -7,7 +7,7 @@ ADVISOR_ORDER = {"threat": 0, "victory": 1, "economy": 2, "production": 3}
 
 
 def rank(insights: list[Insight]) -> list[Insight]:
-    """Most severe first, then most recent, then threat > victory > economy, then id.
+    """Most severe first, then most recent, then threat > victory > economy > production, then id.
     Duplicate ids keep the first (i.e. most severe) occurrence."""
     ordered = sorted(
         insights,

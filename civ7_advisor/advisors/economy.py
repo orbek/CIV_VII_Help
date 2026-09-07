@@ -56,6 +56,11 @@ def comparison(state: GameState) -> list[YieldComparison]:
     return out
 
 
+def behind(state: GameState) -> list[YieldComparison]:
+    """Every yield the human trails the rival median on by more than BEHIND_RATIO, worst first."""
+    return sorted((c for c in comparison(state) if c.ratio < BEHIND_RATIO), key=lambda c: c.ratio)
+
+
 def advise(state: GameState) -> list[Insight]:
     t = state.complete_through_turn
     human = state.at(state.HUMAN, t)
@@ -64,8 +69,7 @@ def advise(state: GameState) -> list[Insight]:
     out: list[Insight] = []
     common = dict(advisor="economy", turn=t)
 
-    behind = sorted((c for c in comparison(state) if c.ratio < BEHIND_RATIO), key=lambda c: c.ratio)
-    for index, c in enumerate(behind):
+    for index, c in enumerate(behind(state)):
         if index == 0:
             severity = Severity.WARN if c.ratio < FAR_BEHIND_RATIO else Severity.ADVISE
         else:

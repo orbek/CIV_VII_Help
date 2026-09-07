@@ -39,6 +39,48 @@ def test_queues_use_the_human_live_turn_but_rivals_complete_turn():
     assert [c.item for c in q[1]] == ["UNIT_WARRIOR"]
 
 
+def test_a_city_that_stopped_being_logged_drops_out_of_the_queues():
+    """A captured, razed or no-longer-logged city must not contribute its last row for ever.
+
+    The human's cutoff is latest_turn 21, so 20 is the oldest row that still counts.
+    """
+    s = game_state(turn=20)  # latest 21, complete 20
+    s.build_queues = [
+        build_queue_row(15, 0, "LOC_CITY_NAME_GONE", item="BUILDING_GRANARY"),
+        build_queue_row(16, 0, "LOC_CITY_NAME_GONE", item="BUILDING_GRANARY"),
+        build_queue_row(17, 0, "LOC_CITY_NAME_GONE", item="BUILDING_GRANARY"),
+        build_queue_row(20, 0, "LOC_CITY_NAME_HELD", item="BUILDING_BRICKYARD"),
+    ]
+    assert [c.city for c in production.queues(s)[0]] == ["LOC_CITY_NAME_HELD"]
+    why = ids(production.advise(s))["production.own_queue"].why
+    assert "Held:" in why and "Gone" not in why
+
+
+def test_a_stale_rival_city_does_not_count_toward_the_military_share():
+    """Rivals are read at complete_through_turn 20, so 19 is the oldest row that still counts.
+
+    Without the bound the turn-10 row makes it 2 of 4 cities (0.5) and the warning fires.
+    """
+    s = game_state(turn=20)
+    s.build_queues = [
+        build_queue_row(10, 1, "LOC_CITY_NAME_GONE", item="UNIT_WARRIOR"),
+        build_queue_row(20, 1, "LOC_CITY_NAME_R0", item="UNIT_WARRIOR"),
+        build_queue_row(20, 1, "LOC_CITY_NAME_R1", item="BUILDING_GRANARY"),
+        build_queue_row(20, 1, "LOC_CITY_NAME_R2", item="BUILDING_GRANARY"),
+    ]
+    assert production.rival_military_share(s) == {1: pytest.approx(1 / 3)}
+    assert "production.rival_military.1" not in ids(production.advise(s))
+
+
+def test_the_latest_of_two_rows_for_the_same_city_and_turn_wins():
+    s = game_state(turn=20)
+    s.build_queues = [
+        build_queue_row(21, 0, "LOC_CITY_NAME_A", item="BUILDING_GRANARY"),
+        build_queue_row(21, 0, "LOC_CITY_NAME_A", item="BUILDING_BRICKYARD"),
+    ]
+    assert [c.item for c in production.queues(s)[0]] == ["BUILDING_BRICKYARD"]
+
+
 def test_own_queue_insight_lists_every_city_and_is_fair():
     s = game_state(turn=20)
     s.build_queues = [
@@ -50,6 +92,14 @@ def test_own_queue_insight_lists_every_city_and_is_fair():
     assert "A: Brickyard in 1 turn" in i.why and "B: idle" in i.why
 
 
+def test_a_queue_that_completes_this_turn_says_so_rather_than_in_0_turns():
+    s = game_state(turn=20)
+    s.build_queues = [build_queue_row(21, 0, "LOC_CITY_NAME_A", item="BUILDING_BRICKYARD",
+                                      added=10.0, current=50.0, needed=50.0)]
+    why = ids(production.advise(s))["production.own_queue"].why
+    assert "A: Brickyard finishing this turn" in why and "0 turns" not in why
+
+
 @pytest.mark.parametrize("item,fires", [("BUILDING_BRICKYARD", True), ("BUILDING_GRANARY", False), ("BUILDING_ZIGGURAT", False)])
 def test_mismatch_fires_only_when_every_item_is_known_and_none_serves_the_worst_gap(item, fires):
     s = game_state(turn=20, human_stats={"food": 8.0})  # food 8 vs rival 20 -> worst gap
@@ -57,8 +107,11 @@ def test_mismatch_fires_only_when_every_item_is_known_and_none_serves_the_worst_
     got = ids(production.advise(s))
     assert ("production.mismatch" in got) is fires
     if fires:
-        assert got["production.mismatch"].provenance is Provenance.FAIR
-        assert "food" in got["production.mismatch"].title and "Brickyard" in got["production.mismatch"].why
+        i = got["production.mismatch"]
+        assert i.provenance is Provenance.FAIR and i.advisor == "production"
+        assert "food" in i.title
+        # The queue row is turn 21, the economy comparison is turn 20; each clause says its own turn.
+        assert "Brickyard as of turn 21" in i.why and "worst gap on turn 20" in i.why
 
 
 def test_mismatch_silent_when_nothing_is_behind():
@@ -79,7 +132,8 @@ def test_rival_military_share_threshold(items, fires):
     assert ("production.rival_military.1" in got) is fires
     if fires:
         i = got["production.rival_military.1"]
-        assert i.severity is Severity.WARN and i.provenance is Provenance.ORACLE and "1 of Rival One's 2 cities" in i.why
+        assert i.severity is Severity.WARN and i.provenance is Provenance.ORACLE
+        assert i.advisor == "production" and "1 of Rival One's 2 cities" in i.why
 
 
 def test_no_queues_means_no_insights():

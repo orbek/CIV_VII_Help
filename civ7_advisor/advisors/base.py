@@ -20,7 +20,7 @@ class Severity(IntEnum):
 @dataclass(frozen=True)
 class Insight:
     id: str             # stable key, e.g. "threat.war_intent.1"
-    advisor: str        # "threat" | "victory" | "economy"
+    advisor: str        # "threat" | "victory" | "economy" | "production"
     severity: Severity
     provenance: Provenance
     title: str

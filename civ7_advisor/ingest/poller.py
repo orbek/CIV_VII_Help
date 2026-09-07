@@ -1,7 +1,7 @@
 """Detect changes to the log files by polling their mtime and size.
 
-Polling was chosen over a filesystem watcher: seven stat() calls a second are
-free, it needs no extra dependency, and it avoids cross-thread debouncing.
+Polling was chosen over a filesystem watcher: one stat() per log file per second
+is free, it needs no extra dependency, and it avoids cross-thread debouncing.
 """
 from __future__ import annotations
 

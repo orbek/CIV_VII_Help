@@ -74,6 +74,10 @@ NEW_LOG_SAMPLES = [
      "Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility\n"
      "82, 0, 7, Diplomacy Action Enter Stage, "
      "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0\n"),
+    ("DiplomacyDeals.log", "deals",
+     "Turn 79, Incoming for player 4 and 7\n"
+     ", Item ID 2, from player 7, to player 4, type Peace, subType -751445167 (), value type , "
+     "amount 0, duration 1\n"),
 ]
 
 

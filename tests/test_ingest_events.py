@@ -87,9 +87,22 @@ def test_gossip_accepts_six_columns_with_no_detail(tmp_path: Path):
     assert (row.leader, row.civilization, row.type, row.detail) == ("Confucius", "Han", "GOSSIP_CITY_FOUNDED", None)
 
 
+def test_gossip_treats_an_empty_seventh_cell_as_no_detail(tmp_path: Path):
+    p = tmp_path / "Game_Gossip.csv"
+    p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40, 12, GOSSIP_CITY_FOUNDED,\n")
+    assert read_gossip(p)[0].detail is None
+
+
 def test_gossip_rejects_other_widths(tmp_path: Path):
     p = tmp_path / "Game_Gossip.csv"
     p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40\n")
+    with pytest.raises(LogFormatError, match="6 or 7 columns"):
+        read_gossip(p)
+
+
+def test_gossip_rejects_an_eighth_column(tmp_path: Path):
+    p = tmp_path / "Game_Gossip.csv"
+    p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40, 12, GOSSIP_CITY_FOUNDED, Warrior, spare\n")
     with pytest.raises(LogFormatError, match="6 or 7 columns"):
         read_gossip(p)
 
@@ -116,6 +129,12 @@ def test_diplomacy_summary_seven_values_also_parse(tmp_path: Path):
     p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce, Denounced publicly, 12.5, VISIBLE\n")
     [row] = read_diplomacy_summary(p)
     assert row.extra == ("12.5", "VISIBLE")
+
+
+def test_diplomacy_summary_five_values_leave_extra_empty(tmp_path: Path):
+    p = tmp_path / "DiplomacySummary.csv"
+    p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce, Denounced publicly\n")
+    assert read_diplomacy_summary(p)[0].extra == ()
 
 
 def test_diplomacy_summary_needs_at_least_the_five_named_cells(tmp_path: Path):

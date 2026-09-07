@@ -23,6 +23,7 @@ from .readers import (
     read_treasury,
     read_victories,
 )
+from .events import CombatRow, read_combat_log
 from .production import BuildQueueRow, read_build_queue
 
 log = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ class RawLogs:
     targets: list[TargetRow] = field(default_factory=list)
     historian: list[HistorianRow] = field(default_factory=list)
     build_queue: list[BuildQueueRow] = field(default_factory=list)
+    combat: list[CombatRow] = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
@@ -60,6 +62,7 @@ READERS: list[tuple[str, str, Callable[[Path], list]]] = [
     ("AI_Targets.csv", "targets", read_targets),
     ("Historian.csv", "historian", read_historian),
     ("CityBuildQueue.csv", "build_queue", read_build_queue),
+    ("CombatLog.csv", "combat", read_combat_log),
 ]
 LOG_FILES = [name for name, _, _ in READERS]
 

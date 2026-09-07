@@ -1,0 +1,69 @@
+from pathlib import Path
+
+import pytest
+
+from civ7_advisor.ingest.csvfile import LogFormatError
+from civ7_advisor.ingest.events import Combatant, CombatRow, read_combat_log
+
+COMBAT_HEADER = ("Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, "
+                 "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n")
+# Captured live 2026-09-07: the human's Warrior attacking Rizal's city centre and dying. Note the
+# file uses NO space after commas, unlike every other Civ VII log.
+LIVE_COMBAT = ("82,Unit vs Location,(63)(30),0,4,Melee,(14)UNIT_WARRIOR,(-1)LOC_DISTRICT_CITY_CENTER_NAME,"
+               "20,30,-5,0,34,12,Attacker,0,(0)100,(8)100\n")
+
+
+def _write(tmp_path: Path, body: str) -> Path:
+    p = tmp_path / "CombatLog.csv"
+    p.write_text(COMBAT_HEADER + body)
+    return p
+
+
+def test_reads_the_live_row_including_parenthesised_fields(tmp_path: Path):
+    [row] = read_combat_log(_write(tmp_path, LIVE_COMBAT))
+    assert (row.turn, row.source_type, row.x, row.y) == (82, "Unit vs Location", 63, 30)
+    assert (row.att_player, row.def_player, row.combat_type) == (0, 4, "Melee")
+    assert row.attacker == Combatant(14, "UNIT_WARRIOR")
+    assert row.defender == Combatant(None, "LOC_DISTRICT_CITY_CENTER_NAME")
+    assert (row.att_str, row.def_str, row.att_str_mod, row.def_str_mod) == (20, 30, -5, 0)
+    assert (row.att_dmg, row.def_dmg, row.destroyed, row.heal_amount) == (34, 12, "Attacker", 0)
+    assert (row.att_health_raw, row.def_health_raw) == ("(0)100", "(8)100")
+
+
+def test_parties_involves_and_loser():
+    row = read_combat_log_row_for_test()
+    assert row.parties() == frozenset({0, 4})
+    assert row.involves(0) and row.involves(4) and not row.involves(1)
+    assert row.loser() == 0  # the attacker (player 0) was destroyed
+
+
+def read_combat_log_row_for_test() -> CombatRow:
+    return CombatRow(82, "Unit vs Location", 63, 30, 0, 4, "Melee", Combatant(14, "UNIT_WARRIOR"),
+                     Combatant(None, "LOC_DISTRICT_CITY_CENTER_NAME"), 20, 30, -5, 0, 34, 12, "Attacker",
+                     0, "(0)100", "(8)100")
+
+
+@pytest.mark.parametrize("destroyed,expected", [("Defender", 4), ("", None)])
+def test_loser_follows_the_destroyed_column(destroyed, expected):
+    base = read_combat_log_row_for_test()
+    row = CombatRow(**{**base.__dict__, "destroyed": destroyed or None})
+    assert row.loser() == expected
+
+
+def test_empty_destroyed_becomes_none(tmp_path: Path):
+    body = LIVE_COMBAT.replace(",Attacker,", ",,")
+    [row] = read_combat_log(_write(tmp_path, body))
+    assert row.destroyed is None
+
+
+def test_header_mismatch_raises(tmp_path: Path):
+    p = tmp_path / "CombatLog.csv"
+    p.write_text("Turn,Attacker\n1,x\n")
+    with pytest.raises(LogFormatError, match="unexpected header"):
+        read_combat_log(p)
+
+
+def test_malformed_location_raises_log_format_error(tmp_path: Path):
+    body = LIVE_COMBAT.replace("(63)(30)", "63:30")
+    with pytest.raises(LogFormatError, match="Location"):
+        read_combat_log(_write(tmp_path, body))

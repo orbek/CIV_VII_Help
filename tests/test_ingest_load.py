@@ -1,6 +1,8 @@
 import shutil
 from pathlib import Path
 
+import pytest
+
 from civ7_advisor.ingest.load import LOG_FILES, load_logs
 
 # The seven logs v1 shipped with; the v1 fixture has exactly these, so every newer log is
@@ -53,3 +55,28 @@ def test_load_logs_isolates_a_non_missing_os_error(tmp_path: Path, fixture_dir: 
     assert raw.treasury == []
     assert all(raw.files[name].ok for name in V1_FILES if name != "Player_Treasury.csv")
     assert len(raw.stats) == 2523
+
+
+# (file name, RawLogs attribute, one valid data row under the file's real header)
+NEW_LOG_SAMPLES = [
+    ("CityBuildQueue.csv", "build_queue",
+     "Game Turn, Player, City, Production Added, Current Item, Current Production, Production Needed, Overflow\n"
+     "82, 0, LOC_CITY_NAME_MAURYA1, 15.0, BUILDING_BRICKYARD, 47.5, 55, 0.0\n"),
+    ("CombatLog.csv", "combat",
+     "Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, "
+     "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n"
+     "82,Unit vs Location,(63)(30),0,4,Melee,(14)UNIT_WARRIOR,(-1)LOC_DISTRICT_CITY_CENTER_NAME,"
+     "20,30,-5,0,34,12,Attacker,0,(0)100,(8)100\n"),
+]
+
+
+@pytest.mark.parametrize("name,attr,content", NEW_LOG_SAMPLES)
+def test_new_logs_are_wired_to_their_rawlogs_attribute(tmp_path: Path, fixture_dir: Path, name, attr, content):
+    """READERS binds each file to a RawLogs attribute by a string; a typo there would leave the
+    list empty while every other test stayed green. Feed one real row and check it lands."""
+    for v1 in V1_FILES:
+        shutil.copy(fixture_dir / v1, tmp_path / v1)
+    (tmp_path / name).write_text(content)
+    raw = load_logs(tmp_path)
+    assert raw.files[name].ok is True and raw.files[name].rows == 1
+    assert len(getattr(raw, attr)) == 1

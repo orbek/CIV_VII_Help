@@ -313,10 +313,16 @@ Production · Gold · Military), the single highest-severity insight, an
    insights.
 
 Every insight card shows `title`, `recommendation`, and `why` inline.
-ORACLE insights get a distinct border and an "Oracle" badge; the Oracle
-toggle **hides every ORACLE insight** (remembered in `localStorage`) so
-the player can check whether fair-play evidence alone reaches the same
-conclusion.
+ORACLE insights are drawn over a faint diagonal hatch and badged
+"intercept"; the Oracle toggle (remembered in `localStorage`) **hides
+every ORACLE insight and every oracle-derived table column** — the
+threats table's war score, run start, war-declared and targeting
+columns, and the whole legacy-paths table on the Victory tab — so the
+player can check whether fair-play evidence alone reaches the same
+conclusion. Gating only the cards would defeat the toggle: the withheld
+intelligence would still be sitting in a table below them. Where content
+is withheld, the page says so in one quiet line rather than silently
+looking like the whole story.
 
 ## 4. Error handling
 

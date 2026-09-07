@@ -145,3 +145,114 @@ def read_victories(path: Path) -> list[VictoryRow]:
         VictoryRow(int(r[0]), int(r[1]), r[2], canonical_strategy(r[3]), r[4], int(r[5]))
         for r in latest_game_segment(table.rows, turn_col=0)
     ]
+
+
+# --- AI_DiplomaticActions.csv (three row shapes) ---------------------------
+
+DIPLOMACY_HEADER = ["Game Turn", "Player", "Diplomatic Action", "Target", "Score"]
+
+
+class IntentKind(Enum):
+    SCORED = "scored"      # the AI evaluated this action and gave it a score
+    EXECUTED = "executed"  # the AI actually performed it ("ACTION ..., TOKENS n")
+
+
+@dataclass(frozen=True)
+class DiplomacyRow:
+    turn: int
+    actor: int
+    action: str          # canonical, e.g. DECLARE_WAR, OPEN_BORDERS
+    target: int | None   # None when the log says -1
+    kind: IntentKind
+    score: float | None  # None for EXECUTED rows
+
+
+def canonical_action(raw: str) -> tuple[str, IntentKind]:
+    """Normalize the three shapes of the 'Diplomatic Action' column.
+
+    'DIPLOMACY_ACTION_OPEN_BORDERS'         -> ('OPEN_BORDERS', SCORED)
+    'LOC_DIPLOMACY_ACTION_DECLARE_WAR_NAME' -> ('DECLARE_WAR', SCORED)
+    'ACTION DIPLOMACY_ACTION_DECLARE_WAR'   -> ('DECLARE_WAR', EXECUTED)
+    """
+    kind = IntentKind.SCORED
+    name = raw
+    if name.startswith("ACTION "):
+        kind = IntentKind.EXECUTED
+        name = name[len("ACTION "):]
+    name = name.removeprefix("LOC_").removesuffix("_NAME").removeprefix("DIPLOMACY_ACTION_")
+    return name, kind
+
+
+def _player_or_none(cell: str) -> int | None:
+    value = int(cell)
+    return None if value < 0 else value
+
+
+def read_diplomacy(path: Path) -> list[DiplomacyRow]:
+    table = read_table(path)
+    expect_header(table, DIPLOMACY_HEADER)
+    out: list[DiplomacyRow] = []
+    for r in latest_game_segment(table.rows, turn_col=0):
+        action, kind = canonical_action(r[2])
+        score = None if kind is IntentKind.EXECUTED else float(r[4])
+        out.append(DiplomacyRow(int(r[0]), int(r[1]), action, _player_or_none(r[3]), kind, score))
+    return out
+
+
+# --- AI_Targets.csv --------------------------------------------------------
+
+TARGETS_HEADER = [
+    "Game Turn", "Player", "Target Type", "Unit Type", "Target Owner", "Target ID", "Location",
+]
+
+
+@dataclass(frozen=True)
+class TargetRow:
+    turn: int
+    player: int        # the AI doing the targeting
+    target_type: str   # e.g. TARGET_ENEMY_CITY, TARGET_HIGH_PRIORITY_UNIT
+    owner: int         # player who owns the targeted plot or unit
+    target_id: int
+    x: int
+    y: int
+
+
+def read_targets(path: Path) -> list[TargetRow]:
+    table = read_table(path)
+    expect_header(table, TARGETS_HEADER)
+    out: list[TargetRow] = []
+    for r in latest_game_segment(table.rows, turn_col=0):
+        x, y = r[6].split(":")
+        out.append(TargetRow(int(r[0]), int(r[1]), r[2], int(r[4]), int(r[5]), int(x), int(y)))
+    return out
+
+
+# --- Historian.csv ---------------------------------------------------------
+
+HISTORIAN_HEADER = ["Type", "Age", "Turn", "X", "Y", "Player", "Opponent", "Unit", "Constructible"]
+
+
+@dataclass(frozen=True)
+class HistorianRow:
+    type: str                  # UNIT_KILLED, SHIP_SUNK, DISCOVERY_TRIGGERED, ...
+    age: str
+    turn: int
+    x: int
+    y: int
+    player: int                # for kills: the owner of the unit that died
+    opponent: int | None       # for kills: the killer; None when the log says -1
+    unit: str | None           # None for NO_UNIT
+    constructible: str | None  # None for NO_CONSTRUCTIBLE
+
+
+def read_historian(path: Path) -> list[HistorianRow]:
+    table = read_table(path)
+    expect_header(table, HISTORIAN_HEADER)
+    return [
+        HistorianRow(
+            r[0], r[1], int(r[2]), int(r[3]), int(r[4]), int(r[5]), _player_or_none(r[6]),
+            None if r[7] == "NO_UNIT" else r[7],
+            None if r[8] == "NO_CONSTRUCTIBLE" else r[8],
+        )
+        for r in latest_game_segment(table.rows, turn_col=2)
+    ]

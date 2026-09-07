@@ -21,6 +21,13 @@ def test_read_table_empty_file_raises(tmp_path: Path):
         read_table(p)
 
 
+def test_read_table_strips_a_utf8_bom(tmp_path: Path):
+    """Civ VII writes some logs with a BOM; it must not stick to the first header cell."""
+    p = tmp_path / "t.csv"
+    p.write_text("Turn, Player\n1, 0\n", encoding="utf-8-sig")
+    assert read_table(p).header == ["Turn", "Player"]
+
+
 def test_latest_game_segment_keeps_rows_after_last_turn_drop():
     rows = [["1", "a"], ["2", "a"], ["3", "a"], ["1", "b"], ["2", "b"]]
     assert latest_game_segment(rows, turn_col=0) == [["1", "b"], ["2", "b"]]

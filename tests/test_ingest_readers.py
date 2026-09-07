@@ -4,11 +4,19 @@ import pytest
 
 from civ7_advisor.ingest.csvfile import LogFormatError
 from civ7_advisor.ingest.readers import (
+    DiplomacyRow,
     HappinessRow,
+    HistorianRow,
+    IntentKind,
+    TargetRow,
     TreasuryRow,
     VictoryRow,
+    canonical_action,
     canonical_strategy,
+    read_diplomacy,
     read_happiness,
+    read_historian,
+    read_targets,
     read_treasury,
     read_victories,
 )
@@ -58,3 +66,33 @@ def test_victories_fixture_is_event_based_with_canonical_strategies(fixture_dir:
         turn=80, player=1, owner_key="LOC_LEADER_IBN_BATTUTA_NAME",
         strategy="CULTURAL", status="Stopped", weight=0,
     )
+
+
+def test_canonical_action_handles_all_three_shapes():
+    assert canonical_action("DIPLOMACY_ACTION_OPEN_BORDERS") == ("OPEN_BORDERS", IntentKind.SCORED)
+    assert canonical_action("LOC_DIPLOMACY_ACTION_DECLARE_WAR_NAME") == ("DECLARE_WAR", IntentKind.SCORED)
+    assert canonical_action("ACTION DIPLOMACY_ACTION_DECLARE_WAR") == ("DECLARE_WAR", IntentKind.EXECUTED)
+
+
+def test_diplomacy_fixture(fixture_dir: Path):
+    rows = read_diplomacy(fixture_dir / "AI_DiplomaticActions.csv")
+    assert len(rows) == 2422
+    assert sum(r.kind is IntentKind.EXECUTED for r in rows) == 117
+    assert all(not r.action.startswith(("LOC_", "DIPLOMACY_ACTION_", "ACTION ")) for r in rows)
+    assert DiplomacyRow(80, 4, "DECLARE_WAR", 0, IntentKind.EXECUTED, None) in rows
+    assert DiplomacyRow(81, 1, "DECLARE_WAR", None, IntentKind.EXECUTED, None) in rows  # raw target -1
+    assert DiplomacyRow(81, 7, "DECLARE_WAR", 1, IntentKind.SCORED, 31.109) in rows
+
+
+def test_targets_fixture(fixture_dir: Path):
+    rows = read_targets(fixture_dir / "AI_Targets.csv")
+    assert len(rows) == 47025
+    assert rows[0] == TargetRow(1, 1, "TARGET_NEUTRAL_CITY", 63, 2687015, 73, 13)
+    assert rows[-1] == TargetRow(82, 0, "TARGET_NEUTRAL_CITY", 63, 262147, 51, 47)
+
+
+def test_historian_fixture(fixture_dir: Path):
+    rows = read_historian(fixture_dir / "Historian.csv")
+    assert len(rows) == 190
+    assert rows[0] == HistorianRow("DISCOVERY_TRIGGERED", "AGE_ANTIQUITY", 3, 73, 13, 1, None, None, "Ruin")
+    assert rows[-1] == HistorianRow("UNIT_KILLED", "AGE_ANTIQUITY", 81, 53, 12, 7, 22, "Hoplite", None)

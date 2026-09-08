@@ -3,14 +3,14 @@ from __future__ import annotations
 
 from civ7_advisor.state.models import GameState
 
-from . import checklist, economy, intel, production, threat, victory
+from . import checklist, economy, intel, production, tactical, threat, victory
 from .base import Insight, Provenance, Severity
 
-ADVISORS = (threat, victory, economy, production)
+ADVISORS = (threat, tactical, victory, economy, production)
 
 # intel is exported but deliberately absent from ADVISORS: it is a feed, not an advisor.
 __all__ = ["ADVISORS", "Insight", "Provenance", "Severity", "economy", "intel", "production",
-           "run_all", "threat", "victory"]
+           "run_all", "tactical", "threat", "victory"]
 
 
 def run_all(state: GameState) -> list[Insight]:

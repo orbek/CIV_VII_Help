@@ -10,7 +10,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from civ7_advisor.advisors import Provenance, intel
+from civ7_advisor.advisors import Provenance, intel, tactical
 from civ7_advisor.ingest.load import LOG_FILES
 from civ7_advisor.ingest.poller import snapshot, watch
 from civ7_advisor.store import Store
@@ -63,6 +63,14 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         if not oracle:
             events = [e for e in events if e.provenance is Provenance.FAIR]
         return [intel_to_dict(e) for e in events[:INTEL_LIMIT]]
+
+    @app.get("/api/tactical")
+    def api_tactical(oracle: int = 1) -> dict:
+        if store.state is None:
+            raise HTTPException(status_code=503, detail="state not loaded yet")
+        if not oracle:
+            return {"available": False, "reason": "oracle_off"}
+        return tactical.snapshot(store.state)
 
     @app.get("/events")
     async def events() -> StreamingResponse:

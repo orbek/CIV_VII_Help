@@ -1,5 +1,15 @@
 # Civ VII v2 live-log facts
 
+## Phase 1b tactical logs
+
+- `UnitOperations.log`: turns 1–100, 17,776 rows, fixed width 5. Modes are `Adding` and `Can't Start`; unit cells are `UNIT_TYPE (numeric-id)`.
+- `AI_Tactical.csv`: turns 1–99, 13,189 rows, widths 6–9. The stable first six cells are followed by ragged notes. `Move To: x y`/`Fortify: x y` carry planned positions; attack rows add `Move x y Attack x y` and target cells `UNIT_TYPE (unit-id:owner)`.
+- `AI_Operation.csv`: turns 10–99, 18,374 rows, widths 4–12. Most rows begin turn/player/operation; `Battle line` rows begin turn/operation/player. Coordinates appear in `TARGET`, `Goal`, `Start`, and `End` notes.
+- `AI_CombatPlanning.csv`: turns 12–99, 4,688 rows, widths 5–7. Order rows append `Unit id`, `Move x:y`, and one of `Do attack`, `Do not attack`, or `Pillage attack`.
+- `AI_Operation_Eval.csv`: turns 11–99, 1,635 fixed-width rows. The `Operation` cell is a numeric operation id; `Enemy` is the operation kind such as `Attack Enemy City`; Odds is a 0–1 AI heuristic.
+- `AI_UnitEfficiency.csv`: a square 89×89 attacker-row/defender-column matrix. Same-type diagonal values are 100; observed values span 0–500 and are heuristic ratings, not win probabilities.
+- `AI_MayhemTracker.csv`: turns 15–100, 693 fixed-width rows. The duplicate `Unit` headers describe attacker and defender types.
+- `AI_Commander_Promotions.csv`: turns 47–97, 7 fixed-width promotion events.
 Captured from the preserved turn-100 session on 2026-09-07. Command output is recorded verbatim except that
 blank trailing values are rendered as `<empty>`; conclusions immediately below each block are the reader
 decisions pinned by `tests/test_fixture_v2.py`.

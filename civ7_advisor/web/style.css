@@ -298,6 +298,19 @@ td.behind { color: var(--brass); }
 .intel-kind { color: var(--muted); }
 .intel-row.prov-oracle .intel-text { color: var(--vellum); }
 
+/* ---------- tactical intercept map ---------- */
+
+.map-note, .map-legend { margin: 0 0 0.75rem; font-size: 0.8125rem; color: var(--muted); }
+#tactical-map svg {
+  display: block; width: 100%; max-height: 30rem; min-height: 14rem;
+  background: #111926; border: 1px solid var(--rule);
+}
+.map-city { fill: rgba(200, 155, 60, 0.12); stroke: var(--muted); stroke-width: 2; }
+.map-human { fill: var(--brass); stroke: var(--ink); stroke-width: 2; }
+.map-enemy { fill: var(--oxide); stroke: var(--ink); stroke-width: 2; }
+.map-goal { fill: none; stroke: var(--oxide); stroke-width: 4; }
+.map-legend { margin-top: 0.65rem; }
+
 /* ---------- the one moment of motion: a turn lands ---------- */
 
 @keyframes turn-lands {

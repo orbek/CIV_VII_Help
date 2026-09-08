@@ -8,6 +8,8 @@
   };
   const fmt = (v, digits = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(digits);
   const dim = (text = "—") => ({ text, cls: "dim" });
+  const itemName = (key) => key.replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER)_/, "").replace(/_/g, " ")
+    .toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
   const ordinal = (n) => {
     const tens = n % 100, ones = n % 10;
     const suffix = (tens > 10 && tens < 14) ? "th"
@@ -45,7 +47,8 @@
   const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
   const INTEL_ORACLE_OFF = "Oracle off — fights, deals and diplomacy between rivals are hidden.";
 
-  const state = { data: null, insights: [], intel: [], showOracle: true, shownTurn: null, viaEvent: false };
+  const state = { data: null, insights: [], intel: [], tactical: null,
+    showOracle: true, shownTurn: null, viaEvent: false };
 
   try { state.showOracle = localStorage.getItem("civ7.oracle") !== "off"; } catch (_) { /* private mode */ }
   $("#oracle").checked = state.showOracle;
@@ -79,13 +82,15 @@
 
   async function refresh() {
     const o = state.showOracle ? 1 : 0;
-    const [s, i, n] = await Promise.all([
+    const [s, i, n, t] = await Promise.all([
       fetch(`/api/state?oracle=${o}`), fetch("/api/insights"), fetch(`/api/intel?oracle=${o}`),
+      fetch(`/api/tactical?oracle=${o}`),
     ]);
-    if (!s.ok || !i.ok || !n.ok) return;
+    if (!s.ok || !i.ok || !n.ok || !t.ok) return;
     state.data = await s.json();
     state.insights = await i.json();
     state.intel = await n.json();
+    state.tactical = await t.json();
     render();
   }
 
@@ -258,8 +263,6 @@
       : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
     const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
       .replace(/\b\w/g, (ch) => ch.toUpperCase());
-    const itemName = (key) => key.replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER)_/, "").replace(/_/g, " ")
-      .toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
     const prod = d.production;
     $("#production-table").replaceChildren(prod.human.length
       ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
@@ -274,6 +277,8 @@
 
     $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
 
+    renderTactical();
+
     const feed = el("div", "intel");
     if (!state.intel.length && seen) feed.append(el("p", "empty", "No events yet."));
     state.intel.forEach((e) => {
@@ -284,6 +289,40 @@
       feed.append(row);
     });
     $("#intel-feed").replaceChildren(feed, ...(seen ? [] : [el("p", "oracle-off", INTEL_ORACLE_OFF)]));
+  }
+
+  function renderTactical() {
+    const host = $("#tactical-map");
+    const data = state.tactical;
+    if (!data || !data.available) {
+      host.replaceChildren(state.showOracle
+        ? el("p", "empty", "No tactical positions are available yet.") : withheld());
+      return;
+    }
+    const plots = [...data.city_tiles, ...data.human_units.filter((u) => u.x !== null),
+      ...data.enemy_units, ...data.attack_goals];
+    if (!plots.length) { host.replaceChildren(el("p", "empty", "No tactical positions are available yet.")); return; }
+    const project = (p) => ({ x: (p.x + p.y / 2) * 42, y: p.y * 36 });
+    const points = plots.map(project);
+    const minX = Math.min(...points.map((p) => p.x)) - 24, maxX = Math.max(...points.map((p) => p.x)) + 24;
+    const minY = Math.min(...points.map((p) => p.y)) - 24, maxY = Math.max(...points.map((p) => p.y)) + 24;
+    const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("viewBox", `${minX} ${minY} ${Math.max(maxX - minX, 48)} ${Math.max(maxY - minY, 48)}`);
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", `${data.enemy_units.length} recent rival unit positions around known human city tiles`);
+    const mark = (kind, p, label) => {
+      const at = project(p), node = document.createElementNS(svg.namespaceURI, kind === "city" ? "rect" : "circle");
+      node.setAttribute("class", `map-${kind}`);
+      if (kind === "city") { node.setAttribute("x", at.x - 9); node.setAttribute("y", at.y - 9); node.setAttribute("width", 18); node.setAttribute("height", 18); }
+      else { node.setAttribute("cx", at.x); node.setAttribute("cy", at.y); node.setAttribute("r", kind === "goal" ? 10 : 7); }
+      const title = document.createElementNS(svg.namespaceURI, "title"); title.textContent = label; node.append(title); svg.append(node);
+    };
+    data.city_tiles.forEach((p) => mark("city", p, `Your city tile ${p.x}:${p.y}`));
+    data.human_units.forEach((p) => mark("human", p, `${itemName(p.unit_type)} — last planned ${p.x}:${p.y}`));
+    data.enemy_units.forEach((p) => mark("enemy", p, `${p.name} ${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}`));
+    data.attack_goals.forEach((p) => mark("goal", p, `${p.name} attack goal ${p.x}:${p.y}`));
+    const legend = el("p", "map-legend", "Squares: your city tiles · Brass: your units · Red: rival plans · Rings: attack goals");
+    host.replaceChildren(svg, legend);
   }
 
   function connect() {

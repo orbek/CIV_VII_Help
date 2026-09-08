@@ -10,6 +10,8 @@ def test_every_log_in_the_v2_fixture_parses(fixture_v2_dir):
         n: f.error for n, f in raw.files.items() if not f.ok
     }
     assert raw.build_queue and raw.combat and raw.gossip and raw.diplomacy_summary and raw.deals
+    assert raw.unit_operations and raw.tactical and raw.operations and raw.combat_orders
+    assert raw.operation_evals and raw.unit_efficiency and raw.mayhem and raw.commander_promotions
 
 
 def test_feed_production_and_advice_are_populated(fixture_v2_state):

@@ -162,4 +162,4 @@ def test_rival_military_copy_dates_mixed_rows_and_pluralises_one_city():
 
 
 def test_production_is_registered():
-    assert production in ADVISORS and ADVISOR_ORDER["production"] == 3
+    assert production in ADVISORS and ADVISOR_ORDER["production"] == 4

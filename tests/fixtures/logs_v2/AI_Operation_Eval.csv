@@ -1,0 +1,1636 @@
+Game Turn, Player, Operation, Enemy, Value, Odds
+11, 2, -1, City Founding, 0.0, 0.43
+11, 5, -1, City Founding, 0.0, 0.41
+12, 2, -1, City Founding, 0.0, 0.43
+12, 3, -1, City Founding, 0.0, 0.45
+12, 5, -1, City Founding, 0.0, 0.41
+13, 2, -1, City Founding, 0.0, 0.43
+13, 2, -1, City Founding, 0.0, 0.43
+13, 3, -1, City Founding, 0.0, 0.45
+13, 5, -1, City Founding, 0.0, 0.41
+13, 6, -1, City Founding, 0.0, 0.44
+14, 2, -1, City Founding, 0.0, 0.43
+14, 2, -1, City Founding, 0.0, 0.43
+14, 3, -1, City Founding, 0.0, 0.45
+14, 5, -1, City Founding, 0.0, 0.41
+14, 6, -1, City Founding, 0.0, 0.44
+15, 2, -1, City Founding, 0.0, 0.43
+15, 5, -1, City Founding, 0.0, 0.40
+16, 1, -1, City Founding, 0.0, 0.45
+16, 2, -1, City Founding, 0.0, 0.43
+16, 3, -1, City Founding, 0.0, 0.45
+16, 5, -1, City Founding, 0.0, 0.40
+16, 6, -1, City Founding, 0.0, 0.43
+16, 7, -1, City Founding, 0.0, 0.39
+17, 1, -1, City Founding, 0.0, 0.45
+17, 3, -1, City Founding, 0.0, 0.45
+17, 5, -1, City Founding, 0.0, 0.40
+17, 6, -1, City Founding, 0.0, 0.43
+17, 6, -1, City Founding, 0.0, 0.45
+17, 7, -1, City Founding, 0.0, 0.39
+18, 1, -1, City Founding, 0.0, 0.45
+18, 2, -1, City Founding, 0.0, 0.43
+18, 3, -1, City Founding, 0.0, 0.45
+18, 5, -1, City Founding, 0.0, 0.40
+18, 6, -1, City Founding, 0.0, 0.43
+18, 6, -1, City Founding, 0.0, 0.45
+18, 7, -1, City Founding, 0.0, 0.39
+19, 1, -1, City Founding, 0.0, 0.45
+19, 2, -1, City Founding, 0.0, 0.43
+19, 3, -1, City Founding, 0.0, 0.45
+19, 6, -1, City Founding, 0.0, 0.43
+19, 6, -1, City Founding, 0.0, 0.45
+19, 7, -1, City Founding, 0.0, 0.39
+20, 2, -1, City Founding, 0.0, 0.43
+20, 5, -1, City Founding, 0.0, 0.44
+20, 6, -1, City Founding, 0.0, 0.45
+21, 1, -1, City Founding, 0.0, 0.40
+21, 2, -1, City Founding, 0.0, 0.43
+21, 3, -1, City Founding, 0.0, 0.45
+21, 4, -1, City Founding, 0.0, 0.45
+21, 5, -1, City Founding, 0.0, 0.44
+21, 7, -1, City Founding, 0.0, 0.39
+22, 1, -1, City Founding, 0.0, 0.40
+22, 2, -1, City Founding, 0.0, 0.40
+22, 3, -1, City Founding, 0.0, 0.45
+22, 4, -1, City Founding, 0.0, 0.45
+22, 4, -1, City Founding, 0.0, 0.45
+22, 5, -1, City Founding, 0.0, 0.44
+22, 7, -1, City Founding, 0.0, 0.39
+23, 1, -1, City Founding, 0.0, 0.40
+23, 2, -1, City Founding, 0.0, 0.40
+23, 2, -1, City Founding, 0.0, 0.40
+23, 3, -1, City Founding, 0.0, 0.45
+23, 4, -1, City Founding, 0.0, 0.45
+23, 5, -1, City Founding, 0.0, 0.44
+23, 7, -1, City Founding, 0.0, 0.41
+24, 1, -1, City Founding, 0.0, 0.40
+24, 1, -1, Attack Enemy Independent, 50.0, 0.41
+24, 2, -1, City Founding, 0.0, 0.40
+24, 2, -1, City Founding, 0.0, 0.40
+24, 3, -1, City Founding, 0.0, 0.41
+24, 4, -1, City Founding, 0.0, 0.45
+24, 7, -1, City Founding, 0.0, 0.41
+24, 30, 1, Independent Raid, 60.0, 0.41
+24, 30, 1, Independent Naval Raid, 60.0, 0.41
+24, 30, 1, Independent Assault, 60.0, 0.41
+24, 30, 1, Independent Large Raid, 60.0, 0.41
+25, 1, -1, Attack Enemy Independent, 50.0, 0.41
+25, 2, -1, City Founding, 0.0, 0.40
+25, 2, -1, City Founding, 0.0, 0.40
+25, 5, -1, City Founding, 0.0, 0.44
+25, 30, 1, Independent Raid, 60.0, 0.41
+25, 30, 1, Independent Naval Raid, 60.0, 0.41
+25, 30, 1, Independent Assault, 60.0, 0.41
+25, 30, 1, Independent Large Raid, 60.0, 0.41
+26, 1, -1, City Founding, 0.0, 0.40
+26, 1, -1, Attack Enemy Independent, 50.0, 0.41
+26, 2, -1, City Founding, 0.0, 0.40
+26, 3, -1, City Founding, 0.0, 0.41
+26, 4, -1, City Founding, 0.0, 0.45
+26, 5, -1, City Founding, 0.0, 0.79
+26, 7, -1, City Founding, 0.0, 0.41
+26, 30, 1, Independent Raid, 60.0, 0.41
+26, 30, 1, Independent Naval Raid, 60.0, 0.41
+26, 30, 1, Independent Assault, 60.0, 0.41
+26, 30, 1, Independent Large Raid, 60.0, 0.41
+27, 1, -1, City Founding, 0.0, 0.40
+27, 1, -1, Attack Enemy Independent, 50.0, 0.41
+27, 2, -1, City Founding, 0.0, 0.43
+27, 3, -1, City Founding, 0.0, 0.75
+27, 4, -1, City Founding, 0.0, 0.45
+27, 5, -1, City Founding, 0.0, 0.79
+27, 7, -1, City Founding, 0.0, 0.41
+27, 30, 1, Independent Raid, 70.0, 0.41
+27, 30, 1, Independent Naval Raid, 70.0, 0.41
+27, 30, 1, Independent Assault, 70.0, 0.41
+27, 30, 1, Independent Large Raid, 70.0, 0.41
+28, 1, -1, City Founding, 0.0, 0.40
+28, 1, 4, Attack Enemy City, 427.1, 0.38
+28, 1, 4, Naval City Assault, 427.1, 0.38
+28, 1, -1, Attack Enemy Independent, 50.0, 0.41
+28, 2, -1, City Founding, 0.0, 0.43
+28, 3, -1, City Founding, 0.0, 0.75
+28, 4, -1, City Founding, 0.0, 0.45
+28, 5, -1, City Founding, 0.0, 0.79
+28, 7, -1, City Founding, 0.0, 0.41
+28, 30, 1, Independent Raid, 70.0, 0.41
+28, 30, 1, Independent Naval Raid, 70.0, 0.41
+28, 30, 1, Independent Assault, 70.0, 0.41
+28, 30, 1, Independent Large Raid, 70.0, 0.41
+29, 1, -1, City Founding, 0.0, 0.73
+29, 1, 4, Attack Enemy City, 427.1, 0.39
+29, 1, 4, Naval City Assault, 427.1, 0.39
+29, 1, -1, Attack Enemy Independent, 50.0, 0.41
+29, 2, -1, City Founding, 0.0, 0.43
+29, 4, -1, City Founding, 0.0, 0.45
+29, 7, -1, City Founding, 0.0, 0.41
+29, 30, 1, Independent Raid, 70.0, 0.41
+29, 30, 1, Independent Naval Raid, 70.0, 0.41
+29, 30, 1, Independent Assault, 70.0, 0.41
+29, 30, 1, Independent Large Raid, 70.0, 0.41
+30, 1, -1, City Founding, 0.0, 0.73
+30, 1, 4, Attack Enemy City, 468.8, 0.39
+30, 1, 4, Naval City Assault, 468.8, 0.39
+30, 1, -1, Attack Enemy Independent, 50.0, 0.41
+30, 2, -1, City Founding, 0.0, 0.43
+30, 3, -1, City Founding, 0.0, 0.45
+30, 5, -1, City Founding, 0.0, 0.36
+30, 23, 3, Independent Raid, 20.0, 0.82
+30, 30, 1, Independent Raid, 80.0, 0.41
+30, 30, 1, Independent Naval Raid, 80.0, 0.41
+30, 30, 1, Independent Assault, 80.0, 0.41
+30, 30, 1, Independent Large Raid, 80.0, 0.41
+31, 1, -1, City Founding, 0.0, 0.73
+31, 1, 4, Attack Enemy City, 468.5, 0.39
+31, 1, 4, Naval City Assault, 468.5, 0.39
+31, 1, -1, Attack Enemy Independent, 50.0, 0.41
+31, 3, -1, City Founding, 0.0, 0.45
+31, 4, -1, City Founding, 0.0, 0.44
+31, 5, -1, City Founding, 0.0, 0.64
+31, 7, -1, City Founding, 0.0, 0.41
+31, 23, 3, Independent Raid, 20.0, 0.82
+31, 30, 1, Independent Raid, 80.0, 0.41
+31, 30, 1, Independent Naval Raid, 80.0, 0.41
+31, 30, 1, Independent Assault, 80.0, 0.41
+31, 30, 1, Independent Large Raid, 80.0, 0.41
+32, 1, -1, City Founding, 0.0, 0.73
+32, 1, 4, Attack Enemy City, 477.8, 0.39
+32, 1, 4, Naval City Assault, 477.8, 0.39
+32, 1, -1, Attack Enemy Independent, 50.0, 0.41
+32, 2, -1, City Founding, 0.0, 0.43
+32, 3, -1, City Founding, 0.0, 0.45
+32, 4, -1, City Founding, 0.0, 0.44
+32, 4, -1, City Founding, 0.0, 0.43
+32, 4, 1, Attack Enemy City, 482.1, 0.37
+32, 4, 1, Naval City Assault, 482.1, 0.37
+32, 5, -1, City Founding, 0.0, 0.39
+32, 5, -1, City Founding, 0.0, 0.70
+32, 7, -1, City Founding, 0.0, 0.41
+32, 23, 3, Independent Raid, 20.0, 0.82
+32, 30, 1, Independent Raid, 80.0, 0.41
+32, 30, 1, Independent Naval Raid, 80.0, 0.41
+32, 30, 1, Independent Assault, 80.0, 0.41
+32, 30, 1, Independent Large Raid, 80.0, 0.41
+33, 1, -1, City Founding, 0.0, 0.38
+33, 1, 4, Attack Enemy City, 479.1, 0.41
+33, 1, 4, Naval City Assault, 479.1, 0.41
+33, 1, -1, Attack Enemy Independent, 50.0, 0.41
+33, 2, -1, City Founding, 0.0, 0.43
+33, 3, -1, City Founding, 0.0, 0.45
+33, 4, -1, City Founding, 0.0, 0.75
+33, 4, -1, City Founding, 0.0, 0.41
+33, 4, 1, Attack Enemy City, 349.4, 0.82
+33, 4, 1, Attack Enemy City, 482.1, 0.37
+33, 5, -1, City Founding, 0.0, 0.39
+33, 5, -1, City Founding, 0.0, 0.70
+33, 7, -1, City Founding, 0.0, 0.41
+33, 23, 3, Independent Raid, 20.0, 0.82
+33, 30, 1, Independent Raid, 80.0, 0.41
+33, 30, 1, Independent Naval Raid, 80.0, 0.41
+33, 30, 1, Independent Assault, 80.0, 0.41
+33, 30, 1, Independent Large Raid, 80.0, 0.41
+34, 1, -1, City Founding, 0.0, 0.38
+34, 1, 4, Attack Enemy City, 345.7, 0.41
+34, 1, 4, Naval City Assault, 345.7, 0.41
+34, 1, -1, Attack Enemy Independent, 50.0, 0.41
+34, 2, -1, City Founding, 0.0, 0.43
+34, 4, -1, City Founding, 0.0, 0.75
+34, 4, -1, City Founding, 0.0, 0.41
+34, 4, 1, Attack Enemy City, 349.2, 0.82
+34, 4, 1, Attack Enemy City, 481.7, 0.37
+34, 5, -1, City Founding, 0.0, 0.39
+34, 5, -1, City Founding, 0.0, 0.70
+34, 7, -1, City Founding, 0.0, 0.41
+34, 23, 3, Independent Raid, 30.0, 0.82
+34, 30, 1, Independent Raid, 80.0, 0.41
+34, 30, 1, Independent Naval Raid, 80.0, 0.41
+34, 30, 1, Independent Assault, 80.0, 0.41
+34, 30, 1, Independent Large Raid, 80.0, 0.41
+35, 1, -1, City Founding, 0.0, 0.38
+35, 1, 4, Attack Enemy City, 345.5, 0.41
+35, 1, 4, Naval City Assault, 345.5, 0.41
+35, 1, -1, Attack Enemy Independent, 50.0, 0.41
+35, 2, -1, City Founding, 0.0, 0.43
+35, 3, -1, City Founding, 0.0, 0.45
+35, 3, -1, Attack Enemy Independent, 50.0, -4.72
+35, 4, -1, City Founding, 0.0, 0.52
+35, 4, -1, City Founding, 0.0, 0.29
+35, 4, 1, Attack Enemy City, 390.7, 0.82
+35, 4, 1, Attack Enemy City, 481.4, 0.37
+35, 5, -1, City Founding, 0.0, 0.39
+35, 5, -1, City Founding, 0.0, 0.70
+35, 23, 3, Independent Raid, 30.0, 0.82
+35, 30, 1, Independent Raid, 80.0, 0.41
+35, 30, 1, Independent Naval Raid, 80.0, 0.41
+35, 30, 1, Independent Assault, 80.0, 0.41
+35, 30, 1, Independent Large Raid, 80.0, 0.41
+36, 1, -1, City Founding, 0.0, 0.38
+36, 1, 4, Attack Enemy City, 353.9, 0.43
+36, 1, 4, Naval City Assault, 353.9, 0.43
+36, 1, -1, Attack Enemy Independent, 50.0, 0.41
+36, 3, -1, City Founding, 0.0, 0.45
+36, 3, -1, Attack Enemy Independent, 50.0, -4.72
+36, 5, -1, City Founding, 0.0, 0.70
+36, 7, -1, City Founding, 0.0, 0.41
+36, 23, 3, Independent Raid, 30.0, 0.66
+36, 30, 1, Independent Raid, 80.0, 0.15
+36, 30, 1, Independent Naval Raid, 80.0, 0.15
+36, 30, 1, Independent Assault, 80.0, 0.15
+36, 30, 1, Independent Large Raid, 80.0, 0.15
+37, 1, -1, City Founding, 0.0, 0.40
+37, 1, 4, Attack Enemy City, 270.1, 0.79
+37, 1, 4, Attack Enemy City, 341.3, 0.43
+37, 1, 4, Naval City Assault, 341.3, 0.43
+37, 1, -1, Attack Enemy Independent, 50.0, 0.41
+37, 2, -1, City Founding, 0.0, 0.43
+37, 3, -1, City Founding, 0.0, 0.45
+37, 3, -1, Attack Enemy Independent, 50.0, -4.72
+37, 4, -1, City Founding, 0.0, 0.34
+37, 5, -1, City Founding, 0.0, 0.39
+37, 7, -1, City Founding, 0.0, 0.75
+37, 23, 3, Independent Raid, 30.0, 0.24
+37, 30, 1, Independent Raid, 90.0, 0.15
+37, 30, 1, Independent Assault, 90.0, 0.15
+37, 30, 1, Independent Large Raid, 90.0, 0.15
+38, 1, -1, City Founding, 0.0, 0.40
+38, 1, 4, Attack Enemy City, 270.0, 0.79
+38, 1, 4, Attack Enemy City, 341.1, 0.43
+38, 1, 4, Naval City Assault, 341.1, 0.43
+38, 1, -1, Attack Enemy Independent, 50.0, 0.41
+38, 2, -1, City Founding, 0.0, 0.77
+38, 3, -1, City Founding, 0.0, 0.37
+38, 3, -1, Attack Enemy Independent, 50.0, 0.45
+38, 5, -1, City Founding, 0.0, 0.37
+38, 7, -1, City Founding, 0.0, 0.75
+38, 7, -1, City Founding, 0.0, 0.39
+38, 23, 3, Independent Raid, 30.0, 0.45
+38, 30, 1, Independent Raid, 90.0, 0.15
+38, 30, 1, Independent Assault, 90.0, 0.15
+38, 30, 1, Independent Large Raid, 90.0, 0.15
+39, 1, -1, City Founding, 0.0, 0.40
+39, 1, 4, Attack Enemy City, 473.5, 0.43
+39, 1, 4, Naval City Assault, 473.5, 0.43
+39, 1, -1, Attack Enemy Independent, 50.0, 0.41
+39, 2, -1, City Founding, 0.0, 0.38
+39, 3, -1, Attack Enemy Independent, 50.0, 0.45
+39, 5, -1, City Founding, 0.0, 0.43
+39, 6, 5, Attack Enemy City, 366.4, 0.38
+39, 7, -1, City Founding, 0.0, 0.82
+39, 7, -1, City Founding, 0.0, 0.39
+39, 7, 1, Attack Enemy City, 556.7, 0.26
+39, 23, 3, Independent Raid, 30.0, 0.38
+39, 30, 1, Independent Raid, 90.0, 0.15
+39, 30, 1, Independent Assault, 90.0, 0.15
+39, 30, 1, Independent Large Raid, 90.0, 0.15
+40, 1, -1, City Founding, 0.0, 0.40
+40, 1, 4, Attack Enemy City, 402.6, 0.79
+40, 1, 4, Attack Enemy City, 473.2, 0.43
+40, 1, 4, Naval City Assault, 473.2, 0.43
+40, 1, -1, Attack Enemy Independent, 50.0, 0.41
+40, 2, -1, City Founding, 0.0, 0.38
+40, 3, -1, City Founding, 0.0, 0.37
+40, 3, -1, Attack Enemy Independent, 50.0, 0.45
+40, 5, -1, City Founding, 0.0, 0.43
+40, 6, -1, City Founding, 0.0, 0.43
+40, 6, 5, Attack Enemy City, 366.0, 0.38
+40, 7, -1, City Founding, 0.0, 0.82
+40, 7, -1, City Founding, 0.0, 0.39
+40, 7, 1, Attack Enemy City, 555.3, 0.26
+40, 30, 1, Independent Raid, 90.0, 0.41
+40, 30, 1, Independent Assault, 90.0, 0.41
+40, 30, 1, Independent Large Raid, 90.0, 0.41
+41, 1, 4, Attack Enemy City, 402.6, 0.79
+41, 1, 4, Attack Enemy City, 473.2, 0.43
+41, 1, 4, Naval City Assault, 473.2, 0.43
+41, 1, -1, Attack Enemy Independent, 50.0, 0.41
+41, 2, -1, City Founding, 0.0, 0.38
+41, 2, 0, Attack Enemy City, 235.3, 0.34
+41, 3, -1, City Founding, 0.0, 0.37
+41, 3, -1, Attack Enemy Independent, 50.0, 0.45
+41, 4, 1, Attack Enemy City, 268.4, 0.82
+41, 4, 1, Attack Enemy City, 389.0, 0.39
+41, 6, -1, City Founding, 0.0, 0.43
+41, 6, 5, Attack Enemy City, 232.7, 0.38
+41, 7, -1, City Founding, 0.0, 0.39
+41, 30, 1, Independent Raid, 90.0, 0.41
+41, 30, 1, Independent Assault, 90.0, 0.41
+41, 30, 1, Independent Large Raid, 90.0, 0.41
+42, 1, -1, City Founding, 0.0, 0.40
+42, 1, 4, Attack Enemy City, 402.6, 0.79
+42, 1, 4, Attack Enemy City, 473.2, 0.43
+42, 1, 4, Naval City Assault, 473.2, 0.43
+42, 1, -1, Attack Enemy Independent, 50.0, 0.41
+42, 2, -1, City Founding, 0.0, 0.40
+42, 2, 0, Attack Enemy City, 240.0, 0.34
+42, 3, -1, City Founding, 0.0, 0.37
+42, 3, -1, Attack Enemy Independent, 50.0, 0.45
+42, 4, 1, Attack Enemy City, 268.4, 0.82
+42, 4, 1, Attack Enemy City, 389.0, 0.39
+42, 5, -1, City Founding, 0.0, 0.43
+42, 6, -1, City Founding, 0.0, 0.43
+42, 6, 5, Attack Enemy City, 224.9, 0.38
+42, 7, -1, City Founding, 0.0, 0.38
+42, 30, 1, Independent Raid, 90.0, 0.41
+42, 30, 1, Independent Assault, 90.0, 0.41
+42, 30, 1, Independent Large Raid, 90.0, 0.41
+43, 1, -1, City Founding, 0.0, 0.40
+43, 1, 4, Attack Enemy City, 462.0, 0.79
+43, 1, 4, Attack Enemy City, 489.4, 0.43
+43, 1, 4, Naval City Assault, 489.4, 0.43
+43, 1, -1, Attack Enemy Independent, 50.0, 0.41
+43, 2, -1, City Founding, 0.0, 0.40
+43, 2, 0, Attack Enemy City, 263.0, 0.34
+43, 3, -1, City Founding, 0.0, 0.37
+43, 3, -1, Attack Enemy Independent, 50.0, 0.45
+43, 4, 1, Attack Enemy City, 421.7, 0.39
+43, 5, -1, City Founding, 0.0, 0.37
+43, 6, -1, City Founding, 0.0, 0.43
+43, 6, 5, Attack Enemy City, 266.3, 0.38
+43, 7, -1, City Founding, 0.0, 0.38
+43, 23, 3, Independent Assault, 40.0, 0.82
+43, 30, 1, Independent Raid, 90.0, 0.41
+43, 30, 1, Independent Assault, 90.0, 0.41
+43, 30, 1, Independent Large Raid, 90.0, 0.41
+44, 1, -1, City Founding, 0.0, 0.40
+44, 1, 4, Attack Enemy City, 462.0, 0.79
+44, 1, 4, Attack Enemy City, 489.4, 0.43
+44, 1, 4, Naval City Assault, 489.4, 0.43
+44, 1, -1, Attack Enemy Independent, 50.0, 0.41
+44, 2, -1, City Founding, 0.0, 0.40
+44, 2, 0, Attack Enemy City, 262.6, 0.34
+44, 3, 6, Attack Enemy City, 134.7, 0.40
+44, 3, -1, Attack Enemy Independent, 50.0, -5.27
+44, 4, 1, Attack Enemy City, 421.5, 0.39
+44, 5, -1, City Founding, 0.0, 0.37
+44, 6, 5, Attack Enemy City, 265.6, 0.38
+44, 7, -1, City Founding, 0.0, 0.38
+44, 23, 3, Independent Assault, 40.0, 0.82
+44, 30, 1, Independent Raid, 90.0, 0.41
+44, 30, 1, Independent Assault, 90.0, 0.41
+44, 30, 1, Independent Large Raid, 90.0, 0.41
+45, 1, -1, City Founding, 0.0, 0.40
+45, 1, 4, Attack Enemy City, 461.9, 0.79
+45, 1, 4, Attack Enemy City, 530.9, 0.43
+45, 1, 4, Naval City Assault, 530.9, 0.43
+45, 1, -1, Attack Enemy Independent, 50.0, 0.41
+45, 2, -1, City Founding, 0.0, 0.40
+45, 2, 0, Attack Enemy City, 262.2, 0.34
+45, 3, -1, City Founding, 0.0, 0.37
+45, 3, 6, Attack Enemy City, 134.7, 0.40
+45, 3, -1, Attack Enemy Independent, 50.0, -5.27
+45, 4, 1, Attack Enemy City, 554.3, 0.39
+45, 5, -1, City Founding, 0.0, 0.37
+45, 6, -1, City Founding, 0.0, 0.43
+45, 6, 5, Attack Enemy City, 265.2, 0.38
+45, 7, -1, City Founding, 0.0, 0.38
+45, 23, 3, Independent Assault, 40.0, 0.82
+45, 30, 1, Independent Raid, 90.0, 0.41
+45, 30, 1, Independent Assault, 90.0, 0.41
+45, 30, 1, Independent Large Raid, 90.0, 0.41
+46, 1, 4, Attack Enemy City, 461.7, 0.79
+46, 1, 4, Attack Enemy City, 530.6, 0.43
+46, 1, 4, Naval City Assault, 530.6, 0.43
+46, 1, -1, Attack Enemy Independent, 50.0, 0.41
+46, 2, -1, City Founding, 0.0, 0.40
+46, 2, 0, Attack Enemy City, 261.3, 0.34
+46, 3, -1, City Founding, 0.0, 0.37
+46, 3, -1, City Founding, 0.0, 0.37
+46, 3, 6, Attack Enemy City, 176.1, 0.40
+46, 3, -1, Attack Enemy Independent, 50.0, -5.27
+46, 4, 1, Attack Enemy City, 553.5, 0.39
+46, 6, 5, Attack Enemy City, 261.1, 0.38
+46, 23, 3, Independent Assault, 40.0, 0.82
+46, 30, 1, Independent Raid, 90.0, 0.15
+46, 30, 1, Independent Assault, 90.0, 0.15
+46, 30, 1, Independent Large Raid, 90.0, 0.15
+47, 1, -1, City Founding, 0.0, 0.40
+47, 1, 4, Attack Enemy City, 460.2, 0.79
+47, 1, 4, Attack Enemy City, 528.3, 0.43
+47, 1, 4, Naval City Assault, 528.3, 0.43
+47, 1, -1, Attack Enemy Independent, 50.0, 0.41
+47, 2, 0, Attack Enemy City, 260.9, 0.34
+47, 3, -1, City Founding, 0.0, 0.37
+47, 3, -1, City Founding, 0.0, 0.37
+47, 3, 6, Attack Enemy City, 176.1, 0.40
+47, 4, 1, Attack Enemy City, 440.7, 0.82
+47, 4, 1, Attack Enemy City, 550.5, 0.39
+47, 5, -1, City Founding, 0.0, 0.37
+47, 6, 5, Attack Enemy City, 260.7, 0.38
+47, 7, -1, City Founding, 0.0, 0.38
+47, 23, 3, Independent Assault, 40.0, 0.82
+47, 30, 1, Independent Raid, 50.0, 0.82
+47, 30, 1, Independent Raid, 90.0, 0.15
+47, 30, 1, Independent Assault, 90.0, 0.15
+47, 30, 1, Independent Large Raid, 90.0, 0.15
+48, 1, -1, City Founding, 0.0, 0.40
+48, 1, 4, Attack Enemy City, 460.1, 0.79
+48, 1, 4, Attack Enemy City, 528.1, 0.43
+48, 1, 4, Naval City Assault, 528.1, 0.43
+48, 1, -1, Attack Enemy Independent, 50.0, 0.41
+48, 2, -1, City Founding, 0.0, 0.40
+48, 2, 0, Attack Enemy City, 272.5, 0.34
+48, 3, -1, City Founding, 0.0, 0.37
+48, 3, -1, City Founding, 0.0, 0.37
+48, 3, 6, Attack Enemy City, 177.8, 0.40
+48, 4, 1, Attack Enemy City, 550.5, 0.39
+48, 5, -1, City Founding, 0.0, 0.37
+48, 6, 5, Attack Enemy City, 245.4, 0.38
+48, 7, -1, City Founding, 0.0, 0.38
+48, 23, 3, Independent Assault, 40.0, 0.82
+48, 30, 1, Independent Raid, 50.0, 0.82
+48, 30, 1, Independent Raid, 100.0, 0.15
+48, 30, 1, Independent Assault, 100.0, 0.15
+48, 30, 1, Independent Large Raid, 100.0, 0.15
+49, 1, -1, City Founding, 0.0, 0.40
+49, 1, 4, Attack Enemy City, 458.7, 0.79
+49, 1, 4, Attack Enemy City, 525.9, 0.43
+49, 1, 4, Naval City Assault, 525.9, 0.43
+49, 1, -1, Attack Enemy Independent, 50.0, 0.41
+49, 2, -1, City Founding, 0.0, 0.41
+49, 2, 0, Attack Enemy City, 253.3, 0.34
+49, 3, -1, City Founding, 0.0, 0.37
+49, 4, 1, Attack Enemy City, 558.2, 0.39
+49, 5, -1, City Founding, 0.0, 0.37
+49, 6, 5, Attack Enemy City, 246.5, 0.38
+49, 7, -1, City Founding, 0.0, 0.38
+49, 7, 1, Attack Enemy City, 443.4, 0.29
+49, 23, 3, Independent Assault, 40.0, 0.80
+49, 30, 1, Independent Raid, 50.0, 0.82
+49, 30, 1, Independent Raid, 100.0, 0.15
+49, 30, 1, Independent Assault, 100.0, 0.15
+49, 30, 1, Independent Large Raid, 100.0, 0.15
+50, 1, -1, City Founding, 0.0, 0.40
+50, 1, 4, Attack Enemy City, 509.0, 0.43
+50, 1, 4, Naval City Assault, 509.0, 0.43
+50, 1, -1, Attack Enemy Independent, 50.0, -4.18
+50, 2, -1, City Founding, 0.0, 0.41
+50, 2, 0, Attack Enemy City, 252.4, 0.34
+50, 4, 1, Attack Enemy City, 540.8, 0.39
+50, 5, 0, Attack Enemy City, 553.2, 0.43
+50, 6, 5, Attack Enemy City, 242.3, 0.38
+50, 7, -1, City Founding, 0.0, 0.38
+50, 7, 1, Attack Enemy City, 446.0, 0.29
+50, 23, 3, Independent Assault, 40.0, 0.73
+50, 30, 1, Independent Raid, 50.0, 0.82
+50, 30, 1, Independent Raid, 100.0, 0.15
+50, 30, 1, Independent Assault, 100.0, 0.15
+50, 30, 1, Independent Large Raid, 100.0, 0.15
+51, 1, 4, Attack Enemy City, 441.8, 0.79
+51, 1, 4, Attack Enemy City, 509.0, 0.43
+51, 1, 4, Naval City Assault, 509.0, 0.43
+51, 1, -1, Attack Enemy Independent, 50.0, -4.66
+51, 2, 0, Attack Enemy City, 290.3, 0.34
+51, 3, -1, City Founding, 0.0, 0.37
+51, 4, 1, Attack Enemy City, 422.9, 0.82
+51, 4, 1, Attack Enemy City, 539.9, 0.39
+51, 5, -1, City Founding, 0.0, 0.37
+51, 5, 0, Attack Enemy City, 551.7, 0.43
+51, 6, 5, Attack Enemy City, 244.1, 0.38
+51, 7, 1, Attack Enemy City, 444.0, 0.29
+51, 23, 3, Independent Assault, 40.0, 0.61
+51, 30, 1, Independent Raid, 50.0, 0.82
+51, 30, 1, Independent Raid, 100.0, 0.15
+51, 30, 1, Independent Assault, 100.0, 0.15
+51, 30, 1, Independent Large Raid, 100.0, 0.15
+52, 1, -1, City Founding, 0.0, 0.40
+52, 1, 4, Attack Enemy City, 438.8, 0.79
+52, 1, 4, Attack Enemy City, 504.3, 0.43
+52, 1, 4, Naval City Assault, 504.3, 0.43
+52, 1, -1, Attack Enemy Independent, 50.0, 0.41
+52, 2, -1, City Founding, 0.0, 0.41
+52, 2, 0, Attack Enemy City, 289.5, 0.34
+52, 3, -1, City Founding, 0.0, 0.37
+52, 4, 1, Attack Enemy City, 423.8, 0.82
+52, 4, 1, Attack Enemy City, 541.9, 0.39
+52, 5, -1, City Founding, 0.0, 0.37
+52, 5, 0, Attack Enemy City, 551.4, 0.44
+52, 6, 5, Attack Enemy City, 244.1, 0.38
+52, 7, -1, City Founding, 0.0, 0.38
+52, 7, 1, Attack Enemy City, 448.4, 0.29
+52, 23, 3, Independent Assault, 50.0, 0.57
+52, 30, 1, Independent Raid, 60.0, 0.80
+52, 30, 1, Independent Raid, 100.0, 0.15
+52, 30, 1, Independent Assault, 100.0, 0.15
+52, 30, 1, Independent Large Raid, 100.0, 0.15
+53, 1, -1, City Founding, 0.0, 0.40
+53, 1, 4, Attack Enemy City, 480.2, 0.79
+53, 1, 4, Attack Enemy City, 480.2, 0.45
+53, 1, 4, Naval City Assault, 480.2, 0.45
+53, 1, -1, Attack Enemy Independent, 50.0, 0.41
+53, 2, -1, City Founding, 0.0, 0.41
+53, 2, 0, Attack Enemy City, 283.1, 0.34
+53, 3, -1, City Founding, 0.0, 0.43
+53, 3, -1, City Founding, 0.0, 0.41
+53, 4, 1, Attack Enemy City, 464.2, 0.82
+53, 4, 1, Attack Enemy City, 539.4, 0.39
+53, 5, -1, City Founding, 0.0, 0.37
+53, 5, 0, Attack Enemy City, 548.7, 0.44
+53, 5, 16, Attack Enemy City, 375.6, 0.44
+53, 6, 5, Attack Enemy City, 235.6, 0.38
+53, 7, -1, City Founding, 0.0, 0.38
+53, 7, 1, Attack Enemy City, 442.8, 0.29
+53, 23, 3, Independent Assault, 50.0, 0.07
+53, 30, 1, Independent Raid, 60.0, 0.75
+53, 30, 1, Independent Raid, 100.0, 0.15
+53, 30, 1, Independent Assault, 100.0, 0.15
+53, 30, 1, Independent Large Raid, 100.0, 0.15
+54, 1, -1, City Founding, 0.0, 0.40
+54, 1, 4, Attack Enemy City, 480.2, 0.79
+54, 1, 4, Attack Enemy City, 480.2, 0.45
+54, 1, 4, Naval City Assault, 480.2, 0.45
+54, 1, -1, Attack Enemy Independent, 50.0, 0.41
+54, 2, -1, City Founding, 0.0, 0.41
+54, 2, 0, Attack Enemy City, 281.4, 0.36
+54, 3, -1, City Founding, 0.0, 0.43
+54, 3, -1, City Founding, 0.0, 0.41
+54, 3, 5, Attack Enemy City, 152.2, 0.41
+54, 4, 1, Attack Enemy City, 464.2, 0.82
+54, 4, 1, Attack Enemy City, 539.4, 0.39
+54, 5, -1, City Founding, 0.0, 0.66
+54, 5, 0, Attack Enemy City, 548.0, 0.44
+54, 6, 5, Attack Enemy City, 234.9, 0.38
+54, 7, -1, City Founding, 0.0, 0.38
+54, 7, 1, Attack Enemy City, 449.1, 0.29
+54, 23, 3, Independent Assault, 50.0, 0.00
+54, 30, 1, Independent Raid, 100.0, 0.15
+54, 30, 1, Independent Assault, 100.0, 0.15
+54, 30, 1, Independent Large Raid, 100.0, 0.15
+55, 1, -1, City Founding, 0.0, 0.40
+55, 1, 4, Attack Enemy City, 480.1, 0.79
+55, 1, 4, Attack Enemy City, 480.1, 0.45
+55, 1, 4, Naval City Assault, 480.1, 0.45
+55, 1, -1, Attack Enemy Independent, 50.0, 0.41
+55, 2, 0, Attack Enemy City, 286.9, 0.36
+55, 3, -1, City Founding, 0.0, 0.43
+55, 3, 5, Attack Enemy City, 151.8, 0.41
+55, 4, 1, Attack Enemy City, 464.5, 0.82
+55, 4, 1, Attack Enemy City, 539.9, 0.39
+55, 5, -1, City Founding, 0.0, 0.66
+55, 5, 0, Attack Enemy City, 550.3, 0.44
+55, 6, 5, Attack Enemy City, 234.2, 0.38
+55, 7, -1, City Founding, 0.0, 0.38
+55, 7, 1, Attack Enemy City, 444.0, 0.29
+55, 23, 3, Independent Assault, 50.0, 0.00
+55, 30, 1, Independent Assault, 60.0, 0.82
+55, 30, 1, Independent Raid, 100.0, 0.15
+55, 30, 1, Independent Assault, 100.0, 0.15
+55, 30, 1, Independent Large Raid, 100.0, 0.15
+56, 1, 4, Attack Enemy City, 479.9, 0.79
+56, 1, 4, Attack Enemy City, 479.9, 0.45
+56, 1, 4, Naval City Assault, 479.9, 0.45
+56, 1, -1, Attack Enemy Independent, 50.0, 0.41
+56, 2, -1, City Founding, 0.0, 0.36
+56, 2, 0, Attack Enemy City, 278.2, 0.36
+56, 3, -1, City Founding, 0.0, 0.41
+56, 3, -1, City Founding, 0.0, 0.43
+56, 3, 5, Attack Enemy City, 284.6, 0.41
+56, 4, 1, Attack Enemy City, 463.7, 0.82
+56, 4, 1, Attack Enemy City, 538.5, 0.39
+56, 5, 0, Attack Enemy City, 563.0, 0.44
+56, 6, 5, Attack Enemy City, 230.7, 0.38
+56, 7, 1, Attack Enemy City, 440.9, 0.29
+56, 23, 3, Independent Assault, 50.0, 0.00
+56, 30, 1, Independent Assault, 60.0, 0.82
+56, 30, 1, Independent Raid, 100.0, 0.15
+56, 30, 1, Independent Assault, 100.0, 0.15
+56, 30, 1, Independent Large Raid, 100.0, 0.15
+57, 1, -1, City Founding, 0.0, 0.40
+57, 1, 4, Attack Enemy City, 490.4, 0.79
+57, 1, 4, Attack Enemy City, 490.4, 0.45
+57, 1, 4, Naval City Assault, 490.4, 0.45
+57, 1, -1, Attack Enemy Independent, 50.0, 0.41
+57, 2, -1, City Founding, 0.0, 0.36
+57, 2, 0, Attack Enemy City, 277.4, 0.36
+57, 3, -1, City Founding, 0.0, 0.41
+57, 4, 1, Attack Enemy City, 453.0, 0.82
+57, 4, 1, Attack Enemy City, 523.9, 0.39
+57, 5, -1, City Founding, 0.0, 0.34
+57, 5, 0, Attack Enemy City, 571.0, 0.44
+57, 6, 5, Attack Enemy City, 262.0, 0.38
+57, 7, -1, City Founding, 0.0, 0.38
+57, 7, 1, Attack Enemy City, 415.3, 0.29
+57, 23, 3, Independent Assault, 50.0, 0.00
+57, 30, 1, Independent Assault, 60.0, 0.82
+57, 30, 1, Independent Raid, 100.0, 0.41
+57, 30, 1, Independent Assault, 100.0, 0.41
+57, 30, 1, Independent Large Raid, 100.0, 0.41
+58, 1, -1, City Founding, 0.0, 0.40
+58, 1, 4, Attack Enemy City, 490.4, 0.79
+58, 1, 4, Attack Enemy City, 490.4, 0.45
+58, 1, 4, Naval City Assault, 490.4, 0.45
+58, 1, -1, Attack Enemy Independent, 50.0, 0.41
+58, 2, -1, City Founding, 0.0, 0.36
+58, 2, 0, Attack Enemy City, 270.0, 0.36
+58, 3, -1, City Founding, 0.0, 0.41
+58, 4, 1, Attack Enemy City, 452.7, 0.82
+58, 4, 1, Attack Enemy City, 523.3, 0.39
+58, 5, -1, City Founding, 0.0, 0.34
+58, 5, 0, Attack Enemy City, 454.4, 0.44
+58, 6, 5, Attack Enemy City, 260.0, 0.38
+58, 7, -1, City Founding, 0.0, 0.38
+58, 7, 1, Attack Enemy City, 414.0, 0.29
+58, 23, 3, Independent Assault, 50.0, 0.00
+58, 30, 1, Independent Assault, 60.0, 0.82
+58, 30, 1, Independent Raid, 100.0, 0.00
+58, 30, 1, Independent Assault, 100.0, 0.00
+58, 30, 1, Independent Large Raid, 100.0, 0.00
+59, 1, -1, City Founding, 0.0, 0.40
+59, 1, 4, Attack Enemy City, 490.3, 0.45
+59, 1, 4, Naval City Assault, 490.3, 0.45
+59, 1, -1, Attack Enemy Independent, 50.0, -4.70
+59, 2, -1, City Founding, 0.0, 0.36
+59, 2, 0, Attack Enemy City, 396.9, 0.36
+59, 3, -1, City Founding, 0.0, 0.41
+59, 3, 5, Attack Enemy City, 313.8, 0.41
+59, 4, 1, Attack Enemy City, 451.3, 0.82
+59, 4, 1, Attack Enemy City, 520.9, 0.39
+59, 5, -1, City Founding, 0.0, 0.34
+59, 5, 0, Attack Enemy City, 452.3, 0.44
+59, 6, 5, Attack Enemy City, 258.2, 0.38
+59, 7, -1, City Founding, 0.0, 0.38
+59, 7, 1, Attack Enemy City, 408.5, 0.29
+59, 23, 3, Independent Assault, 50.0, 0.00
+59, 30, 1, Independent Raid, 100.0, 0.00
+59, 30, 1, Independent Assault, 100.0, 0.00
+59, 30, 1, Independent Large Raid, 100.0, 0.00
+60, 1, 4, Attack Enemy City, 491.0, 0.45
+60, 1, 4, Naval City Assault, 491.0, 0.45
+60, 1, -1, Attack Enemy Independent, 50.0, -4.04
+60, 2, 0, Attack Enemy City, 396.5, 0.36
+60, 3, 5, Attack Enemy City, 312.7, 0.41
+60, 4, 1, Attack Enemy City, 451.3, 0.82
+60, 4, 1, Attack Enemy City, 520.9, 0.39
+60, 5, -1, City Founding, 0.0, 0.34
+60, 5, 0, Attack Enemy City, 452.2, 0.44
+60, 6, 5, Attack Enemy City, 262.3, 0.38
+60, 7, -1, City Founding, 0.0, 0.38
+60, 7, 1, Attack Enemy City, 414.0, 0.29
+60, 23, 3, Independent Assault, 50.0, 0.21
+60, 30, 1, Independent Raid, 100.0, 0.00
+60, 30, 1, Independent Assault, 100.0, 0.00
+60, 30, 1, Independent Large Raid, 100.0, 0.00
+61, 1, -1, City Founding, 0.0, 0.40
+61, 1, 4, Attack Enemy City, 634.6, 0.45
+61, 1, 4, Naval City Assault, 634.6, 0.45
+61, 1, -1, Attack Enemy Independent, 50.0, -4.36
+61, 2, -1, City Founding, 0.0, 0.36
+61, 2, 0, Attack Enemy City, 311.2, 0.45
+61, 3, -1, City Founding, 0.0, 0.41
+61, 3, 5, Attack Enemy City, 448.7, 0.41
+61, 4, 1, Attack Enemy City, 412.7, 0.82
+61, 5, 0, Attack Enemy City, 130.3, 0.75
+61, 5, 0, Attack Enemy City, 454.0, 0.44
+61, 6, 5, Attack Enemy City, 396.4, 0.38
+61, 7, 1, Attack Enemy City, 461.6, 0.29
+61, 13, 0, Independent Raid, 20.0, -0.14
+61, 13, 0, Independent Assault, 20.0, -0.14
+61, 13, 0, Independent Large Raid, 20.0, -0.14
+61, 23, 3, Independent Assault, 50.0, 0.00
+61, 30, 1, Independent Raid, 29.2, 0.00
+61, 30, 1, Independent Assault, 29.2, 0.00
+61, 30, 1, Independent Large Raid, 29.2, 0.00
+62, 1, -1, City Founding, 0.0, 0.40
+62, 1, 4, Attack Enemy City, 626.2, 0.45
+62, 1, 4, Naval City Assault, 626.2, 0.45
+62, 1, 17, Attack Enemy City, 656.2, 0.47
+62, 1, -1, Attack Enemy Independent, 50.0, -4.73
+62, 2, -1, City Founding, 0.0, 0.44
+62, 2, -1, City Founding, 0.0, 0.44
+62, 2, 0, Attack Enemy City, 309.7, 0.45
+62, 2, 6, Attack Enemy City, 256.3, 0.32
+62, 3, -1, City Founding, 0.0, 0.41
+62, 4, 1, Attack Enemy City, 397.8, 0.82
+62, 5, 0, Attack Enemy City, 115.9, 0.75
+62, 5, -1, City Founding, 0.0, 0.34
+62, 5, 0, Attack Enemy City, 482.6, 0.44
+62, 6, 5, Attack Enemy City, 395.0, 0.38
+62, 7, -1, City Founding, 0.0, 0.38
+62, 7, 1, Attack Enemy City, 483.6, 0.29
+62, 13, 0, Independent Raid, 30.0, -0.14
+62, 13, 0, Independent Assault, 30.0, -0.14
+62, 13, 0, Independent Large Raid, 30.0, -0.14
+62, 23, 3, Independent Assault, 50.0, 0.00
+62, 30, 1, Independent Raid, 37.1, 0.00
+62, 30, 1, Independent Assault, 37.1, 0.00
+62, 30, 1, Independent Large Raid, 37.1, 0.00
+63, 1, -1, City Founding, 0.0, 0.40
+63, 1, 4, Attack Enemy City, 627.7, 0.45
+63, 1, 4, Naval City Assault, 627.7, 0.45
+63, 1, 17, Attack Enemy City, 656.2, 0.47
+63, 1, -1, Attack Enemy Independent, 50.0, -4.73
+63, 2, -1, City Founding, 0.0, 0.44
+63, 2, -1, City Founding, 0.0, 0.44
+63, 2, 0, Attack Enemy City, 317.9, 0.45
+63, 2, 6, Attack Enemy City, 253.4, 0.32
+63, 3, -1, City Founding, 0.0, 0.41
+63, 4, 1, Attack Enemy City, 426.9, 0.50
+63, 5, 0, Attack Enemy City, 120.1, 0.75
+63, 5, -1, City Founding, 0.0, 0.34
+63, 5, 0, Attack Enemy City, 482.4, 0.44
+63, 6, 5, Attack Enemy City, 392.5, 0.38
+63, 7, -1, City Founding, 0.0, 0.38
+63, 7, 1, Attack Enemy City, 488.0, 0.29
+63, 13, 0, Independent Raid, 30.0, -0.14
+63, 13, 0, Independent Assault, 30.0, -0.14
+63, 13, 0, Independent Large Raid, 30.0, -0.14
+63, 23, 3, Independent Assault, 60.0, 0.00
+63, 30, 1, Independent Raid, 37.9, 0.00
+63, 30, 1, Independent Assault, 37.9, 0.00
+63, 30, 1, Independent Large Raid, 37.9, 0.00
+64, 1, -1, City Founding, 0.0, 0.40
+64, 1, 4, Attack Enemy City, 658.2, 0.44
+64, 1, 4, Naval City Assault, 619.5, 0.45
+64, 1, -1, Attack Enemy Independent, 50.0, 0.43
+64, 2, -1, City Founding, 0.0, 0.44
+64, 2, -1, City Founding, 0.0, 0.44
+64, 2, 0, Attack Enemy City, 317.5, 0.45
+64, 3, -1, City Founding, 0.0, 0.41
+64, 5, -1, City Founding, 0.0, 0.34
+64, 5, 0, Attack Enemy City, 482.0, 0.44
+64, 6, 5, Attack Enemy City, 391.5, 0.38
+64, 7, -1, City Founding, 0.0, 0.38
+64, 7, 1, Attack Enemy City, 496.1, 0.29
+64, 13, 0, Independent Raid, 30.0, 0.12
+64, 13, 0, Independent Assault, 30.0, 0.12
+64, 13, 0, Independent Large Raid, 30.0, 0.12
+64, 23, 3, Independent Assault, 60.0, 0.00
+64, 30, 1, Independent Raid, 39.3, 0.00
+64, 30, 1, Independent Assault, 39.3, 0.00
+64, 30, 1, Independent Large Raid, 39.3, 0.00
+65, 1, 4, Attack Enemy City, 642.7, 0.44
+65, 1, 4, Naval City Assault, 602.2, 0.45
+65, 1, -1, Attack Enemy Independent, 50.0, 0.43
+65, 2, -1, City Founding, 0.0, 0.44
+65, 2, 0, Attack Enemy City, 336.5, 0.45
+65, 5, 0, Attack Enemy City, 136.3, 0.75
+65, 5, -1, City Founding, 0.0, 0.62
+65, 5, 0, Attack Enemy City, 499.5, 0.44
+65, 6, 5, Attack Enemy City, 389.5, 0.38
+65, 7, -1, City Founding, 0.0, 0.38
+65, 7, 1, Attack Enemy City, 498.0, 0.29
+65, 13, 0, Independent Raid, 40.0, 0.12
+65, 13, 0, Independent Assault, 40.0, 0.12
+65, 13, 0, Independent Large Raid, 40.0, 0.12
+65, 23, 3, Independent Assault, 60.0, 0.17
+65, 30, 1, Independent Raid, 41.5, 0.04
+65, 30, 1, Independent Assault, 41.5, 0.04
+65, 30, 1, Independent Large Raid, 41.5, 0.04
+66, 1, -1, City Founding, 0.0, 0.40
+66, 1, 4, Attack Enemy City, 652.1, 0.44
+66, 1, 4, Naval City Assault, 602.9, 0.45
+66, 1, -1, Attack Enemy Independent, 50.0, -4.18
+66, 2, -1, City Founding, 0.0, 0.43
+66, 2, 0, Attack Enemy City, 376.6, 0.45
+66, 3, -1, City Founding, 0.0, 0.41
+66, 5, 0, Attack Enemy City, 175.2, 0.75
+66, 5, -1, City Founding, 0.0, 0.62
+66, 6, 5, Attack Enemy City, 398.4, 0.38
+66, 7, 1, Attack Enemy City, 501.8, 0.29
+66, 13, 0, Independent Raid, 40.0, 0.11
+66, 13, 0, Independent Assault, 40.0, 0.11
+66, 13, 0, Independent Large Raid, 40.0, 0.11
+66, 23, 3, Independent Assault, 60.0, 0.17
+66, 30, 1, Independent Raid, 41.5, 0.00
+66, 30, 1, Independent Assault, 41.5, 0.00
+66, 30, 1, Independent Large Raid, 41.5, 0.00
+67, 1, -1, City Founding, 0.0, 0.40
+67, 1, 4, Attack Enemy City, 651.7, 0.44
+67, 1, 4, Naval City Assault, 602.7, 0.45
+67, 1, -1, Attack Enemy Independent, 50.0, -3.09
+67, 2, -1, City Founding, 0.0, 0.43
+67, 2, 0, Attack Enemy City, 375.5, 0.45
+67, 3, -1, City Founding, 0.0, 0.41
+67, 3, 6, Attack Enemy City, 410.5, 0.40
+67, 5, -1, City Founding, 0.0, 0.62
+67, 5, 15, Attack Enemy City, 308.8, 0.40
+67, 6, 5, Attack Enemy City, 408.8, 0.38
+67, 6, 10, Attack Enemy City, 347.3, 0.28
+67, 7, -1, City Founding, 0.0, 0.38
+67, 7, 1, Attack Enemy City, 494.2, 0.29
+67, 13, 0, Independent Raid, 40.0, 0.11
+67, 13, 0, Independent Assault, 40.0, 0.11
+67, 13, 0, Independent Large Raid, 40.0, 0.11
+67, 23, 3, Independent Assault, 60.0, 0.17
+67, 30, 1, Independent Raid, 70.0, 0.66
+67, 30, 1, Independent Raid, 42.3, 0.13
+67, 30, 1, Independent Assault, 42.3, 0.13
+67, 30, 1, Independent Large Raid, 42.3, 0.13
+68, 1, -1, City Founding, 0.0, 0.40
+68, 1, 4, Attack Enemy City, 652.7, 0.44
+68, 1, 4, Naval City Assault, 603.2, 0.45
+68, 1, -1, Attack Enemy Independent, 50.0, -3.09
+68, 2, -1, City Founding, 0.0, 0.43
+68, 2, 0, Attack Enemy City, 244.4, 0.70
+68, 2, 0, Attack Enemy City, 534.6, 0.39
+68, 2, 0, Naval City Assault, 244.4, 0.41
+68, 3, -1, City Founding, 0.0, 0.41
+68, 3, 6, Attack Enemy City, 407.8, 0.40
+68, 5, -1, City Founding, 0.0, 0.62
+68, 5, 15, Attack Enemy City, 308.6, 0.40
+68, 6, 10, Attack Enemy City, 409.1, 0.28
+68, 7, -1, City Founding, 0.0, 0.38
+68, 7, 1, Attack Enemy City, 491.8, 0.29
+68, 13, 0, Independent Raid, 40.0, 0.09
+68, 13, 0, Independent Assault, 40.0, 0.09
+68, 13, 0, Independent Large Raid, 40.0, 0.09
+68, 23, 3, Independent Assault, 60.0, 0.17
+68, 30, 1, Independent Raid, 70.0, 0.31
+68, 30, 1, Independent Raid, 42.3, 0.00
+68, 30, 1, Independent Assault, 42.3, 0.00
+68, 30, 1, Independent Large Raid, 42.3, 0.00
+69, 1, -1, City Founding, 0.0, 0.40
+69, 1, 4, Attack Enemy City, 652.7, 0.44
+69, 1, 4, Naval City Assault, 603.2, 0.45
+69, 1, -1, Attack Enemy Independent, 50.0, -3.09
+69, 2, -1, City Founding, 0.0, 0.43
+69, 2, 0, Attack Enemy City, 243.4, 0.70
+69, 2, 0, Attack Enemy City, 533.2, 0.39
+69, 2, 0, Naval City Assault, 243.4, 0.41
+69, 3, -1, City Founding, 0.0, 0.41
+69, 3, 6, Attack Enemy City, 420.1, 0.40
+69, 5, -1, City Founding, 0.0, 0.62
+69, 5, 15, Attack Enemy City, 308.6, 0.40
+69, 6, 10, Attack Enemy City, 408.6, 0.28
+69, 7, -1, City Founding, 0.0, 0.38
+69, 7, 1, Attack Enemy City, 485.5, 0.29
+69, 13, 0, Independent Raid, 50.0, 0.09
+69, 13, 0, Independent Assault, 50.0, 0.09
+69, 13, 0, Independent Large Raid, 50.0, 0.09
+69, 17, 4, Aid Suzerain, 100.0, 0.01
+69, 23, 3, Independent Assault, 60.0, 0.17
+69, 30, 1, Independent Raid, 70.0, 0.34
+69, 30, 1, Independent Raid, 42.3, 0.08
+69, 30, 1, Independent Assault, 42.3, 0.08
+69, 30, 1, Independent Large Raid, 42.3, 0.08
+70, 1, 4, Attack Enemy City, 650.4, 0.44
+70, 1, 4, Naval City Assault, 610.0, 0.45
+70, 1, -1, Attack Enemy Independent, 50.0, 0.43
+70, 2, 0, Attack Enemy City, 242.2, 0.70
+70, 2, 0, Attack Enemy City, 531.4, 0.39
+70, 2, 0, Naval City Assault, 242.2, 0.41
+70, 3, 6, Attack Enemy City, 419.8, 0.40
+70, 5, -1, City Founding, 0.0, 0.62
+70, 5, 15, Attack Enemy City, 316.8, 0.40
+70, 6, 10, Attack Enemy City, 408.6, 0.28
+70, 7, -1, City Founding, 0.0, 0.38
+70, 7, 1, Attack Enemy City, 482.4, 0.29
+70, 13, 0, Independent Raid, 50.0, 0.07
+70, 13, 0, Independent Assault, 50.0, 0.07
+70, 13, 0, Independent Large Raid, 50.0, 0.07
+70, 17, 4, Aid Suzerain, 100.0, 0.01
+70, 23, 3, Independent Assault, 60.0, 0.17
+70, 30, 1, Independent Raid, 70.0, 0.36
+70, 30, 1, Independent Raid, 42.3, 0.08
+70, 30, 1, Independent Assault, 42.3, 0.08
+70, 30, 1, Independent Large Raid, 42.3, 0.08
+71, 1, -1, City Founding, 0.0, 0.40
+71, 1, 4, Attack Enemy City, 604.7, 0.61
+71, 1, 4, Naval City Assault, 604.7, 0.61
+71, 1, -1, Attack Enemy Independent, 50.0, 0.43
+71, 2, -1, City Founding, 0.0, 0.43
+71, 2, 0, Attack Enemy City, 241.7, 0.70
+71, 2, 0, Attack Enemy City, 530.8, 0.39
+71, 2, 0, Naval City Assault, 241.7, 0.41
+71, 3, -1, City Founding, 0.0, 0.41
+71, 3, 6, Attack Enemy City, 419.8, 0.40
+71, 5, 15, Attack Enemy City, 316.8, 0.40
+71, 6, 10, Attack Enemy City, 408.0, 0.28
+71, 7, 1, Attack Enemy City, 489.3, 0.29
+71, 13, 0, Independent Raid, 50.0, 0.07
+71, 13, 0, Independent Assault, 50.0, 0.07
+71, 13, 0, Independent Large Raid, 50.0, 0.07
+71, 17, 4, Aid Suzerain, 100.0, 0.01
+71, 23, 3, Independent Assault, 60.0, 0.04
+71, 23, 5, Independent Raid, 20.0, 0.45
+71, 23, 5, Independent Assault, 20.0, 0.45
+71, 23, 5, Independent Large Raid, 20.0, 0.45
+71, 30, 1, Independent Raid, 70.0, 0.82
+71, 30, 1, Independent Raid, 42.5, 0.41
+71, 30, 1, Independent Assault, 42.5, 0.41
+71, 30, 1, Independent Large Raid, 42.5, 0.41
+72, 1, -1, City Founding, 0.0, 0.40
+72, 1, 4, Attack Enemy City, 600.6, 0.61
+72, 1, 4, Naval City Assault, 600.6, 0.61
+72, 1, -1, Attack Enemy Independent, 50.0, 0.43
+72, 2, -1, City Founding, 0.0, 0.43
+72, 2, 0, Attack Enemy City, 283.1, 0.70
+72, 2, 0, Attack Enemy City, 530.5, 0.39
+72, 2, 0, Naval City Assault, 283.1, 0.41
+72, 3, -1, City Founding, 0.0, 0.41
+72, 3, 6, Attack Enemy City, 419.5, 0.40
+72, 5, -1, City Founding, 0.0, 0.30
+72, 5, 15, Attack Enemy City, 316.5, 0.40
+72, 5, -1, Attack Enemy Independent, 50.0, -4.62
+72, 6, 10, Attack Enemy City, 408.0, 0.28
+72, 7, -1, City Founding, 0.0, 0.38
+72, 7, 1, Attack Enemy City, 491.8, 0.29
+72, 13, 0, Independent Raid, 50.0, -0.15
+72, 13, 0, Independent Assault, 50.0, -0.15
+72, 13, 0, Independent Large Raid, 50.0, -0.15
+72, 17, 4, Aid Suzerain, 100.0, 0.01
+72, 23, 5, Independent Raid, 20.0, 0.45
+72, 23, 5, Independent Assault, 20.0, 0.45
+72, 23, 5, Independent Large Raid, 20.0, 0.45
+72, 30, 1, Independent Raid, 70.0, 0.82
+72, 30, 1, Independent Raid, 42.5, 0.41
+72, 30, 1, Independent Assault, 42.5, 0.41
+72, 30, 1, Independent Large Raid, 42.5, 0.41
+73, 1, -1, City Founding, 0.0, 0.40
+73, 1, 4, Attack Enemy City, 635.6, 0.59
+73, 1, 4, Naval City Assault, 596.3, 0.61
+73, 1, -1, Attack Enemy Independent, 50.0, 0.43
+73, 2, -1, City Founding, 0.0, 0.77
+73, 2, 0, Attack Enemy City, 533.2, 0.39
+73, 2, 0, Naval City Assault, 285.1, 0.41
+73, 3, -1, City Founding, 0.0, 0.41
+73, 3, 6, Attack Enemy City, 419.3, 0.40
+73, 5, -1, City Founding, 0.0, 0.30
+73, 5, 15, Attack Enemy City, 178.0, 0.40
+73, 5, -1, Attack Enemy Independent, 50.0, -4.88
+73, 6, 10, Attack Enemy City, 407.5, 0.28
+73, 7, -1, City Founding, 0.0, 0.38
+73, 7, 1, Attack Enemy City, 582.2, 0.29
+73, 13, 0, Independent Raid, 50.0, -0.12
+73, 13, 0, Independent Assault, 50.0, -0.12
+73, 13, 0, Independent Large Raid, 50.0, -0.12
+73, 23, 5, Independent Raid, 20.0, 0.45
+73, 23, 5, Independent Assault, 20.0, 0.45
+73, 23, 5, Independent Large Raid, 20.0, 0.45
+73, 30, 1, Independent Raid, 70.0, 0.51
+73, 30, 1, Independent Raid, 99.9, 0.15
+73, 30, 1, Independent Assault, 99.9, 0.15
+73, 30, 1, Independent Large Raid, 99.9, 0.15
+73, 31, 3, Independent Assault, 60.0, 0.82
+74, 1, -1, City Founding, 0.0, 0.40
+74, 1, 4, Attack Enemy City, 631.4, 0.59
+74, 1, 4, Naval City Assault, 592.2, 0.61
+74, 1, -1, Attack Enemy Independent, 50.0, -4.70
+74, 2, -1, City Founding, 0.0, 0.77
+74, 2, 0, Attack Enemy City, 533.6, 0.39
+74, 2, 0, Naval City Assault, 285.4, 0.41
+74, 3, -1, City Founding, 0.0, 0.41
+74, 3, 6, Attack Enemy City, 420.7, 0.40
+74, 5, -1, City Founding, 0.0, 0.30
+74, 5, 15, Attack Enemy City, 179.0, 0.40
+74, 5, -1, Attack Enemy Independent, 50.0, -5.14
+74, 6, 10, Attack Enemy City, 449.2, 0.28
+74, 7, -1, City Founding, 0.0, 0.38
+74, 7, 1, Attack Enemy City, 600.7, 0.29
+74, 13, 0, Independent Raid, 50.0, -0.12
+74, 13, 0, Independent Assault, 50.0, -0.12
+74, 13, 0, Independent Large Raid, 50.0, -0.12
+74, 17, 4, Aid Suzerain, 100.0, 0.05
+74, 30, 1, Independent Raid, 70.0, 0.24
+74, 30, 1, Independent Raid, 99.9, 0.15
+74, 30, 1, Independent Assault, 99.9, 0.15
+74, 30, 1, Independent Large Raid, 99.9, 0.15
+74, 31, 3, Independent Assault, 60.0, 0.82
+75, 1, 4, Attack Enemy City, 627.0, 0.59
+75, 1, 4, Naval City Assault, 588.0, 0.61
+75, 1, -1, Attack Enemy Independent, 50.0, 0.44
+75, 2, 0, Attack Enemy City, 531.8, 0.39
+75, 2, 0, Naval City Assault, 284.1, 0.41
+75, 3, 6, Attack Enemy City, 431.8, 0.40
+75, 5, -1, Attack Enemy Independent, 50.0, -4.33
+75, 6, 10, Attack Enemy City, 448.7, 0.28
+75, 7, -1, City Founding, 0.0, 0.38
+75, 7, 1, Attack Enemy City, 603.3, 0.29
+75, 13, 0, Independent Raid, 60.0, -0.12
+75, 13, 0, Independent Assault, 60.0, -0.12
+75, 13, 0, Independent Large Raid, 60.0, -0.12
+75, 17, 4, Aid Suzerain, 100.0, 0.07
+75, 23, 3, Independent Raid, 70.0, 0.44
+75, 23, 3, Independent Assault, 70.0, 0.44
+75, 23, 3, Independent Large Raid, 70.0, 0.44
+75, 23, 5, Independent Raid, 30.0, 0.05
+75, 23, 5, Independent Assault, 30.0, 0.05
+75, 23, 5, Independent Large Raid, 30.0, 0.05
+75, 30, 1, Independent Raid, 70.0, 0.24
+75, 30, 1, Independent Raid, 99.9, 0.15
+75, 30, 1, Independent Assault, 99.9, 0.15
+75, 30, 1, Independent Large Raid, 99.9, 0.15
+75, 31, 3, Independent Assault, 70.0, 0.82
+76, 1, -1, City Founding, 0.0, 0.40
+76, 1, 4, Attack Enemy City, 622.3, 0.44
+76, 1, 4, Naval City Assault, 583.5, 0.45
+76, 1, -1, Attack Enemy Independent, 50.0, 0.44
+76, 2, -1, City Founding, 0.0, 0.39
+76, 2, 0, Attack Enemy City, 568.3, 0.39
+76, 2, 0, Naval City Assault, 283.7, 0.41
+76, 3, -1, City Founding, 0.0, 0.41
+76, 3, 6, Attack Enemy City, 412.4, 0.40
+76, 5, -1, City Founding, 0.0, 0.34
+76, 6, 10, Attack Enemy City, 438.2, 0.28
+76, 7, 1, Attack Enemy City, 610.7, 0.29
+76, 13, 0, Independent Raid, 60.0, -0.13
+76, 13, 0, Independent Assault, 60.0, -0.13
+76, 13, 0, Independent Large Raid, 60.0, -0.13
+76, 17, 4, Aid Suzerain, 100.0, 0.07
+76, 30, 1, Independent Raid, 100.5, 0.15
+76, 30, 1, Independent Assault, 100.5, 0.15
+76, 30, 1, Independent Large Raid, 100.5, 0.15
+76, 31, 3, Independent Assault, 60.0, 0.82
+77, 1, -1, City Founding, 0.0, 0.40
+77, 1, 4, Attack Enemy City, 606.0, 0.44
+77, 1, 4, Naval City Assault, 568.0, 0.45
+77, 1, -1, Attack Enemy Independent, 50.0, 0.44
+77, 2, -1, City Founding, 0.0, 0.39
+77, 2, 0, Attack Enemy City, 432.6, 0.39
+77, 2, 0, Naval City Assault, 148.6, 0.41
+77, 3, -1, City Founding, 0.0, 0.41
+77, 3, 6, Attack Enemy City, 412.2, 0.40
+77, 5, -1, City Founding, 0.0, 0.34
+77, 6, 10, Attack Enemy City, 434.2, 0.28
+77, 7, -1, City Founding, 0.0, 0.38
+77, 7, 1, Attack Enemy City, 600.7, 0.29
+77, 13, 0, Independent Raid, 60.0, 0.02
+77, 13, 0, Independent Assault, 60.0, 0.02
+77, 13, 0, Independent Large Raid, 60.0, 0.02
+77, 17, 4, Aid Suzerain, 100.0, 0.07
+77, 30, 1, Independent Raid, 100.5, 0.15
+77, 30, 1, Independent Assault, 100.5, 0.15
+77, 30, 1, Independent Large Raid, 100.5, 0.15
+77, 31, 3, Independent Assault, 60.0, 0.82
+78, 1, -1, City Founding, 0.0, 0.40
+78, 1, 4, Attack Enemy City, 594.3, 0.44
+78, 1, 4, Naval City Assault, 558.9, 0.45
+78, 1, -1, Attack Enemy Independent, 50.0, -4.70
+78, 2, -1, City Founding, 0.0, 0.39
+78, 2, 0, Attack Enemy City, 430.1, 0.39
+78, 2, 0, Naval City Assault, 146.8, 0.41
+78, 3, -1, City Founding, 0.0, 0.41
+78, 3, 6, Attack Enemy City, 412.2, 0.40
+78, 4, 1, Attack Enemy City, 655.8, 0.40
+78, 5, -1, City Founding, 0.0, 0.34
+78, 5, 15, Attack Enemy City, 291.6, 0.40
+78, 6, 10, Attack Enemy City, 429.7, 0.28
+78, 7, -1, City Founding, 0.0, 0.38
+78, 7, 1, Attack Enemy City, 606.4, 0.29
+78, 13, 0, Independent Raid, 60.0, 0.01
+78, 13, 0, Independent Assault, 60.0, 0.01
+78, 13, 0, Independent Large Raid, 60.0, 0.01
+78, 17, 4, Aid Suzerain, 100.0, 0.05
+78, 30, 1, Independent Assault, 70.0, 0.82
+78, 30, 1, Independent Raid, 100.5, 0.15
+78, 30, 1, Independent Assault, 100.5, 0.15
+78, 30, 1, Independent Large Raid, 100.5, 0.15
+78, 31, 3, Independent Assault, 60.0, 0.82
+79, 1, -1, City Founding, 0.0, 0.40
+79, 1, 4, Attack Enemy City, 589.5, 0.44
+79, 1, 4, Naval City Assault, 554.4, 0.45
+79, 1, -1, Attack Enemy Independent, 50.0, -4.70
+79, 2, -1, City Founding, 0.0, 0.39
+79, 2, 0, Attack Enemy City, 486.0, 0.39
+79, 2, 0, Naval City Assault, 140.0, 0.41
+79, 3, -1, City Founding, 0.0, 0.41
+79, 3, 6, Attack Enemy City, 412.2, 0.40
+79, 4, 1, Attack Enemy City, 652.8, 0.40
+79, 5, -1, City Founding, 0.0, 0.34
+79, 5, 15, Attack Enemy City, 287.6, 0.40
+79, 6, 10, Attack Enemy City, 429.4, 0.28
+79, 7, -1, City Founding, 0.0, 0.38
+79, 7, 1, Attack Enemy City, 604.4, 0.29
+79, 13, 0, Independent Raid, 60.0, 0.01
+79, 13, 0, Independent Assault, 60.0, 0.01
+79, 13, 0, Independent Large Raid, 60.0, 0.01
+79, 17, 4, Aid Suzerain, 100.0, 0.05
+79, 30, 1, Independent Assault, 70.0, 0.15
+79, 30, 1, Independent Raid, 70.0, 0.82
+79, 30, 1, Independent Raid, 101.2, 0.15
+79, 30, 1, Independent Assault, 101.2, 0.15
+79, 30, 1, Independent Large Raid, 101.2, 0.15
+79, 31, 3, Independent Assault, 60.0, 0.82
+80, 1, 4, Attack Enemy City, 585.3, 0.44
+80, 1, 4, Naval City Assault, 550.2, 0.45
+80, 1, -1, Attack Enemy Independent, 50.0, -4.70
+80, 2, 0, Attack Enemy City, 481.9, 0.39
+80, 2, 0, Naval City Assault, 178.7, 0.41
+80, 3, 6, Attack Enemy City, 411.9, 0.40
+80, 4, 1, Attack Enemy City, 648.8, 0.40
+80, 5, 15, Attack Enemy City, 283.4, 0.40
+80, 6, 10, Attack Enemy City, 419.9, 0.28
+80, 7, -1, City Founding, 0.0, 0.38
+80, 7, 1, Attack Enemy City, 601.3, 0.29
+80, 13, 0, Independent Raid, 60.0, 0.00
+80, 13, 0, Independent Assault, 60.0, 0.00
+80, 13, 0, Independent Large Raid, 60.0, 0.00
+80, 17, 4, Aid Suzerain, 100.0, 0.11
+80, 30, 1, Independent Assault, 70.0, 0.15
+80, 30, 1, Independent Raid, 70.0, 0.82
+80, 30, 1, Independent Raid, 101.2, 0.15
+80, 30, 1, Independent Assault, 101.2, 0.15
+80, 30, 1, Independent Large Raid, 101.2, 0.15
+80, 31, 3, Independent Assault, 60.0, 0.82
+81, 1, -1, City Founding, 0.0, 0.40
+81, 1, 4, Attack Enemy City, 702.4, 0.44
+81, 1, 4, Naval City Assault, 667.4, 0.45
+81, 1, -1, Attack Enemy Independent, 50.0, -4.70
+81, 2, -1, City Founding, 0.0, 0.39
+81, 2, 0, Attack Enemy City, 507.0, 0.39
+81, 2, 0, Naval City Assault, 222.0, 0.41
+81, 3, -1, City Founding, 0.0, 0.41
+81, 3, 6, Attack Enemy City, 411.9, 0.40
+81, 4, 1, Attack Enemy City, 631.9, 0.40
+81, 5, -1, City Founding, 0.0, 0.34
+81, 5, 6, Attack Enemy City, 386.9, 0.38
+81, 5, 15, Attack Enemy City, 280.8, 0.40
+81, 6, 5, Attack Enemy City, 430.0, 0.38
+81, 6, 10, Attack Enemy City, 418.4, 0.28
+81, 7, 1, Attack Enemy City, 596.3, 0.29
+81, 13, 0, Independent Raid, 70.0, 0.00
+81, 13, 0, Independent Assault, 70.0, 0.00
+81, 13, 0, Independent Large Raid, 70.0, 0.00
+81, 17, 4, Aid Suzerain, 100.0, 0.11
+81, 30, 1, Independent Assault, 70.0, 0.15
+81, 30, 1, Independent Raid, 70.0, 0.82
+81, 30, 1, Independent Raid, 101.2, 0.15
+81, 30, 1, Independent Assault, 101.2, 0.15
+81, 30, 1, Independent Large Raid, 101.2, 0.15
+82, 1, -1, City Founding, 0.0, 0.40
+82, 1, 4, Attack Enemy City, 694.3, 0.45
+82, 1, 4, Naval City Assault, 694.3, 0.45
+82, 1, -1, Attack Enemy Independent, 50.0, -4.70
+82, 2, -1, City Founding, 0.0, 0.39
+82, 2, 0, Attack Enemy City, 511.8, 0.39
+82, 2, 0, Naval City Assault, 224.3, 0.41
+82, 3, -1, City Founding, 0.0, 0.41
+82, 3, 6, Attack Enemy City, 414.3, 0.40
+82, 4, 1, Attack Enemy City, 606.2, 0.41
+82, 5, -1, City Founding, 0.0, 0.34
+82, 5, 6, Attack Enemy City, 393.7, 0.38
+82, 5, 15, Attack Enemy City, 276.3, 0.40
+82, 6, 5, Attack Enemy City, 425.1, 0.38
+82, 6, 10, Attack Enemy City, 413.9, 0.28
+82, 7, -1, City Founding, 0.0, 0.38
+82, 7, 1, Attack Enemy City, 585.5, 0.29
+82, 13, 0, Independent Raid, 80.0, 0.01
+82, 13, 0, Independent Assault, 80.0, 0.01
+82, 13, 0, Independent Large Raid, 80.0, 0.01
+82, 17, 4, Aid Suzerain, 100.0, 0.11
+82, 30, 1, Independent Assault, 70.0, 0.31
+82, 30, 1, Independent Raid, 70.0, 0.82
+82, 30, 1, Independent Raid, 92.2, 0.15
+82, 30, 1, Independent Assault, 92.2, 0.15
+82, 30, 1, Independent Large Raid, 92.2, 0.15
+83, 1, -1, City Founding, 0.0, 0.40
+83, 1, 4, Attack Enemy City, 679.6, 0.45
+83, 1, 4, Naval City Assault, 679.6, 0.45
+83, 1, -1, Attack Enemy Independent, 50.0, 0.44
+83, 2, -1, City Founding, 0.0, 0.39
+83, 2, 0, Attack Enemy City, 512.3, 0.39
+83, 2, 0, Naval City Assault, 224.7, 0.41
+83, 3, -1, City Founding, 0.0, 0.41
+83, 3, 6, Attack Enemy City, 420.4, 0.40
+83, 4, 1, Attack Enemy City, 374.0, 0.45
+83, 4, 1, Attack Enemy City, 547.3, 0.41
+83, 5, -1, City Founding, 0.0, 0.34
+83, 5, 6, Attack Enemy City, 395.8, 0.38
+83, 5, 15, Attack Enemy City, 272.1, 0.40
+83, 6, 5, Attack Enemy City, 419.7, 0.38
+83, 6, 10, Attack Enemy City, 409.9, 0.28
+83, 7, -1, City Founding, 0.0, 0.38
+83, 7, 1, Attack Enemy City, 675.9, 0.29
+83, 13, 0, Independent Raid, 80.0, 0.01
+83, 13, 0, Independent Assault, 80.0, 0.01
+83, 13, 0, Independent Large Raid, 80.0, 0.01
+83, 30, 1, Independent Assault, 70.0, 0.31
+83, 30, 1, Independent Raid, 70.0, 0.82
+83, 30, 1, Independent Raid, 83.5, 0.15
+83, 30, 1, Independent Assault, 83.5, 0.15
+83, 30, 1, Independent Large Raid, 83.5, 0.15
+84, 1, -1, City Founding, 0.0, 0.44
+84, 1, -1, Attack Enemy Independent, 50.0, 0.44
+84, 2, -1, City Founding, 0.0, 0.39
+84, 2, 0, Attack Enemy City, 508.9, 0.39
+84, 2, 0, Naval City Assault, 222.3, 0.41
+84, 3, -1, City Founding, 0.0, 0.41
+84, 3, 6, Attack Enemy City, 425.0, 0.40
+84, 4, 1, Attack Enemy City, 338.5, 0.45
+84, 4, 1, Attack Enemy City, 505.7, 0.41
+84, 5, -1, City Founding, 0.0, 0.34
+84, 5, 6, Attack Enemy City, 396.5, 0.38
+84, 5, 15, Attack Enemy City, 267.4, 0.40
+84, 6, 5, Attack Enemy City, 414.6, 0.38
+84, 6, 10, Attack Enemy City, 405.4, 0.28
+84, 7, -1, City Founding, 0.0, 0.38
+84, 7, 1, Attack Enemy City, 670.7, 0.29
+84, 13, 0, Independent Raid, 80.0, -0.12
+84, 13, 0, Independent Assault, 80.0, -0.12
+84, 13, 0, Independent Large Raid, 80.0, -0.12
+84, 30, 1, Independent Assault, 70.0, 0.31
+84, 30, 1, Independent Raid, 70.0, 0.82
+84, 30, 1, Independent Raid, 75.2, 0.15
+84, 30, 1, Independent Assault, 75.2, 0.15
+84, 30, 1, Independent Large Raid, 75.2, 0.15
+85, 1, -1, Attack Enemy Independent, 50.0, 0.44
+85, 2, 0, Attack Enemy City, 485.1, 0.39
+85, 2, 0, Naval City Assault, 199.5, 0.41
+85, 3, 6, Attack Enemy City, 427.2, 0.40
+85, 4, 1, Attack Enemy City, 338.5, 0.45
+85, 4, 1, Attack Enemy City, 414.1, 0.41
+85, 5, 6, Attack Enemy City, 376.5, 0.38
+85, 5, 15, Attack Enemy City, 245.2, 0.40
+85, 6, 5, Attack Enemy City, 404.5, 0.38
+85, 6, 10, Attack Enemy City, 401.4, 0.28
+85, 7, -1, City Founding, 0.0, 0.38
+85, 7, 1, Attack Enemy City, 581.5, 0.29
+85, 13, 0, Independent Raid, 80.0, -0.12
+85, 13, 0, Independent Assault, 80.0, -0.12
+85, 13, 0, Independent Large Raid, 80.0, -0.12
+85, 30, 1, Independent Assault, 70.0, 0.39
+85, 30, 1, Independent Raid, 16.6, 0.15
+85, 30, 1, Independent Assault, 16.6, 0.15
+85, 30, 1, Independent Large Raid, 16.6, 0.15
+86, 1, -1, City Founding, 0.0, 0.44
+86, 1, -1, Attack Enemy Independent, 50.0, 0.44
+86, 2, -1, City Founding, 0.0, 0.39
+86, 2, 0, Attack Enemy City, 478.9, 0.39
+86, 2, 0, Naval City Assault, 203.5, 0.41
+86, 3, -1, City Founding, 0.0, 0.41
+86, 3, 6, Attack Enemy City, 426.6, 0.40
+86, 4, 1, Attack Enemy City, 342.7, 0.45
+86, 4, 1, Attack Enemy City, 460.0, 0.41
+86, 5, -1, City Founding, 0.0, 0.34
+86, 5, 6, Attack Enemy City, 359.9, 0.38
+86, 5, 15, Attack Enemy City, 229.0, 0.40
+86, 6, 5, Attack Enemy City, 387.1, 0.38
+86, 6, 10, Attack Enemy City, 385.4, 0.28
+86, 7, 1, Attack Enemy City, 622.0, 0.29
+86, 13, 0, Independent Raid, 80.0, -0.07
+86, 13, 0, Independent Assault, 80.0, -0.07
+86, 13, 0, Independent Large Raid, 80.0, -0.07
+86, 30, 1, Independent Assault, 70.0, 0.82
+86, 30, 1, Independent Raid, 25.3, 0.15
+86, 30, 1, Independent Assault, 25.3, 0.15
+86, 30, 1, Independent Large Raid, 25.3, 0.15
+87, 1, -1, City Founding, 0.0, 0.44
+87, 1, -1, Attack Enemy Independent, 50.0, -4.70
+87, 2, -1, City Founding, 0.0, 0.39
+87, 2, 6, Attack Enemy City, 253.8, 0.34
+87, 3, -1, City Founding, 0.0, 0.41
+87, 3, 6, Attack Enemy City, 445.2, 0.40
+87, 4, 1, Attack Enemy City, 479.9, 0.45
+87, 4, 1, Attack Enemy City, 597.1, 0.41
+87, 5, -1, City Founding, 0.0, 0.34
+87, 5, 0, Attack Enemy City, 529.1, 0.44
+87, 5, 0, Naval City Assault, 145.4, 0.37
+87, 5, 15, Attack Enemy City, 212.6, 0.40
+87, 6, 2, Attack Enemy City, 579.8, 0.38
+87, 6, 8, Attack Enemy City, 387.5, 0.32
+87, 7, -1, City Founding, 0.0, 0.38
+87, 7, 1, Attack Enemy City, 620.7, 0.29
+87, 13, 0, Independent Raid, 80.0, 0.09
+87, 13, 0, Independent Assault, 80.0, 0.09
+87, 13, 0, Independent Large Raid, 80.0, 0.09
+87, 30, 1, Independent Assault, 70.0, 0.82
+87, 30, 1, Independent Raid, 25.3, 0.15
+87, 30, 1, Independent Assault, 25.3, 0.15
+87, 30, 1, Independent Large Raid, 25.3, 0.15
+87, 31, 3, Independent Raid, 60.0, 0.82
+88, 1, -1, City Founding, 0.0, 0.44
+88, 1, -1, Attack Enemy Independent, 50.0, -3.84
+88, 2, -1, City Founding, 0.0, 0.39
+88, 2, 6, Attack Enemy City, 237.6, 0.34
+88, 3, -1, City Founding, 0.0, 0.41
+88, 3, -1, City Founding, 0.0, 0.41
+88, 3, 6, Attack Enemy City, 431.3, 0.40
+88, 4, 1, Attack Enemy City, 483.9, 0.45
+88, 4, 1, Attack Enemy City, 601.1, 0.41
+88, 5, -1, City Founding, 0.0, 0.34
+88, 5, 0, Attack Enemy City, 526.2, 0.44
+88, 5, 0, Naval City Assault, 135.3, 0.37
+88, 5, 15, Attack Enemy City, 213.7, 0.40
+88, 6, 2, Attack Enemy City, 520.9, 0.38
+88, 6, 8, Attack Enemy City, 327.2, 0.32
+88, 7, -1, City Founding, 0.0, 0.38
+88, 7, 1, Attack Enemy City, 613.2, 0.29
+88, 13, 0, Independent Raid, 80.0, 0.11
+88, 13, 0, Independent Assault, 80.0, 0.11
+88, 13, 0, Independent Large Raid, 80.0, 0.11
+88, 30, 1, Independent Raid, 25.2, 0.15
+88, 30, 1, Independent Assault, 25.2, 0.15
+88, 30, 1, Independent Large Raid, 25.2, 0.15
+88, 31, 3, Independent Raid, 70.0, 0.82
+89, 1, -1, City Founding, 0.0, 0.44
+89, 1, -1, Attack Enemy Independent, 50.0, -3.84
+89, 2, -1, City Founding, 0.0, 0.39
+89, 2, 0, Attack Enemy City, 500.9, 0.39
+89, 2, 0, Naval City Assault, 235.5, 0.41
+89, 2, 6, Attack Enemy City, 253.1, 0.34
+89, 3, -1, City Founding, 0.0, 0.41
+89, 3, -1, City Founding, 0.0, 0.41
+89, 3, 6, Attack Enemy City, 431.0, 0.40
+89, 4, 1, Attack Enemy City, 486.6, 0.45
+89, 4, 1, Attack Enemy City, 486.6, 0.45
+89, 5, 0, Attack Enemy City, 535.6, 0.44
+89, 5, 0, Naval City Assault, 143.8, 0.37
+89, 5, 3, Attack Enemy City, 376.3, 0.44
+89, 6, 2, Attack Enemy City, 49.7, 0.38
+89, 6, 8, Attack Enemy City, 326.8, 0.32
+89, 7, -1, City Founding, 0.0, 0.38
+89, 7, 1, Attack Enemy City, 521.0, 0.29
+89, 13, 0, Independent Raid, 80.0, 0.16
+89, 13, 0, Independent Assault, 80.0, 0.16
+89, 13, 0, Independent Large Raid, 80.0, 0.16
+89, 30, 1, Independent Raid, 120.0, 0.41
+89, 30, 1, Independent Assault, 120.0, 0.41
+89, 30, 1, Independent Large Raid, 120.0, 0.41
+89, 31, 3, Independent Raid, 70.0, 0.82
+90, 1, -1, Attack Enemy Independent, 50.0, -4.70
+90, 2, 0, Attack Enemy City, 519.9, 0.39
+90, 2, 0, Naval City Assault, 234.0, 0.41
+90, 2, 6, Attack Enemy City, 275.1, 0.34
+90, 3, -1, City Founding, 0.0, 0.41
+90, 3, 2, Attack Enemy City, 475.8, 0.29
+90, 4, 1, Attack Enemy City, 490.6, 0.45
+90, 4, 1, Attack Enemy City, 598.3, 0.41
+90, 5, -1, City Founding, 0.0, 0.34
+90, 5, 0, Attack Enemy City, 567.0, 0.44
+90, 5, 0, Naval City Assault, 187.1, 0.37
+90, 5, 3, Attack Enemy City, 384.9, 0.44
+90, 5, 16, Attack Enemy City, 335.3, 0.45
+90, 6, 2, Attack Enemy City, 64.0, 0.38
+90, 6, 8, Attack Enemy City, 329.0, 0.32
+90, 7, -1, City Founding, 0.0, 0.38
+90, 7, 1, Attack Enemy City, 600.5, 0.29
+90, 8, 2, Aid Suzerain, 100.0, 0.11
+90, 13, 0, Independent Raid, 90.0, 0.16
+90, 13, 0, Independent Assault, 90.0, 0.16
+90, 13, 0, Independent Large Raid, 90.0, 0.16
+90, 30, 1, Independent Raid, 130.0, 0.41
+90, 30, 1, Independent Assault, 130.0, 0.41
+90, 30, 1, Independent Large Raid, 130.0, 0.41
+90, 31, 3, Independent Raid, 80.0, 0.30
+91, 1, -1, City Founding, 0.0, 0.44
+91, 1, -1, Attack Enemy Independent, 50.0, -4.70
+91, 2, -1, City Founding, 0.0, 0.39
+91, 2, 0, Attack Enemy City, 521.8, 0.39
+91, 2, 3, Attack Enemy City, 323.8, 0.30
+91, 2, 16, Attack Enemy City, 291.9, 0.34
+91, 3, -1, City Founding, 0.0, 0.41
+91, 3, -1, City Founding, 0.0, 0.41
+91, 3, 2, Attack Enemy City, 480.0, 0.29
+91, 3, 5, Attack Enemy City, 451.7, 0.41
+91, 4, 1, Attack Enemy City, 493.4, 0.45
+91, 4, 1, Attack Enemy City, 608.5, 0.41
+91, 5, -1, City Founding, 0.0, 0.34
+91, 5, 0, Attack Enemy City, 567.9, 0.44
+91, 5, 0, Naval City Assault, 189.0, 0.37
+91, 5, 3, Attack Enemy City, 394.0, 0.44
+91, 5, 16, Attack Enemy City, 335.2, 0.45
+91, 6, 2, Attack Enemy City, 62.7, 0.38
+91, 6, 8, Attack Enemy City, 339.9, 0.32
+91, 6, -1, Attack Enemy Independent, 50.0, -1.17
+91, 7, 1, Attack Enemy City, 597.7, 0.29
+91, 8, 2, Aid Suzerain, 100.0, 0.14
+91, 9, 0, Aid Suzerain, 100.0, -0.08
+91, 13, 0, Independent Raid, 90.0, 0.14
+91, 13, 0, Independent Assault, 90.0, 0.14
+91, 13, 0, Independent Large Raid, 90.0, 0.14
+91, 30, 1, Independent Raid, 130.0, 0.41
+91, 30, 1, Independent Assault, 130.0, 0.41
+91, 30, 1, Independent Large Raid, 130.0, 0.41
+91, 31, 3, Independent Raid, 80.0, 0.30
+92, 1, -1, City Founding, 0.0, 0.44
+92, 1, -1, Attack Enemy Independent, 50.0, -4.70
+92, 2, -1, City Founding, 0.0, 0.39
+92, 2, 0, Attack Enemy City, 523.8, 0.39
+92, 2, 3, Attack Enemy City, 321.4, 0.30
+92, 2, 16, Attack Enemy City, 287.0, 0.34
+92, 3, -1, City Founding, 0.0, 0.41
+92, 3, 2, Attack Enemy City, 480.0, 0.29
+92, 3, 5, Attack Enemy City, 446.4, 0.41
+92, 3, -1, Attack Enemy Independent, 50.0, -4.72
+92, 4, 1, Attack Enemy City, 364.1, 0.45
+92, 4, 1, Attack Enemy City, 479.1, 0.41
+92, 5, -1, City Founding, 0.0, 0.34
+92, 5, 0, Attack Enemy City, 568.9, 0.44
+92, 5, 0, Naval City Assault, 181.5, 0.37
+92, 5, 3, Attack Enemy City, 395.1, 0.44
+92, 6, -1, City Founding, 0.0, 0.43
+92, 6, 2, Attack Enemy City, 99.0, 0.38
+92, 6, 8, Attack Enemy City, 477.0, 0.32
+92, 6, -1, Attack Enemy Independent, 50.0, -2.02
+92, 7, -1, City Founding, 0.0, 0.38
+92, 7, 1, Attack Enemy City, 593.3, 0.29
+92, 8, 2, Aid Suzerain, 100.0, 0.22
+92, 9, 0, Aid Suzerain, 100.0, 0.11
+92, 10, 5, Aid Suzerain, 100.0, 0.00
+92, 13, 0, Independent Raid, 90.0, 0.14
+92, 13, 0, Independent Assault, 90.0, 0.14
+92, 13, 0, Independent Large Raid, 90.0, 0.14
+92, 30, 1, Independent Raid, 130.0, 0.41
+92, 30, 1, Independent Assault, 130.0, 0.41
+92, 30, 1, Independent Large Raid, 130.0, 0.41
+92, 31, 3, Independent Raid, 80.0, 0.30
+93, 1, -1, City Founding, 0.0, 0.44
+93, 1, -1, Attack Enemy Independent, 50.0, 0.44
+93, 2, -1, City Founding, 0.0, 0.39
+93, 2, 0, Attack Enemy City, 530.8, 0.39
+93, 2, 3, Attack Enemy City, 324.7, 0.30
+93, 2, 16, Attack Enemy City, 286.7, 0.34
+93, 3, -1, City Founding, 0.0, 0.41
+93, 3, 2, Attack Enemy City, 489.1, 0.29
+93, 3, 5, Attack Enemy City, 447.7, 0.41
+93, 3, -1, Attack Enemy Independent, 50.0, -5.24
+93, 4, 1, Attack Enemy City, 367.4, 0.45
+93, 4, 1, Attack Enemy City, 481.9, 0.41
+93, 5, 0, Attack Enemy City, 581.4, 0.43
+93, 5, 0, Naval City Assault, 195.4, 0.37
+93, 5, 3, Attack Enemy City, 394.3, 0.44
+93, 6, -1, City Founding, 0.0, 0.43
+93, 6, 2, Attack Enemy City, 718.3, 0.38
+93, 6, 8, Attack Enemy City, 510.2, 0.32
+93, 6, -1, Attack Enemy Independent, 50.0, 0.47
+93, 7, -1, City Founding, 0.0, 0.38
+93, 7, 1, Attack Enemy City, 631.5, 0.29
+93, 8, 2, Aid Suzerain, 100.0, 0.22
+93, 9, 0, Aid Suzerain, 100.0, 0.11
+93, 10, 5, Aid Suzerain, 100.0, 0.00
+93, 13, 0, Independent Raid, 90.0, 0.13
+93, 13, 0, Independent Assault, 90.0, 0.13
+93, 13, 0, Independent Large Raid, 90.0, 0.13
+93, 30, 1, Independent Raid, 130.0, 0.41
+93, 30, 1, Independent Assault, 130.0, 0.41
+93, 30, 1, Independent Large Raid, 130.0, 0.41
+93, 31, 3, Independent Raid, 80.0, 0.82
+94, 1, -1, City Founding, 0.0, 0.44
+94, 1, -1, Attack Enemy Independent, 50.0, -4.68
+94, 2, -1, City Founding, 0.0, 0.39
+94, 2, 0, Attack Enemy City, 521.0, 0.39
+94, 2, 3, Attack Enemy City, 322.2, 0.30
+94, 2, 16, Attack Enemy City, 286.4, 0.34
+94, 3, -1, City Founding, 0.0, 0.41
+94, 3, 2, Attack Enemy City, 527.5, 0.29
+94, 3, 5, Attack Enemy City, 450.2, 0.41
+94, 3, -1, Attack Enemy Independent, 50.0, -5.12
+94, 4, 1, Attack Enemy City, 372.3, 0.45
+94, 4, 1, Attack Enemy City, 487.5, 0.41
+94, 5, -1, City Founding, 0.0, 0.34
+94, 5, 0, Attack Enemy City, 581.5, 0.43
+94, 5, 0, Naval City Assault, 195.7, 0.37
+94, 5, 3, Attack Enemy City, 394.2, 0.44
+94, 6, -1, City Founding, 0.0, 0.43
+94, 6, 2, Attack Enemy City, 724.0, 0.38
+94, 6, 8, Attack Enemy City, 511.4, 0.32
+94, 6, -1, Attack Enemy Independent, 50.0, 0.47
+94, 7, -1, City Founding, 0.0, 0.38
+94, 7, 1, Attack Enemy City, 745.5, 0.29
+94, 8, 2, Aid Suzerain, 100.0, 0.22
+94, 9, 0, Aid Suzerain, 100.0, 0.11
+94, 10, 5, Aid Suzerain, 100.0, 0.00
+94, 13, 0, Independent Raid, 90.0, 0.13
+94, 13, 0, Independent Assault, 90.0, 0.13
+94, 13, 0, Independent Large Raid, 90.0, 0.13
+94, 30, 1, Independent Raid, 70.0, 0.82
+94, 30, 1, Independent Raid, 130.0, 0.41
+94, 30, 1, Independent Assault, 130.0, 0.41
+94, 30, 1, Independent Large Raid, 130.0, 0.41
+95, 1, -1, Attack Enemy Independent, 50.0, -4.68
+95, 2, 0, Attack Enemy City, 526.2, 0.39
+95, 2, 3, Attack Enemy City, 321.8, 0.30
+95, 2, 16, Attack Enemy City, 286.4, 0.34
+95, 3, 2, Attack Enemy City, 527.5, 0.29
+95, 3, 5, Attack Enemy City, 449.8, 0.41
+95, 3, -1, Attack Enemy Independent, 50.0, -5.12
+95, 4, 1, Attack Enemy City, 376.4, 0.45
+95, 4, 1, Attack Enemy City, 491.7, 0.41
+95, 5, -1, City Founding, 0.0, 0.34
+95, 5, 0, Attack Enemy City, 584.2, 0.43
+95, 5, 0, Naval City Assault, 201.4, 0.37
+95, 5, 3, Attack Enemy City, 392.8, 0.45
+95, 6, -1, City Founding, 0.0, 0.43
+95, 6, 2, Attack Enemy City, 724.0, 0.38
+95, 6, 8, Attack Enemy City, 527.4, 0.32
+95, 6, -1, Attack Enemy Independent, 50.0, 0.47
+95, 7, -1, City Founding, 0.0, 0.38
+95, 7, 1, Attack Enemy City, 746.0, 0.29
+95, 8, 2, Aid Suzerain, 100.0, 0.19
+95, 9, 0, Aid Suzerain, 100.0, 0.05
+95, 10, 5, Aid Suzerain, 100.0, 0.00
+95, 13, 0, Independent Raid, 90.0, 0.11
+95, 13, 0, Independent Assault, 90.0, 0.11
+95, 13, 0, Independent Large Raid, 90.0, 0.11
+95, 30, 1, Independent Raid, 70.0, 0.82
+95, 30, 1, Independent Raid, 130.0, 0.41
+95, 30, 1, Independent Assault, 130.0, 0.41
+95, 30, 1, Independent Large Raid, 130.0, 0.41
+96, 1, -1, City Founding, 0.0, 0.44
+96, 1, -1, Attack Enemy Independent, 50.0, -4.68
+96, 2, -1, City Founding, 0.0, 0.39
+96, 2, 0, Attack Enemy City, 525.5, 0.39
+96, 2, 3, Attack Enemy City, 317.6, 0.30
+96, 2, 16, Attack Enemy City, 286.2, 0.34
+96, 3, -1, City Founding, 0.0, 0.41
+96, 3, 2, Attack Enemy City, 528.1, 0.29
+96, 3, 5, Attack Enemy City, 433.6, 0.41
+96, 3, -1, Attack Enemy Independent, 50.0, -4.97
+96, 4, 1, Attack Enemy City, 380.4, 0.45
+96, 4, 1, Attack Enemy City, 495.7, 0.41
+96, 5, -1, City Founding, 0.0, 0.34
+96, 5, 0, Attack Enemy City, 583.9, 0.43
+96, 5, 0, Naval City Assault, 200.7, 0.37
+96, 5, 3, Attack Enemy City, 393.1, 0.45
+96, 6, 2, Attack Enemy City, 720.2, 0.38
+96, 6, 8, Attack Enemy City, 523.4, 0.32
+96, 7, 1, Attack Enemy City, 746.0, 0.29
+96, 8, 2, Aid Suzerain, 100.0, 0.19
+96, 13, 0, Independent Raid, 90.0, 0.11
+96, 13, 0, Independent Assault, 90.0, 0.11
+96, 13, 0, Independent Large Raid, 90.0, 0.11
+96, 30, 1, Independent Raid, 70.0, 0.82
+96, 30, 1, Independent Raid, 140.0, 0.15
+96, 30, 1, Independent Assault, 140.0, 0.15
+96, 30, 1, Independent Large Raid, 140.0, 0.15
+97, 1, -1, City Founding, 0.0, 0.44
+97, 1, -1, Attack Enemy Independent, 50.0, 0.44
+97, 2, -1, City Founding, 0.0, 0.39
+97, 2, 0, Attack Enemy City, 527.9, 0.39
+97, 2, 3, Attack Enemy City, 318.4, 0.30
+97, 2, 15, Attack Enemy City, 344.2, 0.47
+97, 2, 16, Attack Enemy City, 285.9, 0.34
+97, 3, -1, City Founding, 0.0, 0.41
+97, 3, 2, Attack Enemy City, 528.1, 0.29
+97, 3, 5, Attack Enemy City, 436.0, 0.41
+97, 3, -1, Attack Enemy Independent, 50.0, -4.98
+97, 4, 1, Attack Enemy City, 384.4, 0.45
+97, 4, 1, Attack Enemy City, 508.1, 0.41
+97, 5, 0, Attack Enemy City, 575.0, 0.44
+97, 5, 0, Naval City Assault, 193.1, 0.37
+97, 5, 3, Attack Enemy City, 392.8, 0.45
+97, 6, 2, Attack Enemy City, 716.5, 0.38
+97, 6, 8, Attack Enemy City, 493.2, 0.30
+97, 7, -1, City Founding, 0.0, 0.38
+97, 7, 1, Attack Enemy City, 755.4, 0.29
+97, 8, 2, Aid Suzerain, 100.0, 0.19
+97, 10, 5, Aid Suzerain, 100.0, 0.00
+97, 13, 0, Independent Raid, 90.0, 0.10
+97, 13, 0, Independent Assault, 90.0, 0.10
+97, 13, 0, Independent Large Raid, 90.0, 0.10
+97, 30, 1, Independent Raid, 70.0, 0.82
+97, 30, 1, Independent Raid, 140.0, 0.15
+97, 30, 1, Independent Assault, 140.0, 0.15
+97, 30, 1, Independent Large Raid, 140.0, 0.15
+98, 1, -1, City Founding, 0.0, 0.79
+98, 1, -1, Attack Enemy Independent, 50.0, -4.53
+98, 2, -1, City Founding, 0.0, 0.39
+98, 2, 0, Attack Enemy City, 535.7, 0.39
+98, 2, 3, Attack Enemy City, 326.0, 0.30
+98, 2, 15, Attack Enemy City, 340.0, 0.47
+98, 2, 16, Attack Enemy City, 285.6, 0.34
+98, 3, -1, City Founding, 0.0, 0.41
+98, 3, -1, City Founding, 0.0, 0.41
+98, 3, 2, Attack Enemy City, 528.8, 0.29
+98, 3, 5, Attack Enemy City, 435.3, 0.41
+98, 3, -1, Attack Enemy Independent, 50.0, -3.56
+98, 4, 1, Attack Enemy City, 388.6, 0.45
+98, 4, 1, Attack Enemy City, 512.4, 0.41
+98, 5, -1, City Founding, 0.0, 0.34
+98, 5, 0, Attack Enemy City, 583.1, 0.43
+98, 5, 0, Naval City Assault, 189.5, 0.37
+98, 5, 3, Attack Enemy City, 388.4, 0.45
+98, 6, 2, Attack Enemy City, 714.4, 0.38
+98, 6, 8, Attack Enemy City, 489.2, 0.30
+98, 7, -1, City Founding, 0.0, 0.38
+98, 7, 1, Attack Enemy City, 749.3, 0.29
+98, 8, 2, Aid Suzerain, 100.0, 0.19
+98, 10, 5, Aid Suzerain, 100.0, 0.00
+98, 13, 0, Independent Raid, 90.0, 0.10
+98, 13, 0, Independent Assault, 90.0, 0.10
+98, 13, 0, Independent Large Raid, 90.0, 0.10
+98, 30, 1, Independent Raid, 70.0, 0.82
+98, 30, 1, Independent Raid, 140.0, 0.15
+98, 30, 1, Independent Assault, 140.0, 0.15
+98, 30, 1, Independent Large Raid, 140.0, 0.15
+99, 1, -1, City Founding, 0.0, 0.79
+99, 1, -1, Attack Enemy Independent, 50.0, 0.44
+99, 2, -1, City Founding, 0.0, 0.39
+99, 2, 0, Attack Enemy City, 534.6, 0.39
+99, 2, 3, Attack Enemy City, 311.8, 0.30
+99, 2, 15, Attack Enemy City, 336.0, 0.47
+99, 2, 16, Attack Enemy City, 285.3, 0.34
+99, 3, -1, City Founding, 0.0, 0.41
+99, 3, -1, City Founding, 0.0, 0.41
+99, 3, 2, Attack Enemy City, 530.6, 0.29
+99, 3, 5, Attack Enemy City, 433.6, 0.41
+99, 3, -1, Attack Enemy Independent, 50.0, -4.88
+99, 4, 1, Attack Enemy City, 391.4, 0.45
+99, 4, 1, Attack Enemy City, 514.2, 0.41
+99, 5, -1, City Founding, 0.0, 0.34
+99, 5, 0, Attack Enemy City, 597.7, 0.43
+99, 5, 0, Naval City Assault, 205.6, 0.37
+99, 5, 3, Attack Enemy City, 401.3, 0.45
+99, 6, 2, Attack Enemy City, 714.7, 0.38
+99, 6, 8, Attack Enemy City, 493.5, 0.30
+99, 7, -1, City Founding, 0.0, 0.38
+99, 7, 1, Attack Enemy City, 759.9, 0.29
+99, 9, 0, Aid Suzerain, 100.0, 0.02
+99, 10, 5, Aid Suzerain, 100.0, 0.00
+99, 13, 0, Independent Raid, 90.0, 0.09
+99, 13, 0, Independent Assault, 90.0, 0.09
+99, 13, 0, Independent Large Raid, 90.0, 0.09
+99, 30, 1, Independent Raid, 70.0, 0.82
+99, 30, 1, Independent Raid, 130.0, 0.15
+99, 30, 1, Independent Assault, 130.0, 0.15
+99, 30, 1, Independent Large Raid, 130.0, 0.15

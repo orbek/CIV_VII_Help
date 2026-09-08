@@ -107,6 +107,14 @@ def build_state(raw: RawLogs) -> GameState:
     state.gossip = list(raw.gossip)
     state.diplomacy_events = list(raw.diplomacy_summary)
     state.deals = list(raw.deals)
+    state.unit_operations = list(raw.unit_operations)
+    state.tactical = list(raw.tactical)
+    state.operations = list(raw.operations)
+    state.combat_orders = list(raw.combat_orders)
+    state.operation_evals = list(raw.operation_evals)
+    state.unit_efficiency = list(raw.unit_efficiency)
+    state.mayhem = list(raw.mayhem)
+    state.commander_promotions = list(raw.commander_promotions)
     for d in raw.deals:
         if d.is_peace:
             pair = d.parties()

@@ -32,10 +32,13 @@ the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
 wasn't. The toggle hides Oracle table columns too, not just the cards.
 
-The fifth tab, **Intel**, lists gossip, diplomacy, fights and deals newest
-first. Gossip is Fair because the game shows it to you. For party-bearing
-events, events involving you are Fair and events between other players are
-Oracle.
+The fifth tab, **Intel**, plots a compact tactical intercept and lists gossip,
+diplomacy, fights and deals newest first. The map is deliberately limited to
+known human city tiles and recent AI-planned unit positions; it is not terrain
+or fog of war. Gossip is Fair because the game shows it to you. For
+party-bearing events, events involving you are Fair and events between other
+players are Oracle. The entire tactical payload is withheld server-side when
+Oracle is off.
 
 ## The game deletes its logs
 
@@ -61,8 +64,8 @@ the evidence, and treat the recommendation as a first draft.
 ## Tuning
 
 Every threshold is a named constant at the top of its advisor module:
-`civ7_advisor/advisors/threat.py`, `victory.py`, `economy.py`, and
-`production.py`. Change a number, restart, done.
+`civ7_advisor/advisors/threat.py`, `tactical.py`, `victory.py`, `economy.py`,
+and `production.py`. Change a number, restart, done.
 
 ## Tests
 

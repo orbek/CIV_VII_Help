@@ -196,16 +196,25 @@ def test_intel_is_503_before_first_rebuild(fixture_dir: Path):
     assert TestClient(create_app(fixture_dir)).get("/api/intel").status_code == 503
 
 
+def test_tactical_endpoint_is_gated_server_side(client):
+    hidden = client.get("/api/tactical?oracle=0").json()
+    assert hidden == {"available": False, "reason": "oracle_off"}
+    shown = client.get("/api/tactical?oracle=1").json()
+    assert shown["available"] and shown["city_tiles"]
+    assert "enemy_units" in shown and "attack_goals" in shown
+
+
 def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     page = client.get("/").text
     for needle in (
         'data-tab="intel"',
         'id="intel-feed"',
+        'id="tactical-map"',
         'id="production-table"',
         'id="rival-production-table"',
         'id="wipe"',
     ):
         assert needle in page, needle
     js = client.get("/static/app.js").text
-    assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js
+    assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js and "/api/tactical?oracle=" in js
     assert "(r.military_share || 0) * r.cities.length" in js

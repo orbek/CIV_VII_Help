@@ -10,6 +10,10 @@ from civ7_advisor.ingest.load import FileStatus
 from civ7_advisor.ingest.production import BuildQueueRow
 from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
 from civ7_advisor.ingest.textlogs import DealItem
+from civ7_advisor.ingest.tactical import (
+    CombatOrderRow, CommanderPromotionRow, MayhemRow, OperationEvalRow, OperationRow,
+    TacticalRow, UnitEfficiencyRow, UnitOperationRow,
+)
 
 from .names import NameResolver
 
@@ -126,6 +130,14 @@ class GameState:
     gossip: list[GossipRow] = field(default_factory=list)
     diplomacy_events: list[DiplomacySummaryRow] = field(default_factory=list)
     deals: list[DealItem] = field(default_factory=list)
+    unit_operations: list[UnitOperationRow] = field(default_factory=list)
+    tactical: list[TacticalRow] = field(default_factory=list)
+    operations: list[OperationRow] = field(default_factory=list)
+    combat_orders: list[CombatOrderRow] = field(default_factory=list)
+    operation_evals: list[OperationEvalRow] = field(default_factory=list)
+    unit_efficiency: list[UnitEfficiencyRow] = field(default_factory=list)
+    mayhem: list[MayhemRow] = field(default_factory=list)
+    commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
     peace_turns: dict[frozenset[int], int] = field(default_factory=dict)  # pair -> latest Peace deal turn
     names: NameResolver | None = None
 

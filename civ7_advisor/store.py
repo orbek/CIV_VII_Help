@@ -6,6 +6,7 @@ import logging
 import threading
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from civ7_advisor.advisors import Insight, run_all
 from civ7_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
@@ -13,13 +14,17 @@ from civ7_advisor.ingest.load import load_logs
 from civ7_advisor.state.build import build_state
 from civ7_advisor.state.models import GameState
 
+if TYPE_CHECKING:
+    from civ7_advisor.llm.worker import CommentaryWorker
+
 log = logging.getLogger(__name__)
 
 ARCHIVE_SUFFIXES = {".csv", ".log"}  # mirror every log the game writes, not just the ones we parse
 
 
 class Store:
-    def __init__(self, logs_dir: Path, archive_root: Path | None = None) -> None:
+    def __init__(self, logs_dir: Path, archive_root: Path | None = None,
+                 commentary_worker: CommentaryWorker | None = None) -> None:
         self.logs_dir = logs_dir
         self.archive_root = archive_root
         self.state: GameState | None = None
@@ -29,6 +34,7 @@ class Store:
         self._session: str | None = None   # one archive session per life of the logs directory
         self._game_key: str | None = None  # the loaded save's identity, read once per session
         self._session_seq = 0              # keeps two sessions started in the same second distinct
+        self.commentary_worker = commentary_worker
 
     def rebuild(self) -> GameState:
         """Re-read every log, archive it, and recompute advice. Safe to call from a worker thread."""
@@ -38,6 +44,8 @@ class Store:
         with self._lock:
             self.state, self.insights = state, insights
         self._archive(raw)
+        if self.commentary_worker is not None:
+            self.commentary_worker.schedule(state, insights)
         return state
 
     def _archive(self, raw) -> None:

@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from civ7_advisor.api.app import create_app
+from civ7_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
 
 APP_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "app.js"
 # RivalThreat fields that come from the AI's own logs (AI_DiplomaticActions, AI_Targets).
@@ -204,12 +205,36 @@ def test_tactical_endpoint_is_gated_server_side(client):
     assert "enemy_units" in shown and "attack_goals" in shown
 
 
+def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixture_dir):
+    with TestClient(create_app(fixture_dir, poll_interval=60)) as c:
+        assert c.get("/api/commentary").json()["status"] == "disabled"
+
+    commentary = Commentary("local:test", "a" * 64, 81, True, "Opinion [threat.x].",
+                            (Explanation("threat.x", "Why."),), (PlanStep("threat.x", "Act."),))
+
+    class StubWorker:
+        def schedule(self, state, insights):
+            pass
+
+        def result(self, turn):
+            return CommentaryResult("ready", turn, "", commentary)
+
+        def close(self):
+            pass
+
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+        assert c.get("/api/commentary").json()["commentary"]["model"] == "local:test"
+        hidden = c.get("/api/commentary?oracle=0").json()
+        assert hidden["status"] == "hidden" and "commentary" not in hidden
+
+
 def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     page = client.get("/").text
     for needle in (
         'data-tab="intel"',
         'id="intel-feed"',
         'id="tactical-map"',
+        'id="commentary-panel"',
         'id="production-table"',
         'id="rival-production-table"',
         'id="wipe"',
@@ -217,4 +242,5 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
         assert needle in page, needle
     js = client.get("/static/app.js").text
     assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js and "/api/tactical?oracle=" in js
+    assert "/api/commentary?oracle=" in js and "textContent" in js
     assert "(r.military_share || 0) * r.cities.length" in js

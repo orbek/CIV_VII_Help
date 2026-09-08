@@ -37,7 +37,19 @@
 </div>
 
 <main class="wrap">
-  <section class="tab active" id="checklist" role="tabpanel" aria-labelledby="tab-checklist" tabindex="0"></section>
+  <section class="tab active" id="checklist" role="tabpanel" aria-labelledby="tab-checklist" tabindex="0">
+    <div id="checklist-stream"></div>
+    <section class="commentary" id="commentary-panel" aria-live="polite">
+      <h2 class="section-head">Local second opinion</h2>
+      <div id="commentary-status"></div>
+      <div id="second-opinion"></div>
+      <h2 class="section-head" id="explain-head">Why the top calls matter</h2>
+      <div id="commentary-explain"></div>
+      <h2 class="section-head" id="plan-head">Draft turn plan</h2>
+      <div id="turn-plan"></div>
+      <p class="commentary-meta" id="commentary-meta"></p>
+    </section>
+  </section>
   <section class="tab" id="threats" role="tabpanel" aria-labelledby="tab-threats" tabindex="0">
     <h2 class="section-head">Rivals</h2>
     <div id="threats-table"></div>

@@ -10,6 +10,7 @@ import uvicorn
 
 from civ7_advisor.api.app import create_app
 from civ7_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
+from civ7_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
 
@@ -34,6 +35,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--archive-dir", type=Path, default=DEFAULT_ARCHIVE_ROOT,
                         help=f"where to mirror the logs (default: {DEFAULT_ARCHIVE_ROOT})")
     parser.add_argument("--no-archive", action="store_true", help="do not mirror the logs anywhere")
+    parser.add_argument("--llm-model", default=DEFAULT_MODEL,
+                        help=f"local Ollama model for commentary (default: {DEFAULT_MODEL})")
+    parser.add_argument("--no-llm", action="store_true", help="disable local Ollama commentary")
     args = parser.parse_args(argv)
 
     if not args.logs_dir.is_dir():
@@ -45,9 +49,13 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     archive_root = None if args.no_archive else args.archive_dir
-    app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root)
+    worker = None if args.no_llm else CommentaryWorker(OllamaClient(args.llm_model))
+    app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root,
+                     commentary_worker=worker)
     where = f"archiving to {archive_root}" if archive_root else "archiving off"
-    print(f"Civ VII Advisor -> http://{args.host}:{args.port}  (reading {args.logs_dir}; {where})")
+    llm = "LLM off" if worker is None else f"Ollama {args.llm_model}"
+    print(f"Civ VII Advisor -> http://{args.host}:{args.port}  "
+          f"(reading {args.logs_dir}; {where}; {llm})")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

@@ -31,11 +31,23 @@ def test_server_is_started_with_parsed_options(fixture_dir: Path, monkeypatch):
 def test_archive_flags_reach_create_app(fixture_dir, monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
-    monkeypatch.setattr(cli, "create_app", lambda logs_dir, poll, archive_root=None: seen.update(root=archive_root) or object.__new__(type("A", (), {"title": "x"})))
+    monkeypatch.setattr(cli, "create_app", lambda logs_dir, poll, archive_root=None, commentary_worker=None:
+                        seen.update(root=archive_root, worker=commentary_worker) or
+                        object.__new__(type("A", (), {"title": "x"})))
     cli.main(["--logs-dir", str(fixture_dir), "--no-archive"])
     assert seen["root"] is None
     cli.main(["--logs-dir", str(fixture_dir), "--archive-dir", str(tmp_path / "arc")])
     assert seen["root"] == tmp_path / "arc"
+
+
+def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):
+    seen = {}
+    monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
+    monkeypatch.setattr(cli, "create_app", lambda *args, **kwargs: seen.update(kwargs) or object())
+    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--llm-model", "llama3.3:70b"])
+    assert seen["commentary_worker"].client.model == "llama3.3:70b"
+    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--no-llm"])
+    assert seen["commentary_worker"] is None
 
 
 def test_archive_list_prints_sessions(tmp_path, capsys):

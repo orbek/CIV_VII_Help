@@ -47,8 +47,8 @@
   const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
   const INTEL_ORACLE_OFF = "Oracle off — fights, deals and diplomacy between rivals are hidden.";
 
-  const state = { data: null, insights: [], intel: [], tactical: null,
-    showOracle: true, shownTurn: null, viaEvent: false };
+  const state = { data: null, insights: [], intel: [], tactical: null, commentary: null,
+    commentaryTimer: null, showOracle: true, shownTurn: null, viaEvent: false };
 
   try { state.showOracle = localStorage.getItem("civ7.oracle") !== "off"; } catch (_) { /* private mode */ }
   $("#oracle").checked = state.showOracle;
@@ -82,15 +82,17 @@
 
   async function refresh() {
     const o = state.showOracle ? 1 : 0;
-    const [s, i, n, t] = await Promise.all([
+    const [s, i, n, t, c] = await Promise.all([
       fetch(`/api/state?oracle=${o}`), fetch("/api/insights"), fetch(`/api/intel?oracle=${o}`),
       fetch(`/api/tactical?oracle=${o}`),
+      fetch(`/api/commentary?oracle=${o}`),
     ]);
-    if (!s.ok || !i.ok || !n.ok || !t.ok) return;
+    if (!s.ok || !i.ok || !n.ok || !t.ok || !c.ok) return;
     state.data = await s.json();
     state.insights = await i.json();
     state.intel = await n.json();
     state.tactical = await t.json();
+    state.commentary = await c.json();
     render();
   }
 
@@ -213,7 +215,8 @@
     renderFiles(d);
 
     const byAdvisor = (a) => ins.filter((i) => i.advisor === a);
-    $("#checklist").replaceChildren(stream(ins, undefined));
+    $("#checklist-stream").replaceChildren(stream(ins, undefined));
+    renderCommentary();
 
     /* The toggle gates table content as well as cards: with Oracle off the
        AI-internal columns are dropped outright, not blanked. */
@@ -323,6 +326,38 @@
     data.attack_goals.forEach((p) => mark("goal", p, `${p.name} attack goal ${p.x}:${p.y}`));
     const legend = el("p", "map-legend", "Squares: your city tiles · Brass: your units · Red: rival plans · Rings: attack goals");
     host.replaceChildren(svg, legend);
+  }
+
+  function renderCommentary() {
+    const result = state.commentary;
+    const status = $("#commentary-status"), opinion = $("#second-opinion");
+    const explain = $("#commentary-explain"), plan = $("#turn-plan"), meta = $("#commentary-meta");
+    const detailed = result && result.status === "ready" && result.commentary;
+    $("#explain-head").hidden = !detailed; $("#plan-head").hidden = !detailed;
+    if (!detailed) {
+      status.replaceChildren(el("p", result && result.status === "error" ? "file-warn" : "empty",
+        result ? result.message : "Local commentary is unavailable."));
+      opinion.replaceChildren(); explain.replaceChildren(); plan.replaceChildren(); meta.textContent = "";
+      if (result && result.status === "generating" && state.commentaryTimer === null) {
+        state.commentaryTimer = setTimeout(() => { state.commentaryTimer = null; refresh(); }, 2000);
+      }
+      return;
+    }
+    status.replaceChildren();
+    const c = result.commentary, valid = state.insights.map((i) => `[${i.id}]`);
+    const paragraph = (text) => {
+      const p = el("p", valid.some((id) => text.includes(id)) ? null : "uncited", text);
+      return p;
+    };
+    opinion.replaceChildren(paragraph(c.second_opinion));
+    explain.replaceChildren(...c.explain.map((x) => {
+      const block = el("div", "commentary-item");
+      block.append(el("p", "commentary-cite", x.insight_id), paragraph(x.text)); return block;
+    }));
+    const ol = el("ol", "turn-plan");
+    c.turn_plan.forEach((x) => { const li = el("li"); li.append(document.createTextNode(x.step + " "), el("span", "commentary-cite", x.insight_id)); ol.append(li); });
+    plan.replaceChildren(ol);
+    meta.textContent = `${c.model} · turn ${c.turn} · prompt ${c.prompt_hash.slice(0, 10)}`;
   }
 
   function connect() {

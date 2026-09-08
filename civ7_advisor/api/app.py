@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from contextlib import asynccontextmanager
+from dataclasses import asdict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -13,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from civ7_advisor.advisors import Provenance, intel, tactical
 from civ7_advisor.ingest.load import LOG_FILES
 from civ7_advisor.ingest.poller import snapshot, watch
+from civ7_advisor.llm.worker import CommentaryWorker
 from civ7_advisor.store import Store
 
 from .serialize import INTEL_LIMIT, insight_to_dict, intel_to_dict, state_to_dict
@@ -21,8 +23,9 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 KEEPALIVE_SECONDS = 15
 
 
-def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None) -> FastAPI:
-    store = Store(logs_dir, archive_root)
+def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None,
+               commentary_worker: CommentaryWorker | None = None) -> FastAPI:
+    store = Store(logs_dir, archive_root, commentary_worker=commentary_worker)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -41,6 +44,8 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
             yield
         finally:
             task.cancel()
+            if store.commentary_worker is not None:
+                store.commentary_worker.close()
 
     app = FastAPI(title="Civ VII Advisor", lifespan=lifespan)
     app.state.store = store
@@ -71,6 +76,19 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         if not oracle:
             return {"available": False, "reason": "oracle_off"}
         return tactical.snapshot(store.state)
+
+    @app.get("/api/commentary")
+    def api_commentary(oracle: int = 1) -> dict:
+        if store.state is None:
+            raise HTTPException(status_code=503, detail="state not loaded yet")
+        if store.commentary_worker is None:
+            return {"status": "disabled", "turn": store.state.complete_through_turn,
+                    "message": "Local commentary is off; start with an Ollama model to enable it."}
+        result = store.commentary_worker.result(store.state.complete_through_turn)
+        if not oracle and result.commentary is not None and result.commentary.saw_oracle:
+            return {"status": "hidden", "turn": result.turn,
+                    "message": "Oracle off — this local commentary saw intercepted evidence."}
+        return asdict(result)
 
     @app.get("/events")
     async def events() -> StreamingResponse:

@@ -10,6 +10,17 @@ It never writes to the game. Everything runs locally and offline.
 
 ## Run
 
+Start Ollama in one terminal (or open the Ollama desktop app):
+
+    ollama serve
+
+The configured default model is already present on the original development
+machine. On another machine, install it once with:
+
+    ollama pull gemma4:31b-it-qat
+
+Then start the advisor in another terminal:
+
     uv sync
     uv run civ7-advisor
 
@@ -19,8 +30,22 @@ by itself about a second after the game finishes writing a turn.
 The Economy tab also shows what each of your cities is building and, with
 Oracle on, what rivals are building.
 
+After each complete turn, the **This turn** tab also receives a cached local
+second opinion, explanations for the three highest-ranked insights, and a draft
+turn plan. Generation runs in the background; its model, turn, and prompt hash
+are displayed with the result. Because the v2 prompt includes intercepted
+tactical evidence, this commentary is hidden when Oracle is off.
+
 Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
-`--poll-interval`.
+`--poll-interval`, `--llm-model MODEL`, and `--no-llm`.
+
+Ollama commentary is optional. The advisor checks only the loopback service at
+`127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the
+model. If Ollama is stopped or the model is missing, one quiet notice replaces
+the commentary while every deterministic panel keeps working. To use a smaller
+installed local model, pass it explicitly, for example:
+
+    uv run civ7-advisor --llm-model llama3.2:3b
 
 ## Fair vs Oracle
 

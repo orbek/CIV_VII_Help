@@ -44,6 +44,9 @@ def archive_logs(logs_dir: Path, dest: Path, names: Iterable[str]) -> list[str]:
     dest.mkdir(parents=True, exist_ok=True)
     copied: list[str] = []
     for name in names:
+        relative = Path(name)
+        if relative.is_absolute() or relative.name != name:
+            raise ValueError(f"archive name must be a file name, got {name!r}")
         src, dst = logs_dir / name, dest / name
         if not src.is_file():
             continue

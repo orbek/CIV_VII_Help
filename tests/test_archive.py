@@ -68,3 +68,9 @@ def test_archive_logs_recopies_a_changed_file(tmp_path: Path, fixture_dir: Path)
 def test_archive_logs_refuses_a_destination_inside_the_logs_dir(tmp_path: Path):
     with pytest.raises(ValueError, match="inside"):
         archive_logs(tmp_path, tmp_path / "archive", LOG_FILES)
+
+
+@pytest.mark.parametrize("name", ["../outside.csv", "/tmp/outside.csv", "nested/file.csv"])
+def test_archive_logs_refuses_names_that_can_escape_the_destination(tmp_path: Path, name: str):
+    with pytest.raises(ValueError, match="file name"):
+        archive_logs(tmp_path / "logs", tmp_path / "archive", [name])

@@ -7,12 +7,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from civ7_advisor.state.models import GameState
+from civ7_advisor.state.models import GameState, PlayerKind
 
 from .base import Provenance, humanize
 
 # Tie-break within one turn: what was done to you first, what was agreed next, then talk and rumour.
 KIND_ORDER = {"combat": 0, "deal": 1, "diplomacy": 2, "gossip": 3}
+SYMMETRIC_ACTIONS = frozenset({"Met"})  # the log writes these once from each side; show one
 
 
 @dataclass(frozen=True)
@@ -43,21 +44,40 @@ def _party(state: GameState, *players: int) -> Provenance:
     return Provenance.FAIR if state.HUMAN in players else Provenance.ORACLE
 
 
+def _relevant(state: GameState, *players: int) -> bool:
+    """Every party is a player we know, and at least one of them is a major (the human or a rival)."""
+    # Drops what the game never means as an event: a sentinel party (-1 heal ticks, 63 NO_PLAYER) or two independents alone.
+    kinds = [state.players[pid].kind for pid in players if pid in state.players]
+    return len(kinds) == len(players) and any(k in (PlayerKind.HUMAN, PlayerKind.RIVAL) for k in kinds)
+
+
 def feed(state: GameState) -> list[IntelEvent]:
     events: list[IntelEvent] = []
     for g in state.gossip:
         pid = state.names.player_for(g.leader, g.civilization) if state.names else None
         who = _name(state, pid) if pid is not None else f"{g.leader} ({g.civilization})"
         text = f"{who}: {humanize(g.type)}" + (f" — {g.detail}" if g.detail else "")
+        # A plot is both axes or neither — half a coordinate points nowhere.
+        x, y = (g.x, g.y) if g.x >= 0 and g.y >= 0 else (None, None)
         events.append(IntelEvent(g.turn, "gossip", Provenance.FAIR, text, (pid,) if pid is not None else (),
-                                 g.x if g.x >= 0 else None, g.y if g.y >= 0 else None, "Game_Gossip.csv"))
+                                 x, y, "Game_Gossip.csv"))
+    seen_symmetric: set[tuple[int, str, frozenset[int]]] = set()
     for d in state.diplomacy_events:
+        if not _relevant(state, d.initiator, d.recipient):
+            continue
+        if d.action in SYMMETRIC_ACTIONS:
+            key = (d.turn, d.action, frozenset({d.initiator, d.recipient}))
+            if key in seen_symmetric:
+                continue
+            seen_symmetric.add(key)
         text = f"{_name(state, d.initiator)} → {_name(state, d.recipient)}: {d.action}"
         if d.details:
             text += f" — {d.details}"
         events.append(IntelEvent(d.turn, "diplomacy", _party(state, d.initiator, d.recipient), text,
                                  (d.initiator, d.recipient), None, None, "DiplomacySummary.csv"))
     for c in state.combats:
+        if not _relevant(state, c.att_player, c.def_player):
+            continue
         outcome = {"Attacker": f"{humanize(c.attacker.kind)} destroyed",
                    "Defender": f"{humanize(c.defender.kind)} destroyed"}.get(c.destroyed, "no unit destroyed")
         text = (f"{_poss(state, c.att_player)} {humanize(c.attacker.kind)} attacked "
@@ -65,7 +85,15 @@ def feed(state: GameState) -> list[IntelEvent]:
         text = text[0].upper() + text[1:]
         events.append(IntelEvent(c.turn, "combat", _party(state, c.att_player, c.def_player), text,
                                  (c.att_player, c.def_player), c.x, c.y, "CombatLog.csv"))
+    seen_deals: set[tuple[int, int, int, int, str, int, int]] = set()
     for d in state.deals:
+        if not _relevant(state, d.from_player, d.to_player):
+            continue
+        # DiplomacyDeals.log writes every deal in both parties' blocks; identical items are one deal.
+        key = (d.turn, d.item_id, d.from_player, d.to_player, d.kind, d.amount, d.duration)
+        if key in seen_deals:
+            continue
+        seen_deals.add(key)
         text = f"{_name(state, d.from_player)} → {_name(state, d.to_player)}: {d.kind}"
         events.append(IntelEvent(d.turn, "deal", _party(state, d.from_player, d.to_player), text,
                                  (d.from_player, d.to_player), None, None, "DiplomacyDeals.log"))

@@ -47,7 +47,7 @@ class CombatRow:
     def_str_mod: int
     att_dmg: int          # raw; whether this is damage dealt or taken is pinned by the fixture task
     def_dmg: int          # raw; see above
-    destroyed: str | None  # "Attacker" | "Defender" | None — the only field win/loss reads
+    destroyed: str | None  # "Attacker" | "Defender" | "District" | "N/A" | None (empty cell); only Attacker/Defender drive win/loss
     heal_amount: int
     att_health_raw: str   # "(a)b" exactly as logged; order of the two numbers pinned later
     def_health_raw: str

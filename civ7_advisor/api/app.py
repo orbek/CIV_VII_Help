@@ -20,8 +20,8 @@ WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 KEEPALIVE_SECONDS = 15
 
 
-def create_app(logs_dir: Path, poll_interval: float = 1.0) -> FastAPI:
-    store = Store(logs_dir)
+def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None) -> FastAPI:
+    store = Store(logs_dir, archive_root)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):

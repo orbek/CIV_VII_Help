@@ -1,22 +1,29 @@
-"""`civ7-advisor` command: start the dashboard server."""
+"""`civ7-advisor` command: start the dashboard server, or inspect the log archive."""
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from pathlib import Path
 
 import uvicorn
 
 from civ7_advisor.api.app import create_app
+from civ7_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv[:1] == ["archive"]:
+        return _archive_command(argv[1:])
+
     parser = argparse.ArgumentParser(
         prog="civ7-advisor",
         description="Second-screen turn advisor for Civilization VII. Reads the game's own log "
-                    "files; never writes to them.",
+                    "files; never writes to them. Archives them under ~/.civ7-advisor because the "
+                    "game deletes its logs on launch.",
     )
     parser.add_argument("--logs-dir", type=Path, default=DEFAULT_LOGS_DIR,
                         help=f"Civ VII Logs directory (default: {DEFAULT_LOGS_DIR})")
@@ -24,6 +31,9 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--poll-interval", type=float, default=1.0,
                         help="seconds between checks of the log files (default 1.0)")
+    parser.add_argument("--archive-dir", type=Path, default=DEFAULT_ARCHIVE_ROOT,
+                        help=f"where to mirror the logs (default: {DEFAULT_ARCHIVE_ROOT})")
+    parser.add_argument("--no-archive", action="store_true", help="do not mirror the logs anywhere")
     args = parser.parse_args(argv)
 
     if not args.logs_dir.is_dir():
@@ -34,9 +44,32 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
-    app = create_app(args.logs_dir, args.poll_interval)
-    print(f"Civ VII Advisor -> http://{args.host}:{args.port}  (reading {args.logs_dir})")
+    archive_root = None if args.no_archive else args.archive_dir
+    app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root)
+    where = f"archiving to {archive_root}" if archive_root else "archiving off"
+    print(f"Civ VII Advisor -> http://{args.host}:{args.port}  (reading {args.logs_dir}; {where})")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
+    return 0
+
+
+def _archive_command(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="civ7-advisor archive")
+    parser.add_argument("action", choices=["list"])
+    parser.add_argument("--archive-dir", type=Path, default=DEFAULT_ARCHIVE_ROOT)
+    args = parser.parse_args(argv)
+    root = args.archive_dir
+    if not root.is_dir():
+        print(f"No archive at {root}")
+        return 0
+    for game in sorted(p for p in root.iterdir() if p.is_dir()):
+        for session in sorted(p for p in game.iterdir() if p.is_dir()):
+            manifest = session / MANIFEST
+            files, updated = [], "?"
+            if manifest.is_file():
+                data = json.loads(manifest.read_text())
+                files, updated = data.get("files", []), data.get("updated", "?")
+            n = len(files)
+            print(f"{game.name}  {session.name}  {n} file{'s' if n != 1 else ''}  updated {updated}")
     return 0
 
 

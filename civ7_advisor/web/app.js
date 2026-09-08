@@ -275,7 +275,7 @@
     $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
 
     const feed = el("div", "intel");
-    if (!state.intel.length) feed.append(el("p", "empty", seen ? "No events yet." : INTEL_ORACLE_OFF));
+    if (!state.intel.length && seen) feed.append(el("p", "empty", "No events yet."));
     state.intel.forEach((e) => {
       const row = el("div", `intel-row prov-${e.provenance}`);
       row.append(el("span", "intel-turn", String(e.turn)), el("span", "intel-kind", e.kind),

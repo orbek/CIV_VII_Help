@@ -1,0 +1,2 @@
+# Live fixtures preserve the game's emitted trailing spaces verbatim.
+tests/fixtures/logs_v2/** -whitespace

@@ -78,11 +78,11 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
                     break
                 war_since = i.turn
 
-    fights = [
+    kill_events = [
         e for e in state.events
         if e.type in KILL_EVENTS and e.turn in window and {e.player, e.opponent} == {state.HUMAN, rival.id}
     ]
-    latest = max(fights, key=lambda e: e.turn, default=None)
+    latest = max(kill_events, key=lambda e: e.turn, default=None)
 
     combats = [
         c for c in state.combats
@@ -111,8 +111,8 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
     return RivalThreat(
         player=rival.id, name=rival.name, land_units=land, human_land_units=human_land,
         military_ratio=land / max(human_land, 1), war_score=war_score, war_score_since=war_since,
-        at_war_since=at_war_since, kills=len(fights),
-        losses=sum(e.player == state.HUMAN for e in fights),
+        at_war_since=at_war_since, kills=len(kill_events),
+        losses=sum(e.player == state.HUMAN for e in kill_events),
         latest_fight=(latest.turn, latest.x, latest.y) if latest else None,
         target_turn=target_turn if (cities or units) else None,
         city_tiles_targeted=len(cities), units_targeted=len(units), target_box=box,
@@ -201,8 +201,10 @@ def advise(state: GameState) -> list[Insight]:
                                 "terrain, and bring ranged support before re-engaging." if losing else
                                 "Keep the pressure but do not overextend; a unit lost to a counter-attack "
                                 "costs more than it just won."),
-                why=f"Last {RECENT_TURNS} turns: {r.fights} fights with {r.name} — you lost {r.fights_lost} "
-                    f"unit{'s' if r.fights_lost != 1 else ''}, they lost {r.fights_won}. Latest: turn {turn} at ({x},{y}), your "
+                why=f"Last {RECENT_TURNS} turns: {r.fights} fight"
+                    f"{'s' if r.fights != 1 else ''} with {r.name} — you lost {r.fights_lost} "
+                    f"unit{'s' if r.fights_lost != 1 else ''}, they lost {r.fights_won}. "
+                    f"Latest: turn {turn} at ({x},{y}), your "
                     f"{humanize(mine)} against their {humanize(theirs)}.",
                 **common,
             ))

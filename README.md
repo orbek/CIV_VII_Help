@@ -33,7 +33,8 @@ the point: it shows you where your read of the game was right and where it
 wasn't. The toggle hides Oracle table columns too, not just the cards.
 
 The fifth tab, **Intel**, lists gossip, diplomacy, fights and deals newest
-first. Events between you and a rival are Fair; events between two rivals are
+first. Gossip is Fair because the game shows it to you. For party-bearing
+events, events involving you are Fair and events between other players are
 Oracle.
 
 ## The game deletes its logs
@@ -60,18 +61,19 @@ the evidence, and treat the recommendation as a first draft.
 ## Tuning
 
 Every threshold is a named constant at the top of its advisor module:
-`civ7_advisor/advisors/threat.py`, `victory.py`, `economy.py`. Change a
-number, restart, done.
+`civ7_advisor/advisors/threat.py`, `victory.py`, `economy.py`, and
+`production.py`. Change a number, restart, done.
 
 ## Tests
 
     uv run pytest
 
-The test fixture in `tests/fixtures/logs_82turns/` is a snapshot of a real
-82-turn game, so the whole pipeline is exercised against genuine Civ VII
-output. Try the dashboard against it without the game running:
+The fixtures in `tests/fixtures/logs_82turns/` and `tests/fixtures/logs_v2/`
+are snapshots of real 82-turn and 100-turn sessions, so the whole pipeline is
+exercised against genuine Civ VII output. Try the dashboard against the newer
+fixture without the game running:
 
-    uv run civ7-advisor --logs-dir tests/fixtures/logs_82turns
+    uv run civ7-advisor --logs-dir tests/fixtures/logs_v2 --no-archive
 
 ## Design
 

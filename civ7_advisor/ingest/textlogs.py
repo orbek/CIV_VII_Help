@@ -12,10 +12,8 @@ _ITEM = re.compile(
     r"^, Item ID (\d+), from player (\d+), to player (\d+), type ([^,]+), subType [^,]*, "
     r"value type [^,]*, amount (-?\d+), duration (-?\d+)"
 )
-# Any block header at all. "Incoming" is direct evidence that a complementary kind exists —
-# "Outgoing", at least — but that vocabulary is INFERRED, not observed: no non-Incoming header
-# has been captured live. Task 11's FACTS.md must confirm the real set of block kinds.
-# Until then a header we do not recognise ends the current block rather than continuing it, so
+# Any block header at all. The live fixture contains Incoming, Enacting, and Removing blocks.
+# A header we do not recognise ends the current block rather than continuing it, so
 # its items are dropped instead of being stamped with the previous block's turn. An outgoing
 # `Peace` is an offer, not a concluded peace; reading one as concluded would clear a live war.
 _ANY_BLOCK = re.compile(r"^Turn (\d+),")

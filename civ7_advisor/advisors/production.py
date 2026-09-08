@@ -107,14 +107,17 @@ def advise(state: GameState) -> list[Insight]:
             worst = gaps[0]
             # The queue rows are read at latest_turn, the economy comparison at complete_through_turn,
             # so each clause is dated from the rows it actually came from.
-            queue_turn = max(c.turn for c in building)
+            queue_evidence = ", ".join(
+                f"{humanize(c.item)} as of turn {c.turn}" for c in building
+            )
+            serve = "serves" if len(building) == 1 else "serve"
             out.append(Insight(
                 id="production.mismatch", advisor="production", severity=Severity.ADVISE, provenance=Provenance.FAIR,
                 title=f"Nothing in your queues addresses {worst.label}",
                 recommendation=f"Your worst gap is {worst.label} ({worst.ratio:.0%} of the rival median). "
                                f"{economy.YIELDS[worst.stat][1]}",
-                why=f"You are building {', '.join(humanize(c.item) for c in building)} as of turn "
-                    f"{queue_turn}, which serve {', '.join(sorted(set(served)))}, not {worst.label} — "
+                why=f"You are building {queue_evidence}, which {serve} "
+                    f"{', '.join(sorted(set(served)))}, not {worst.label} — "
                     f"your worst gap on turn {t}.",
                 turn=t, subject_player=state.HUMAN,
             ))
@@ -126,12 +129,17 @@ def advise(state: GameState) -> list[Insight]:
             continue
         cities = qs[r.id]
         mil = [c for c in cities if is_military(c.item)]
+        row_turns = [c.turn for c in cities]
+        dated = (f"Turn {row_turns[0]}" if len(set(row_turns)) == 1
+                 else f"Queue rows from turns {min(row_turns)}–{max(row_turns)}")
+        city_word = "city" if len(cities) == 1 else "cities"
+        verb = "is" if len(mil) == 1 else "are"
         out.append(Insight(
             id=f"production.rival_military.{r.id}", advisor="production", severity=Severity.WARN,
             provenance=Provenance.ORACLE, title=f"{r.name} is building an army",
             recommendation="Treat this as the earliest warning you get — the units are built before the AI "
                            "decides to declare. Match the build, or shore up the shared border now.",
-            why=f"Turn {t}: {len(mil)} of {r.name}'s {len(cities)} cities are producing military units "
+            why=f"{dated}: {len(mil)} of {r.name}'s {len(cities)} {city_word} {verb} producing military units "
                 f"({', '.join(humanize(c.item) for c in mil)}).",
             turn=t, subject_player=r.id,
         ))

@@ -120,6 +120,16 @@ def test_mismatch_silent_when_nothing_is_behind():
     assert "production.mismatch" not in ids(production.advise(s))
 
 
+def test_mismatch_dates_each_queue_row_when_city_updates_are_mixed():
+    s = game_state(turn=20, human_stats={"food": 8.0})
+    s.build_queues = [
+        build_queue_row(20, 0, "LOC_CITY_NAME_A", item="BUILDING_BRICKYARD"),
+        build_queue_row(21, 0, "LOC_CITY_NAME_B", item="BUILDING_SAWPIT"),
+    ]
+    why = ids(production.advise(s))["production.mismatch"].why
+    assert "Brickyard as of turn 20" in why and "Sawpit as of turn 21" in why
+
+
 @pytest.mark.parametrize("items,fires", [
     (["UNIT_WARRIOR", "BUILDING_GRANARY"], True),            # 1/2 = 0.5, at the threshold
     (["UNIT_WARRIOR", "BUILDING_GRANARY", "BUILDING_X"], False),  # 1/3
@@ -138,6 +148,17 @@ def test_rival_military_share_threshold(items, fires):
 
 def test_no_queues_means_no_insights():
     assert production.advise(game_state(turn=20)) == []
+
+
+def test_rival_military_copy_dates_mixed_rows_and_pluralises_one_city():
+    s = game_state(turn=20)
+    s.build_queues = [build_queue_row(19, 1, "LOC_CITY_NAME_A", item="UNIT_WARRIOR")]
+    why = ids(production.advise(s))["production.rival_military.1"].why
+    assert "Turn 19" in why and "1 city is producing" in why
+
+    s.build_queues.append(build_queue_row(20, 1, "LOC_CITY_NAME_B", item="UNIT_ARCHER"))
+    why = ids(production.advise(s))["production.rival_military.1"].why
+    assert "Queue rows from turns 19–20" in why and "2 cities are producing" in why
 
 
 def test_production_is_registered():

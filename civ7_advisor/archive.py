@@ -50,6 +50,8 @@ def archive_logs(logs_dir: Path, dest: Path, names: Iterable[str]) -> list[str]:
         src, dst = logs_dir / name, dest / name
         if not src.is_file():
             continue
+        if dst.is_symlink():
+            raise ValueError(f"archive destination file must not be a symlink: {dst}")
         s = src.stat()
         if dst.exists():
             d = dst.stat()
@@ -59,5 +61,8 @@ def archive_logs(logs_dir: Path, dest: Path, names: Iterable[str]) -> list[str]:
         copied.append(name)
     manifest = {"updated": time.strftime("%Y-%m-%dT%H:%M:%S"), "logs_dir": str(logs_dir),
                 "files": sorted(p.name for p in dest.iterdir() if p.name != MANIFEST)}
-    (dest / MANIFEST).write_text(json.dumps(manifest, indent=2))
+    manifest_path = dest / MANIFEST
+    if manifest_path.is_symlink():
+        raise ValueError(f"archive manifest must not be a symlink: {manifest_path}")
+    manifest_path.write_text(json.dumps(manifest, indent=2))
     return copied

@@ -74,3 +74,17 @@ def test_archive_logs_refuses_a_destination_inside_the_logs_dir(tmp_path: Path):
 def test_archive_logs_refuses_names_that_can_escape_the_destination(tmp_path: Path, name: str):
     with pytest.raises(ValueError, match="file name"):
         archive_logs(tmp_path / "logs", tmp_path / "archive", [name])
+
+
+@pytest.mark.parametrize("name", ["Player_Stats.csv", MANIFEST])
+def test_archive_logs_refuses_destination_symlinks(tmp_path: Path, name: str):
+    logs, dest = tmp_path / "logs", tmp_path / "archive"
+    logs.mkdir()
+    dest.mkdir()
+    (logs / "Player_Stats.csv").write_text("source")
+    outside = tmp_path / "outside"
+    outside.write_text("keep")
+    (dest / name).symlink_to(outside)
+    with pytest.raises(ValueError, match="symlink"):
+        archive_logs(logs, dest, ["Player_Stats.csv"])
+    assert outside.read_text() == "keep"

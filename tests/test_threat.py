@@ -207,6 +207,12 @@ def test_peace_with_a_third_party_is_ignored():
     assert "threat.at_war.1" in ids(threat.advise(s))
 
 
+def test_peace_without_a_recent_war_is_not_announced():
+    s = game_state(turn=20)
+    s.peace_turns = {frozenset({0, 1}): 17}
+    assert "threat.peace.1" not in ids(threat.advise(s))
+
+
 def test_combat_record_counts_only_by_destroyed_side():
     s = game_state(turn=20)
     s.combats = [
@@ -229,6 +235,16 @@ def test_combat_record_warns_when_you_are_losing_and_orients_units_to_you():
     i = ids(threat.advise(s))["threat.combat_record.1"]
     assert i.severity is Severity.WARN and "losing" in i.title
     assert "you lost 2" in i.why and "turn 20 at (62,32), your Warrior against their Spearman" in i.why
+
+
+def test_combat_record_winning_arm_and_human_attacker_orientation():
+    s = game_state(turn=20)
+    s.combats = [
+        combat(20, 0, 1, destroyed="Defender", att_kind="UNIT_ARCHER", def_kind="UNIT_WARRIOR", x=7, y=8),
+    ]
+    i = ids(threat.advise(s))["threat.combat_record.1"]
+    assert i.severity is Severity.INFO and "winning" in i.title
+    assert "1 fight with Rival One" in i.why and "your Archer against their Warrior" in i.why
 
 
 def test_combat_record_ignores_fights_with_third_parties():

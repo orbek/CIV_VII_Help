@@ -1,7 +1,8 @@
 # Civ VII v2 live-log facts
 
-Captured from the preserved turn-100 session on 2026-09-07. Command output is recorded verbatim; conclusions
-immediately below each block are the reader decisions pinned by `tests/test_fixture_v2.py`.
+Captured from the preserved turn-100 session on 2026-09-07. Command output is recorded verbatim except that
+blank trailing values are rendered as `<empty>`; conclusions immediately below each block are the reader
+decisions pinned by `tests/test_fixture_v2.py`.
 
 ## Turn range
 
@@ -140,7 +141,7 @@ SourceType:
 CombatType:
 
 ```text
- 343 
+ 343 <empty>
  307 Melee
  158 Ranged
 ```
@@ -178,7 +179,7 @@ taken by the correspondingly named side. Phase 1a still does not quote damage nu
 ## Deal kinds
 
 ```text
-  16 type 
+  16 type <empty>
    8 type Influence Small Lump (40)
    8 type Peace
 ```

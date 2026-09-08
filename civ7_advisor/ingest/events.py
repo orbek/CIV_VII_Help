@@ -45,12 +45,12 @@ class CombatRow:
     def_str: int
     att_str_mod: int
     def_str_mod: int
-    att_dmg: int          # raw; whether this is damage dealt or taken is pinned by the fixture task
-    def_dmg: int          # raw; see above
+    att_dmg: int          # damage taken by the attacker
+    def_dmg: int          # damage taken by the defender
     destroyed: str | None  # "Attacker" | "Defender" | "District" | "N/A" | None (empty cell); only Attacker/Defender drive win/loss
     heal_amount: int
-    att_health_raw: str   # "(a)b" exactly as logged; order of the two numbers pinned later
-    def_health_raw: str
+    att_health_raw: str   # "(after)before" exactly as logged
+    def_health_raw: str   # "(after)before" exactly as logged
 
     def parties(self) -> frozenset[int]:
         return frozenset({self.att_player, self.def_player})
@@ -134,9 +134,8 @@ def read_gossip(path: Path) -> list[GossipRow]:
 
 
 # --- DiplomacySummary.csv ---------------------------------------------------
-# Seven header names, but the captured live row carried six values, so it is not known
-# whether `Mayhem` or `Visibility` is the one missing. Everything after `Details` is kept
-# raw in `extra`; the fixture task names those cells once the distribution is known.
+# Seven header names, but every captured live row carries six values: a numeric Mayhem cell
+# and no Visibility cell. Everything after `Details` stays raw in `extra` pending a bounded rename.
 
 DIPLOMACY_SUMMARY_HEADER = ["Game Turn", "Initiator", "Recipient", "Action", "Details", "Mayhem", "Visibility"]
 
@@ -148,7 +147,7 @@ class DiplomacySummaryRow:
     recipient: int
     action: str
     details: str
-    extra: tuple[str, ...]   # the cells after Details, unnamed until Task 11 pins them
+    extra: tuple[str, ...]   # captured shape: one numeric Mayhem cell; kept raw for compatibility
 
     def parties(self) -> frozenset[int]:
         return frozenset({self.initiator, self.recipient})

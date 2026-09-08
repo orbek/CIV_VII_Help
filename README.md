@@ -3,7 +3,7 @@
 A second-screen dashboard for single-player Civilization VII. It tails the
 game's own log files (`~/Library/Application Support/Civilization VII/Logs`)
 and, every turn, shows where each rival stands, who is a threat and why, who
-is pursuing and leading each legacy path, how your economy compares, and a
+is emphasizing each strategic category, how broad outputs compare, how your economy compares, and a
 ranked checklist of things to do — each with the evidence behind it.
 
 It never writes to the game. Everything runs locally and offline.
@@ -50,8 +50,8 @@ installed local model, pass it explicitly, for example:
 ## Fair vs Oracle
 
 Advice built only from things you could see in-game is **Fair**. Advice that
-uses the AI's internal logs — its war-intent scores, its target lists, the
-legacy path it has committed to — is **Oracle**, drawn over a faint diagonal
+uses the AI's internal logs — its war-intent scores, its target lists, and its
+strategic focus weights — is **Oracle**, drawn over a faint diagonal
 hatch and badged "intercept". Untick **Oracle** in the header to see whether
 the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
@@ -91,6 +91,14 @@ the evidence, and treat the recommendation as a first draft.
 Every threshold is a named constant at the top of its advisor module:
 `civ7_advisor/advisors/threat.py`, `tactical.py`, `victory.py`, `economy.py`,
 and `production.py`. Change a number, restart, done.
+
+These thresholds are advisor triage policy, not Civ VII rules. Audit their
+distribution across every locally archived session with:
+
+    uv run python scripts/calibrate_advisor.py
+
+The current mechanics review and correction rationale are in
+`docs/research/2026-09-07-v2-grounded-strategy-findings.md`.
 
 ## Tests
 

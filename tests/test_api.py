@@ -56,6 +56,7 @@ def test_index_and_static(client):
     js = client.get("/static/app.js")
     assert js.status_code == 200 and "EventSource" in js.text and "/api/insights" in js.text
     assert client.get("/static/style.css").status_code == 200
+    assert ">Strategy</button>" in page and "not victory score" in page
 
 
 def _array_body(source: str, constant: str) -> str:

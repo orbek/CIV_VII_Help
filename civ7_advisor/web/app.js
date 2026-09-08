@@ -44,7 +44,7 @@
   ];
   const SEVERITY_WORD = { CRITICAL: "Critical.", WARN: "Warning.", ADVISE: "Advice.", INFO: "Note." };
   const NOTHING_AT_ALL = "Nothing to report yet. Start a game, or point the advisor at another log folder.";
-  const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
+  const ORACLE_OFF = "Oracle off — AI intent, targeting and strategic focus are hidden.";
   const INTEL_ORACLE_OFF = "Oracle off — fights, deals and diplomacy between rivals are hidden.";
 
   const state = { data: null, insights: [], intel: [], tactical: null, commentary: null,

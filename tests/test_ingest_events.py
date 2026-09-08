@@ -93,18 +93,23 @@ def test_gossip_treats_an_empty_seventh_cell_as_no_detail(tmp_path: Path):
     assert read_gossip(p)[0].detail is None
 
 
-def test_gossip_rejects_other_widths(tmp_path: Path):
+def test_gossip_rejects_a_row_without_the_type_anchor(tmp_path: Path):
     p = tmp_path / "Game_Gossip.csv"
     p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40\n")
-    with pytest.raises(LogFormatError, match="6 or 7 columns"):
+    with pytest.raises(LogFormatError, match=r"one GOSSIP_\* type"):
         read_gossip(p)
 
 
-def test_gossip_rejects_an_eighth_column(tmp_path: Path):
+def test_gossip_anchors_on_type_when_leader_and_detail_contain_commas(tmp_path: Path):
     p = tmp_path / "Game_Gossip.csv"
-    p.write_text(GOSSIP_HEADER + "5, Confucius, Han, 40, 12, GOSSIP_CITY_FOUNDED, Warrior, spare\n")
-    with pytest.raises(LogFormatError, match="6 or 7 columns"):
-        read_gossip(p)
+    p.write_text(
+        GOSSIP_HEADER
+        + "5, Napoleon, Revolutionary, French Empire, 40, 12, GOSSIP_CITY_FOUNDED, Paris, Tundra\n"
+    )
+    assert read_gossip(p) == [
+        GossipRow(5, "Napoleon, Revolutionary", "French Empire", 40, 12,
+                  "GOSSIP_CITY_FOUNDED", "Paris, Tundra")
+    ]
 
 
 DIPLO_HEADER = "Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility\n"

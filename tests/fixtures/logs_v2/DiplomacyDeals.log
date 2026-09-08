@@ -1,0 +1,26 @@
+Turn 84, Incoming for player 4 and 1
+, Item ID 2, from player 1, to player 4, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Item ID 3, from player 1, to player 4, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 84, Incoming for player 1 and 4
+, Item ID 2, from player 1, to player 4, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Item ID 3, from player 1, to player 4, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 84, Enacting Deal id 1 for player 1 and 4
+, Enacting Deal Item ID 2, from player 1, to player 4, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Enacting Deal Item ID 3, from player 1, to player 4, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 84, Removing expired Deal Items from id 1 for player 1 and 4
+, Removing expired Deal Item ID 3, from player 1, to player 4, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 86, Incoming for player 5 and 6
+, Item ID 2, from player 6, to player 5, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Item ID 3, from player 6, to player 5, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 86, Incoming for player 6 and 5
+, Item ID 2, from player 6, to player 5, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Item ID 3, from player 6, to player 5, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 86, Enacting Deal id 2 for player 6 and 5
+, Enacting Deal Item ID 2, from player 6, to player 5, type Peace, subType -751445167 (), value type , amount 0, duration 1
+, Enacting Deal Item ID 3, from player 6, to player 5, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 86, Removing expired Deal Items from id 2 for player 6 and 5
+, Removing expired Deal Item ID 3, from player 6, to player 5, type Influence Small Lump (40), subType 729277975 (), value type , amount 40, duration 0
+Turn 99, Incoming for player 3 and 2
+, Item ID 2, from player 2, to player 3, type Peace, subType -751445167 (), value type , amount 0, duration 1
+Turn 99, Incoming for player 2 and 3
+, Item ID 2, from player 2, to player 3, type Peace, subType -751445167 (), value type , amount 0, duration 1

@@ -93,8 +93,9 @@ def read_combat_log(path: Path) -> list[CombatRow]:
 
 
 # --- Game_Gossip.csv --------------------------------------------------------
-# Ragged: 6 header names, 6 or 7 data columns (the 7th is a free-text detail). `Player`
-# holds the leader's display NAME, not an id — state/names.py resolves it.
+# Ragged and unquoted: leader names and detail text may contain commas. Anchor each row on
+# its GOSSIP_* type token, then read the fixed civilization/x/y cells immediately before it.
+# `Player` holds the leader's display NAME, not an id — state/names.py resolves it.
 
 GOSSIP_HEADER = ["Game Turn", "Player", "Civilization", "Plot X", "Plot Y", "Type"]
 
@@ -115,12 +116,20 @@ def read_gossip(path: Path) -> list[GossipRow]:
     expect_header(table, GOSSIP_HEADER)
     out: list[GossipRow] = []
     for r in latest_game_segment(table.rows, turn_col=0):
-        if len(r) not in (6, 7):
+        type_cells = [i for i, cell in enumerate(r) if re.fullmatch(r"GOSSIP_[A-Z0-9_]+", cell)]
+        if len(type_cells) != 1 or type_cells[0] < 5:
             raise LogFormatError(
-                f"{path.name}: expected 6 or 7 columns but a row has {len(r)} (row starts {r[:2]})"
+                f"{path.name}: expected one GOSSIP_* type after leader/civilization/plot "
+                f"but a row has {len(type_cells)} (row starts {r[:2]})"
             )
-        detail = r[6] if len(r) == 7 and r[6] else None
-        out.append(GossipRow(int(r[0]), r[1], r[2], int(r[3]), int(r[4]), r[5], detail))
+        type_index = type_cells[0]
+        detail_cells = [cell for cell in r[type_index + 1:] if cell]
+        detail = ", ".join(detail_cells) or None
+        leader = ", ".join(r[1:type_index - 3])
+        out.append(GossipRow(
+            int(r[0]), leader, r[type_index - 3], int(r[type_index - 2]),
+            int(r[type_index - 1]), r[type_index], detail,
+        ))
     return out
 
 

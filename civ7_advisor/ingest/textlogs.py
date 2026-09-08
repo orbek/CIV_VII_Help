@@ -1,4 +1,4 @@
-"""Parsers for the Civ VII logs that are not CSV. Phase 1a: DiplomacyDeals.log."""
+"""Parsers for Civ VII's block- and line-oriented logs."""
 from __future__ import annotations
 
 import re
@@ -7,16 +7,21 @@ from pathlib import Path
 
 from .csvfile import LogFormatError
 
-_BLOCK = re.compile(r"^Turn (\d+), Incoming for player (\d+) and (\d+)")
+_BLOCK = re.compile(r"^Turn (\d+), Enacting Deal id \d+ for player (\d+) and (\d+)")
 _ITEM = re.compile(
-    r"^, Item ID (\d+), from player (\d+), to player (\d+), type ([^,]+), subType [^,]*, "
+    r"^, Enacting Deal Item ID (\d+), from player (\d+), to player (\d+), type ([^,]+), subType [^,]*, "
     r"value type [^,]*, amount (-?\d+), duration (-?\d+)"
 )
 # Any block header at all. The live fixture contains Incoming, Enacting, and Removing blocks.
 # A header we do not recognise ends the current block rather than continuing it, so
-# its items are dropped instead of being stamped with the previous block's turn. An outgoing
-# `Peace` is an offer, not a concluded peace; reading one as concluded would clear a live war.
+# its items are dropped instead of being stamped with the previous block's turn. Incoming
+# `Peace` is only a proposal; only Enacting establishes that the deal was accepted.
 _ANY_BLOCK = re.compile(r"^Turn (\d+),")
+_PLAYER = re.compile(
+    r"Player (\d+): Civilization - ([A-Z0-9_]+) \([^)]*\)\s+"
+    r"Leader - ([A-Z0-9_]+|\(null\)) \([^)]*\), - Level - ([A-Z0-9_]+), "
+    r"SlotStatus - ([A-Za-z]+)"
+)
 
 
 @dataclass(frozen=True)
@@ -40,12 +45,22 @@ class DealItem:
         return player in self.parties()
 
 
+@dataclass(frozen=True)
+class PlayerIdentityRow:
+    turn: int  # GameCore has no game turn; zero keeps the shared loader status contract.
+    player: int
+    civilization: str
+    leader: str | None
+    level: str
+    slot_status: str
+
+
 def read_deals(path: Path) -> list[DealItem]:
-    """Items grouped under `Turn N, Incoming …` headers. Unknown lines are skipped; a header
+    """Items grouped under accepted `Turn N, Enacting Deal …` headers. Unknown lines are skipped; a header
     whose turn is lower than the previous one means a new game, and earlier items are dropped."""
     out: list[DealItem] = []
-    blocks = 0                       # `Incoming` headers parsed in the current game
-    turn: int | None = None          # block currently being read; None outside an `Incoming` one
+    blocks = 0                       # `Enacting` headers parsed in the current game
+    turn: int | None = None          # block currently being read; None outside an `Enacting` one
     last_block_turn: int | None = None  # kept separately so an unrecognised header, which clears
                                         # `turn`, cannot disable new-game detection
     with path.open(encoding="utf-8-sig", errors="replace") as fh:
@@ -79,3 +94,24 @@ def read_deals(path: Path) -> list[DealItem]:
     if blocks and not out:
         raise LogFormatError(f"{path.name}: {blocks} deal block(s) but no item line parsed")
     return out
+
+
+def read_player_identities(path: Path) -> list[PlayerIdentityRow]:
+    """Return the last resolved GameCore identity line for each player.
+
+    GameCore first emits RANDOM placeholders and later the real civilization/leader
+    map. A reload may append another complete map, so later resolved lines win.
+    """
+    latest: dict[int, PlayerIdentityRow] = {}
+    with path.open(encoding="utf-8-sig", errors="replace") as fh:
+        for line in fh:
+            match = _PLAYER.search(line)
+            if not match or match.group(2) == "RANDOM" or match.group(3) == "RANDOM":
+                continue
+            player = int(match.group(1))
+            latest[player] = PlayerIdentityRow(
+                0, player, match.group(2),
+                None if match.group(3) == "(null)" else match.group(3),
+                match.group(4), match.group(5),
+            )
+    return [latest[player] for player in sorted(latest)]

@@ -40,9 +40,10 @@ def turn_payload(state: GameState, insights: list[Insight]) -> dict:
 
 def build_prompt(state: GameState, insights: list[Insight]) -> tuple[str, bool]:
     payload = turn_payload(state, insights)
-    saw_oracle = any(i["provenance"] == "oracle" for i in payload["insights"])
-    saw_oracle = saw_oracle or any(e["provenance"] == "oracle" for e in payload["intel"])
-    saw_oracle = saw_oracle or bool(payload["tactical"]["enemy_units"] or payload["tactical"]["attack_goals"])
+    # v2 always sends the full tactical block, which is explicitly Oracle even
+    # when its current lists happen to be empty. Fair mode must therefore never
+    # reveal this generation.
+    saw_oracle = True
     top_ids = [i.id for i in insights[:EXPLAIN_TOP_N]]
     evidence = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     prompt = (

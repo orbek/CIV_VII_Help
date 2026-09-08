@@ -1,4 +1,4 @@
-"""Report advisor-policy metrics across every archived Civ VII session."""
+"""Report advisor-policy metrics once per archived Civ VII game."""
 from __future__ import annotations
 
 import argparse
@@ -34,12 +34,21 @@ def analyze(root: Path) -> dict:
         "war_intent", "military_ratio", "victory_output_ratio", "yield_ratio",
         "celebration_progress", "rival_military_share", "enemy_city_distance",
     )}
-    sessions = []
-    for path in session_dirs(root):
+    sessions = session_dirs(root)
+    games = {}
+    for path in sessions:
         state = build_state(load_logs(path))
         if not state.turns:
             continue
-        sessions.append(str(path.relative_to(root)))
+        relative = path.relative_to(root)
+        game = relative.parts[0]
+        current = games.get(game)
+        if current is None or state.complete_through_turn >= current[1].complete_through_turn:
+            games[game] = (path, state)
+    selected = []
+    for game, (path, state) in sorted(games.items()):
+        selected.append({"game": game, "session": str(path.relative_to(root)),
+                         "complete_through_turn": state.complete_through_turn})
         for row in threat.summarize(state):
             metrics["military_ratio"].append(row.military_ratio)
             if row.war_score is not None:
@@ -65,7 +74,8 @@ def analyze(root: Path) -> dict:
         "enemy_city_distance": tactical.NEAR_TILES,
     }
     below = {"yield_ratio", "enemy_city_distance"}
-    return {"archive_root": str(root), "session_count": len(sessions), "sessions": sessions,
+    return {"archive_root": str(root), "game_count": len(selected),
+            "scanned_session_count": len(sessions), "games": selected,
             "metrics": {name: _summary(values, thresholds[name], "below" if name in below else "above")
                         for name, values in metrics.items()}}
 

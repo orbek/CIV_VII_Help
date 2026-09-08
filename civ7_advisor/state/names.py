@@ -1,10 +1,4 @@
-"""Resolve the leader names some logs use (Gossip) to player ids.
-
-Rivals are known from AI_Victories owner keys. The human never appears there, but their
-civilization does appear in their own city keys (LOC_CITY_NAME_MAURYA1 -> "maurya"), so a
-gossip row whose Civilization matches is the human. Anything else stays unresolved — an id
-is never guessed.
-"""
+"""Resolve the leader names some logs use (Gossip) to player ids."""
 from __future__ import annotations
 
 import re
@@ -28,14 +22,20 @@ class NameResolver:
         return " ".join(stripped.casefold().split())
 
     @classmethod
-    def build(cls, rival_names: dict[int, str], human_city_keys: list[str]) -> "NameResolver":
-        by_leader = {cls.normalize(name): pid for pid, name in rival_names.items()}
+    def build(cls, rival_names: dict[int, str], human_city_keys: list[str],
+              player_leaders: dict[int, str] | None = None,
+              player_civilizations: dict[int, str] | None = None) -> "NameResolver":
+        by_leader = {cls.normalize(name): pid for pid, name in (player_leaders or {}).items()}
+        for pid, name in rival_names.items():
+            by_leader.setdefault(cls.normalize(name), pid)
         prefixes = Counter()
         for key in human_city_keys:
             m = _CITY_KEY.match(key)
             if m:
                 prefixes[cls.normalize(m.group(1).replace("_", " "))] += 1
-        human_civ = prefixes.most_common(1)[0][0] if prefixes else None
+        exact_human_civ = (player_civilizations or {}).get(HUMAN)
+        human_civ = (cls.normalize(exact_human_civ) if exact_human_civ else
+                     prefixes.most_common(1)[0][0] if prefixes else None)
         return cls(by_leader=by_leader, human_civ=human_civ)
 
     def player_for(self, leader: str, civilization: str | None = None) -> int | None:

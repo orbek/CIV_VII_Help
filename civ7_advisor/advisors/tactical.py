@@ -71,15 +71,20 @@ def own_units(state: GameState) -> list[UnitSighting]:
     for row in state.unit_operations:
         if row.player == state.HUMAN and row.turn <= state.complete_through_turn:
             latest[row.unit_id] = row
-    orders = _orders_by_unit(state)
+    positions = {}
+    for target in state.targets:
+        if (target.turn <= state.complete_through_turn
+                and target.turn >= state.complete_through_turn - FRESH_TURNS
+                and target.owner == state.HUMAN
+                and target.target_type.endswith("_PRIORITY_UNIT")):
+            positions[target.target_id] = target
     out = []
     for unit_id, row in latest.items():
-        order = orders.get((state.HUMAN, unit_id))
-        move = order.move if order is not None and order.turn >= state.complete_through_turn - 10 else None
+        position = positions.get(unit_id)
         out.append(UnitSighting(
-            state.HUMAN, unit_id, row.unit_type, row.turn,
-            move[0] if move else None, move[1] if move else None,
-            humanize(row.operation), order.action if order is not None else None,
+            state.HUMAN, unit_id, row.unit_type, position.turn if position else row.turn,
+            position.x if position else None, position.y if position else None,
+            humanize(position.target_type) if position else humanize(row.operation), None,
         ))
     return sorted(out, key=lambda u: (u.unit_type, u.unit_id))
 
@@ -116,7 +121,7 @@ def snapshot(state: GameState) -> dict:
     rivals = {p.id: p.name for p in state.rivals()}
     enemies = [asdict(u) | {"name": rivals[u.player]} for u in enemy_units(state)]
     own = [asdict(u) for u in own_units(state) if u.x is not None]
-    promotions = [asdict(r) for r in state.commander_promotions
+    promotions = [asdict(r) | {"name": rivals[r.player]} for r in state.commander_promotions
                   if r.turn <= state.complete_through_turn and r.player in rivals]
     return {
         "available": bool(cities or enemies), "turn": state.complete_through_turn,
@@ -137,24 +142,53 @@ def _nearby(state: GameState) -> dict[int, list[tuple[UnitSighting, int]]]:
     return out
 
 
+def _realized_disagreement(state: GameState, counter: str, enemy: str) -> bool:
+    cutoff = state.complete_through_turn - 10
+    rival_ids = {p.id for p in state.rivals()}
+    for combat in state.combats:
+        if combat.turn < cutoff or combat.turn > state.complete_through_turn:
+            continue
+        if combat.att_player == state.HUMAN and combat.def_player in rival_ids:
+            mine, theirs = combat.attacker.kind, combat.defender.kind
+        elif combat.def_player == state.HUMAN and combat.att_player in rival_ids:
+            mine, theirs = combat.defender.kind, combat.attacker.kind
+        else:
+            continue
+        if mine == counter and theirs == enemy and combat.loser() == state.HUMAN:
+            return True
+    return False
+
+
 def _matchup(state: GameState, nearby: dict[int, list[tuple[UnitSighting, int]]]) -> Insight | None:
     enemy_types = Counter(u.unit_type for rows in nearby.values() for u, _ in rows)
     own_types = {u.unit_type for u in own_units(state) if not any(word in u.unit_type for word in NON_COMBAT)}
     matrix = {row.attacker: row.ratings for row in state.unit_efficiency}
     if not enemy_types or not own_types or not matrix:
         return None
-    enemy = enemy_types.most_common(1)[0][0]
-    choices = [(matrix.get(unit, {}).get(enemy), unit) for unit in own_types]
-    choices = [(rating, unit) for rating, unit in choices if rating is not None]
-    if not choices:
+    matches = []
+    for enemy, _ in enemy_types.most_common():
+        choices = [(matrix.get(unit, {}).get(enemy), unit) for unit in own_types]
+        choices = [(rating, unit) for rating, unit in choices if rating is not None]
+        if choices:
+            rating, counter = max(choices)
+            matches.append((enemy, counter, rating, _realized_disagreement(state, counter, enemy)))
+    if not matches:
         return None
-    rating, counter = max(choices)
+    recommendations = "; ".join(f"{humanize(enemy)} → {humanize(counter)}" for enemy, counter, _, _ in matches)
+    ratings = "; ".join(
+        f"{humanize(counter)} vs {humanize(enemy)} {rating / 100:.2f}× same-type baseline"
+        for enemy, counter, rating, _ in matches
+    )
+    disagreed = [(enemy, counter) for enemy, counter, _, mismatch in matches if mismatch]
+    caveat = " These are heuristic ratings, not win odds."
+    if disagreed:
+        pairs = ", ".join(f"{humanize(counter)} vs {humanize(enemy)}" for enemy, counter in disagreed)
+        caveat += f" Recent realized combat disagreed for {pairs}; treat that rating cautiously."
     return Insight(
         id="tactical.matchup", advisor="tactical", severity=Severity.ADVISE,
-        provenance=Provenance.ORACLE, title=f"Best logged matchup: {humanize(counter)}",
-        recommendation=f"Prefer {humanize(counter)} when answering nearby {humanize(enemy)} units.",
-        why=(f"The AI efficiency table rates {humanize(counter)} at {rating:.0f} against "
-             f"{humanize(enemy)} (100 is same-type baseline). This is a heuristic rating, not win odds."),
+        provenance=Provenance.ORACLE, title="Best logged counters for nearby units",
+        recommendation=f"Prefer these available counters where practical: {recommendations}.",
+        why=f"The AI efficiency table rates {ratings}.{caveat}",
         turn=state.complete_through_turn,
     )
 
@@ -200,16 +234,25 @@ def advise(state: GameState) -> list[Insight]:
                 why=f"AI_Operation_Eval recorded Attack Enemy City odds {latest.odds:.2f} on turn {latest.turn}.",
                 turn=t, subject_player=player,
             ))
-    exposed = [r for r in state.tactical if r.turn >= t - FRESH_TURNS and r.turn <= t
-               and r.player in rivals and r.target_owner == state.HUMAN and r.attack is not None]
+    exposed = []
+    for mine in (u for u in own_units(state) if u.x is not None and u.y is not None):
+        distances = [(enemy, hex_distance((mine.x, mine.y), (enemy.x, enemy.y)))
+                     for enemy in enemy_units(state) if enemy.x is not None and enemy.y is not None]
+        if distances:
+            enemy, distance = min(distances, key=lambda pair: pair[1])
+            if distance <= NEAR_TILES:
+                exposed.append((mine, enemy, distance))
     if exposed:
-        types = Counter(humanize(r.target_unit_type or "UNIT") for r in exposed)
+        details = ", ".join(
+            f"your {humanize(mine.unit_type)} at {mine.x}:{mine.y} is {distance} hexes from "
+            f"{rivals[enemy.player]}'s {humanize(enemy.unit_type)}"
+            for mine, enemy, distance in exposed
+        )
         out.append(Insight(
             id="tactical.own_exposed", advisor="tactical", severity=Severity.WARN,
             provenance=Provenance.ORACLE, title="Enemy tactical AI has targets on your units",
             recommendation="Review the exposed units before ending the turn; retreat or screen damaged targets.",
-            why=f"Recent AI attack rows target {sum(types.values())} sightings: "
-                + ", ".join(f"{n} {kind}" for kind, n in types.most_common()) + ".",
+            why=f"Enemy target logs reveal {len(exposed)} exposed unit position(s): {details}.",
             turn=t,
         ))
     matchup = _matchup(state, nearby)

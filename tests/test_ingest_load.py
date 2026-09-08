@@ -75,9 +75,12 @@ NEW_LOG_SAMPLES = [
      "82, 0, 7, Diplomacy Action Enter Stage, "
      "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0\n"),
     ("DiplomacyDeals.log", "deals",
-     "Turn 79, Incoming for player 4 and 7\n"
-     ", Item ID 2, from player 7, to player 4, type Peace, subType -751445167 (), value type , "
+     "Turn 79, Enacting Deal id 1 for player 4 and 7\n"
+     ", Enacting Deal Item ID 2, from player 7, to player 4, type Peace, subType -751445167 (), value type , "
      "amount 0, duration 1\n"),
+    ("GameCore.log", "player_identities",
+     "Player 0: Civilization - CIVILIZATION_AMERICA (1)  Leader - LEADER_BENJAMIN_FRANKLIN (2), "
+     "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human\n"),
 ]
 
 

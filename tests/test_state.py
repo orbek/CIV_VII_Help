@@ -116,3 +116,23 @@ def test_empty_state_has_empty_collections_and_no_resolver():
     s = build_state(RawLogs())
     assert s.build_queues == [] and s.combats == [] and s.deals == [] and s.peace_turns == {}
     assert s.names is None and s.peace_between(0, 1) is None
+
+
+def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
+    from civ7_advisor.ingest.textlogs import PlayerIdentityRow
+
+    raw = RawLogs(
+        stats=[
+            StatsRow(1, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+            for player in (0, 1)
+        ],
+        player_identities=[
+            PlayerIdentityRow(0, 0, "CIVILIZATION_AMERICA", "LEADER_BENJAMIN_FRANKLIN",
+                              "CIVILIZATION_LEVEL_FULL_CIV", "Human"),
+            PlayerIdentityRow(0, 1, "CIVILIZATION_PERSIA", "LEADER_XERXES",
+                              "CIVILIZATION_LEVEL_FULL_CIV", "AI"),
+        ],
+    )
+    state = build_state(raw)
+    assert state.players[1].kind is PlayerKind.RIVAL and state.players[1].name == "Xerxes"
+    assert state.names is not None and state.names.player_for("Benjamin Franklin") == 0

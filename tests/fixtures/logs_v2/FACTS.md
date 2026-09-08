@@ -135,7 +135,7 @@ The 20 most common trailing values are:
 ```
 
 Settles: every row has six values and the sixth is numeric Mayhem; the seventh header, Visibility, is absent.
-The model remains `extra == (mayhem,)` until a bounded rename.
+The typed model exposes `mayhem` and retains an optional `visibility` field for the advertised seven-cell shape.
 
 ## CombatLog value sets
 
@@ -196,8 +196,8 @@ taken by the correspondingly named side. Phase 1a still does not quote damage nu
 
 Settles: actual item kinds are Peace and Influence Small Lump (40); the empty matches are the separate
 `value type ,` phrase, not an empty item kind. Block headers are Incoming, Enacting and Removing; their turns
-are monotonic (84, 86, 99). The current reader deliberately consumes Incoming only; Enacting is a phase-1b
-follow-up because it is the acceptance signal.
+are monotonic (84, 86, 99). The reader consumes Enacting items only because Incoming is a proposal and
+Enacting is the acceptance signal.
 
 ## CityBuildQueue idle vocabulary
 
@@ -214,12 +214,10 @@ Settles: an idle city logs an empty Current Item cell, represented by `""` in `B
 ```
 
 Settles: GameCore logs an exact player/civilization/leader map. It first logs RANDOM placeholders and later
-resolved values, so a future reader must take the last resolved block per player.
+resolved values, so the reader takes the last resolved line per player. The tracked fixture contains the save
+seeds and the eight major-player identity lines needed to pin this behavior without retaining engine chatter.
 
 ## Follow-ups
 
 - This one-Age fixture cannot settle whether human city-key prefixes change across an Age transition or whether
   gossip's Civilization field always follows the current Age civilization.
-- Rename DiplomacySummary `extra` to a Mayhem field in a bounded task.
-- Read Enacting deal blocks as acceptance and use GameCore identity lines for exact player-name resolution in
-  phase 1b.

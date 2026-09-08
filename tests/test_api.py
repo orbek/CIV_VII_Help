@@ -166,8 +166,8 @@ def _v2_dir(tmp_path: Path, fixture_dir: Path) -> Path:
         "81,Unit vs Unit,(10)(10),1,2,Melee,(16)UNIT_WARRIOR,(17)UNIT_WARRIOR,20,20,0,0,30,30,,0,(70)100,(70)100\n"
     )
     (d / "DiplomacyDeals.log").write_text(
-        "Turn 80, Incoming for player 4 and 0\n"
-        ", Item ID 1, from player 4, to player 0, type Peace, subType 1 (), value type , amount 0, duration 1\n"
+        "Turn 80, Enacting Deal id 1 for player 4 and 0\n"
+        ", Enacting Deal Item ID 1, from player 4, to player 0, type Peace, subType 1 (), value type , amount 0, duration 1\n"
     )
     (d / "CityBuildQueue.csv").write_text(
         "Game Turn, Player, City, Production Added, Current Item, Current Production, Production Needed, Overflow\n"
@@ -244,4 +244,5 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     js = client.get("/static/app.js").text
     assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js and "/api/tactical?oracle=" in js
     assert "/api/commentary?oracle=" in js and "textContent" in js
+    assert "commentary-sentence uncited" in js
     assert "(r.military_share || 0) * r.cities.length" in js

@@ -321,6 +321,7 @@ td.behind { color: var(--brass); }
 .turn-plan { padding-left: 1.35rem; }
 .turn-plan li { margin: 0.6rem 0; padding-left: 0.35rem; }
 .uncited { color: var(--muted); }
+.commentary-sentence { white-space: pre-wrap; }
 .commentary-meta { margin-top: 1rem; font-family: var(--figures); font-size: 0.7rem; color: var(--muted); }
 
 /* ---------- the one moment of motion: a turn lands ---------- */

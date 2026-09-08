@@ -135,7 +135,7 @@ def read_gossip(path: Path) -> list[GossipRow]:
 
 # --- DiplomacySummary.csv ---------------------------------------------------
 # Seven header names, but every captured live row carries six values: a numeric Mayhem cell
-# and no Visibility cell. Everything after `Details` stays raw in `extra` pending a bounded rename.
+# and no Visibility cell. Synthetic coverage retains support for the advertised seventh cell.
 
 DIPLOMACY_SUMMARY_HEADER = ["Game Turn", "Initiator", "Recipient", "Action", "Details", "Mayhem", "Visibility"]
 
@@ -147,7 +147,8 @@ class DiplomacySummaryRow:
     recipient: int
     action: str
     details: str
-    extra: tuple[str, ...]   # captured shape: one numeric Mayhem cell; kept raw for compatibility
+    mayhem: float | None
+    visibility: str | None
 
     def parties(self) -> frozenset[int]:
         return frozenset({self.initiator, self.recipient})
@@ -161,9 +162,13 @@ def read_diplomacy_summary(path: Path) -> list[DiplomacySummaryRow]:
     expect_header(table, DIPLOMACY_SUMMARY_HEADER)
     out: list[DiplomacySummaryRow] = []
     for r in latest_game_segment(table.rows, turn_col=0):
-        if len(r) < 5:
+        if not 5 <= len(r) <= 7:
             raise LogFormatError(
-                f"{path.name}: expected at least 5 columns but a row has {len(r)} (row starts {r[:2]})"
+                f"{path.name}: expected 5 to 7 columns but a row has {len(r)} (row starts {r[:2]})"
             )
-        out.append(DiplomacySummaryRow(int(r[0]), int(r[1]), int(r[2]), r[3], r[4], tuple(r[5:])))
+        mayhem = float(r[5]) if len(r) >= 6 and r[5] else None
+        visibility = r[6] or None if len(r) >= 7 else None
+        out.append(DiplomacySummaryRow(
+            int(r[0]), int(r[1]), int(r[2]), r[3], r[4], mayhem, visibility,
+        ))
     return out

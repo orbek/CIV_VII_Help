@@ -1,7 +1,7 @@
 # Civ VII Turn Advisor v2 — Tactical Intelligence, Local LLM, Grounded Strategy
 
 **Date:** 2026-09-07
-**Status:** Draft for review
+**Status:** Implemented on `feature/v2-tactical-intel` (completion audit 2026-09-08)
 **Builds on:** `2026-09-07-civ7-turn-advisor-design.md` (v1, shipped on `main`)
 **Branch:** `feature/v2-tactical-intel`
 **Delivery:** four phases, **one implementation plan per phase**, each
@@ -25,8 +25,8 @@ diplomatic deals including peace, and gossip. v2 uses that data to add:
 3. **A local LLM layer** — a second opinion, plain-language explanation,
    and a drafted turn plan, generated offline by Ollama (phase 2).
 4. **A grounded strategy layer** — recommendation text and thresholds
-   verified against real sources and calibrated across many archived
-   games (phase 3).
+   verified against real sources and calibrated across every available
+   archived game (phase 3).
 
 The product goal is unchanged: **learning**. Every claim carries its
 evidence; everything derived from data the game hides is labelled ORACLE
@@ -51,18 +51,16 @@ binding correction.
 
 ## 3. Data sources
 
-All headers below were captured from the live 82-turn game before the
-directory was wiped. Shapes marked **⚠ verify** could not be pinned before
-the wipe and must be confirmed against the next session's logs as the
-first task of the phase that uses them — exactly as v1 pinned
-`Player_Stats` positions.
+All headers below were first captured from the live 82-turn game before the
+directory was wiped, then reconciled against the preserved turn-100 fixture.
+The fixture facts and synthetic hazard tests now pin the observed shapes.
 
-Player identity is unchanged from v1 (player 0 = human; rivals from
-`AI_Victories`/`Player_Happiness`; others independent). **New:** several
-files identify players by **leader name** rather than id (`Game_Gossip`:
-`Alexander`, `Maurya`). v2 adds a name→id resolver in `state/` built from
-`AI_Victories` owner keys plus `LEADER_NAMES`; unresolvable names are kept
-as text and never guessed to an id.
+Player 0 remains the human. Rivals are identified from the exact final
+player/civilization/leader map in `GameCore.log`, with
+`AI_Victories`/`Player_Happiness` as fallbacks; others are independent.
+Several files identify players by leader name rather than id. The state
+resolver uses that exact map plus known display names; unresolvable names
+are kept as text and never guessed to an id.
 
 **Provenance rule for event logs (new in v2):** an event the human took
 part in — a combat they fought, a deal they signed, a death of their own
@@ -75,21 +73,21 @@ game chose to tell the player.
 | File | Header (verbatim) | Shape notes | Provenance |
 |---|---|---|---|
 | `CityBuildQueue.csv` | `Game Turn, Player, City, Production Added, Current Item, Current Production, Production Needed, Overflow` | One row per (turn, player, city). `City` is a `LOC_CITY_NAME_*` key. Sample: `82, 0, LOC_CITY_NAME_MAURYA1, 15.0, BUILDING_BRICKYARD, 47.5, 55, 0.0`. Turns-to-complete = ceil((Needed − Current) / Added), guard Added ≤ 0. | Human's own rows FAIR; rivals' ORACLE |
-| `CombatLog.csv` | `Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth` | **No space after commas** (unlike every other log). `Location` is `(x)(y)`. `Attacker`/`Defender` are `(unitId)UNIT_TYPE` or `(-1)LOC_DISTRICT_*`. `Destroyed` ∈ {Attacker, Defender, ""}; health cells `(before)after`. Sample: `82,Unit vs Location,(63)(30),0,4,Melee,(14)UNIT_WARRIOR,(-1)LOC_DISTRICT_CITY_CENTER_NAME,20,30,-5,0,34,12,Attacker,0,(0)100,(8)100`. ⚠ verify `SourceType`/`CombatType` value sets. | FAIR when the human is a party (you fought it); ORACLE otherwise |
-| `Game_Gossip.csv` | `Game Turn, Player, Civilization, Plot X, Plot Y, Type` | **Ragged**: 6 header names, 7 data columns (a trailing detail, e.g. `Warrior`). `Player` is a **leader name**, not an id. Sample: `82, Alexander, Maurya, 63, 31, GOSSIP_UNIT_DESTROYED, Warrior`. ⚠ verify column count is always 7 and the `Type` value set. | **FAIR** — gossip is what the game chooses to tell the player |
-| `DiplomacySummary.csv` | `Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility` | Sample: `82, 0, 7, Diplomacy Action Enter Stage, Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0`. `Details` is free text. ⚠ verify the `Visibility` value set — if it encodes whether the human could see the action, provenance is read **from this column** rather than assumed. | From `Visibility` if usable; else ORACLE |
-| `DiplomacyDeals.log` | not CSV | Blocks: a header line `Turn 79, Incoming for player 4 and 7` followed by item lines `, Item ID 2, from player 7, to player 4, type Peace, subType …, value type , amount 0, duration 1`. Item `type` values seen: `Peace`, `Influence Large Lump (100)`. Custom line parser; block turn applies to its items. | FAIR when the human is a party; ORACLE otherwise |
+| `CombatLog.csv` | `Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth` | **No space after commas** (unlike every other log). `Location` is `(x)(y)`. Observed source types are heal, unit, army, and location; combat types are melee, ranged, or empty for healing. `Destroyed` is Attacker, Defender, District, or N/A; health cells are `(after)before`. | FAIR when the human is a party (you fought it); ORACLE otherwise |
+| `Game_Gossip.csv` | `Game Turn, Player, Civilization, Plot X, Plot Y, Type` | **Ragged and unquoted**: 7–14 cells because leader names and detail may contain commas. The reader anchors on the unique `GOSSIP_*` token; all 48 observed types and widths are pinned. `Player` is a leader name, not an id. | **FAIR** — gossip is what the game chooses to tell the player |
+| `DiplomacySummary.csv` | `Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility` | Every observed row has six cells: the sixth is numeric Mayhem and the advertised Visibility cell is absent. Human-party events are FAIR; rival-only events are ORACLE. | FAIR when the human is a party; ORACLE otherwise |
+| `DiplomacyDeals.log` | not CSV | Incoming blocks are proposals. Accepted items occur only under `Turn N, Enacting Deal id …` with `Enacting Deal Item ID …`; the parser deliberately consumes only those blocks. Observed item kinds are `Peace` and `Influence Small Lump (40)`. | FAIR when the human is a party; ORACLE otherwise |
 
 ### 3.2 Phase 1b — tactical layer (8 files)
 
 | File | Header (verbatim) | Shape notes | Provenance |
 |---|---|---|---|
-| `UnitOperations.log` | `Game Turn, Mode, Player, Unit, Operation` | CSV-like; turn is **zero-padded** (`082`). Includes **player 0**. `Unit` is `UNIT_TYPE (unitId)`. Sample: `082, Adding, 0, UNIT_WARRIOR (1179656), UNITOPERATION_MOVE_TO (1477390184)`. ⚠ verify `Mode` value set (only `Adding` observed). Builds the human's unit roster: id → type. | FAIR (your own units) |
+| `UnitOperations.log` | `Game Turn, Mode, Player, Unit, Operation` | CSV-like; turn is **zero-padded** (`082`). Includes **player 0**. `Unit` is `UNIT_TYPE (unitId)`. Observed modes are `Adding` and `Can't Start`. Builds the human's unit roster: id → type. | FAIR (your own units) |
 | `AI_Tactical.csv` | `Game Turn, Player, Category, Target Type, Target Info, Unit Info, Extra` | Players 1–31 only, **never player 0**. `Unit Info` = `UNIT_TYPE (unitId)`; `Extra` embeds coordinates in free text: `Move To: 65 6`, `Fortify: 54 24`. Sample: `81, 30, Defend Camp, , , UNIT_ARCHER (1376263), Fortify: 54 24`. This is the **enemy unit map**. | ORACLE |
 | `AI_Operation.csv` | `Game Turn, Player, Operation, Notes, Team, Team Notes, Team Members, Terrain` | Free-text-heavy; coordinates as `x:y` inside `Goal 71:14`, `At 71:15`, `Move 72:14`; named target units: `Target 0, Owner 1, UNIT_SPEARMAN, 71:14`. | ORACLE |
 | `AI_CombatPlanning.csv` | `Game Turn, Player, Category, Info` | `Category` ∈ {Initialize Plan, Order, …}; `Order` rows: `Unit 1245192, Move 72:14, Pillage attack`. The AI's **issued** orders. | ORACLE |
-| `AI_Operation_Eval.csv` | `Game Turn, Player, Operation, Enemy, Value, Odds` | Sample: `81, 25, 6, Independent Raid, 30.0, 0.82`. ⚠ verify column semantics — the sample suggests `Operation` is an id and `Enemy` a name, or the columns are shifted. Pin before use. `Odds` ∈ [0,1] is **the AI's own success estimate**. | ORACLE |
-| `AI_UnitEfficiency.csv` | first cell empty, then 89 unit type names | 89 rows × 89 value columns; each unit type appears once (written once per game, not per turn). Values observed 0.00–500.00 (a game-internal scale, not damage). ⚠ verify row order == column order and the value semantics before any matchup claim; **calibrate against realized `CombatLog` damage** before quoting. | ORACLE (the game's internal model) |
+| `AI_Operation_Eval.csv` | `Game Turn, Player, Operation, Enemy, Value, Odds` | `Operation` is a numeric operation id; `Enemy` is the operation kind such as `Attack Enemy City`; Odds ∈ [0,1] is the AI's own heuristic. | ORACLE |
+| `AI_UnitEfficiency.csv` | first cell empty, then 89 unit type names | A square 89×89 attacker-row/defender-column matrix. Same-type diagonal values are 100; observed values span 0–500. Values are bounded as heuristic ratings, not win probabilities, and recent realized combat can add a disagreement caveat. | ORACLE (the game's internal model) |
 | `AI_MayhemTracker.csv` | `Game Turn, Event, Attacker, Unit, Defender, Unit, Mayhem, Current Total` | Two columns named `Unit` (attacker's, defender's). Includes player 0. Sample: `82, Death, 4, DISTRICT_CITY_CENTER, 0, UNIT_WARRIOR, 1.0, 430.0`. | FAIR when the human is a party |
 | `AI_Commander_Promotions.csv` | `Game Turn, Player, Commander, Num Promotions, Discipline, Promotion` | Sample: `73, 2, 1638411, 1, LOC_DISCIPLINE_MANEUVER_NAME, LOC_PROMOTION_ARMY_HARASSMENT_NAME`. Real combat modifiers for rival commanders. | ORACLE |
 
@@ -136,7 +134,7 @@ Not available for the human's side: terrain, health except from a recent
 computes a specific fight from first principles**. It reports three
 sourced quantities and labels each: the AI's own odds for an operation
 (`AI_Operation_Eval`), the game's matchup rating between two unit types
-(`AI_UnitEfficiency`, calibrated against realized damage), and the
+(`AI_UnitEfficiency`, cross-checked against recent realized combat), and the
 modifiers a rival commander carries. Wording is bounded to what the source
 supports: "the game rates an Archer at 2.1× a Warrior against his
 Spearman", never "you win 34–12".
@@ -173,7 +171,7 @@ FAIR/ORACLE provenance, non-empty `title`/`recommendation`/`why`).
   ("your Warrior against their Spearman at (62,32)"). Damage figures are not
   quoted until the fixture task pins the log's damage-direction semantics.
   Complements, and does not replace, the Historian-based kill count.
-- **Peace detection** — a `DiplomacyDeals` `Peace` item between the human
+- **Peace detection** — an enacted `DiplomacyDeals` `Peace` item between the human
   and a rival after the last executed `DECLARE_WAR` clears
   `at_war_since`. Closes the parked v1 finding; the "War declared" column
   gains a "peace turn N" state.
@@ -203,10 +201,10 @@ visible diplomacy are game-sanctioned FAIR data.
   the player's own unit, because the tile was recovered from the enemy's
   targeting log, which the player cannot see.
 
-**Coordinate layer** (`state/geo.py`): Civ VII uses an offset hex grid;
-distance is axial hex distance after offset→axial conversion. ⚠ verify
-the grid orientation empirically against `Historian` kill coordinates and
-`CombatLog` locations before trusting any distance.
+**Coordinate layer** (`state/geo.py`): Civ VII uses an odd-row offset hex
+grid; distance is axial hex distance after offset→axial conversion. The
+orientation is pinned against adjacent move/attack pairs in the preserved
+turn-100 fixture.
 
 **Map view**: a fifth panel in the Intel tab rendering known tiles
 (human city tiles, human units with known positions, rival units) on a
@@ -225,7 +223,7 @@ simple SVG hex grid — no terrain, no fog, no art. Positions only.
   summary) plus the FAIR/ORACLE label on every item. **The model never
   receives raw logs and never computes numbers**; every figure it may
   cite is already in the deterministic layer's output.
-- **Outputs**, all cached per complete turn, generated in a background
+- **Outputs**, cached by complete turn and prompt hash, generated in a background
   worker after `Store.rebuild()` so the board never waits:
   1. `second_opinion` — the model's independent read of the turn, shown
      beside the rules verdict so agreement and disagreement are visible.
@@ -262,17 +260,21 @@ simple SVG hex grid — no terrain, no fog, no art. Positions only.
 Unchanged layering: `ingest/` → `state/` → `advisors/` → `store.py` →
 `api/` → `web/`. Additions:
 
-- `ingest/`: 13 new readers (5 in 1a, 8 in 1b); `LOG_FILES` grows
+- `ingest/`: 14 new readers (5 in 1a, 8 in 1b, plus the GameCore identity
+  reader closed in the completion audit); `LOG_FILES` grows
   accordingly; `load_logs` isolation unchanged. `csvfile.read_table` is
   **not** changed for `CombatLog`'s no-space commas: `read_table` already
   strips every cell, so the existing reader path handles both spacings;
-  the `CombatLog` reader's own tests pin that. The two non-CSV inputs
-  (`DiplomacyDeals.log`, `UnitOperations.log`) get dedicated line parsers
-  in `ingest/textlogs.py` rather than being forced through `read_table`.
+  the `CombatLog` reader's own tests pin that. `DiplomacyDeals.log` gets a
+  dedicated block parser in `ingest/textlogs.py`; the CSV-shaped
+  `UnitOperations.log` is parsed with the other tactical diagnostic streams
+  in `ingest/tactical.py`.
 - `state/`: `GameState` gains `build_queues`, `combats`, `gossip`,
-  `diplomacy`, `deals`, `peace_turns`; in 1b `units` (human roster),
-  `enemy_units`, `orders`, `odds`, `efficiency`, `commander_promotions`,
-  plus `geo.py`. A `names.py` resolver for leader-name → id.
+  `diplomacy_events`, `deals`, `peace_turns`; in 1b it carries the raw
+  `unit_operations`, `tactical`, `operations`, `combat_orders`,
+  `operation_evals`, `unit_efficiency`, `mayhem`, and
+  `commander_promotions` rows, with derived tactical views owned by the
+  advisor, plus `geo.py`. A `names.py` resolver maps leader name → id.
 - `advisors/`: `production.py`, `intel.py` (1a); `tactical.py` (1b).
   `ADVISORS`, `ADVISOR_ORDER` and the `app.js` tab set are pinned by the
   existing consistency test — extending it is part of each phase.
@@ -299,33 +301,33 @@ starts — advice resumes once a game is loaded."
 
 ### 6.3 The archiver
 Because the game deletes its logs, v2 mirrors them. On every rebuild,
-`Store` copies each readable log to
-`~/.civ7-advisor/archive/<game-key>/`, where `game-key` is derived from
-the first `Player_Stats` row's turn-1 fingerprint (players present and
-their turn-1 values) so a relaunch of the *same* save continues the same
-archive. Writes go **only** to that directory; the Civ VII tree is never
-touched. Archiving is on by default, `--no-archive` disables it, and the
-CLI gains `civ7-advisor archive list`. Phases 2 and 3 read from the
-archive for history and calibration.
+`Store` copies every `.csv` and `.log` file to
+`~/.civ7-advisor/archive/<game-key>/<session>/`. `game-key` comes from the
+last `Random Seeds: Game …, Map …` line in `GameCore.log`, which is stable
+for a save; `session` keeps each lifetime of the game's Logs directory
+separate so a later reload cannot overwrite earlier history. Unknown seeds
+use `unknown-game`. Writes go **only** below that archive root; the Civ VII
+tree is never touched. Archiving is on by default, `--no-archive` disables
+it, and the CLI gains `civ7-advisor archive list`. Phase 3 selects the most
+advanced session once per game for calibration.
 
 ### 6.4 LLM failures
 Ollama down, model missing, timeout, malformed output: the commentary
 panel shows one sentence saying which, the rest of the board is
-unaffected, and the failure is logged once per turn (not per poll).
+unaffected, and the failure is logged once per distinct evidence prompt
+(not per poll).
 
 ## 7. Testing
 
-- **Fixture:** `tests/fixtures/logs_v2/` — a snapshot of the current
-  session's logs taken once it has run long enough to contain combat and
-  at least one deal (target ≥ 40 turns). Snapshotting is the **first
-  task of phase 1a** and the ⚠ items in §3 are pinned in that task.
-  The v1 fixture stays for v1 tests.
+- **Fixture:** `tests/fixtures/logs_v2/` — the preserved turn-100 session,
+  including combat, accepted deals, tactical streams, and a compact
+  `GameCore.log` identity excerpt. The v1 fixture stays for v1 tests.
 - Each reader: header/shape test, row-count and spot-value tests against
   the fixture, and a synthetic test for every hazard named in §3
   (no-space commas, ragged gossip, zero-padded turns, leader-name
   resolution, `DiplomacyDeals` block parsing).
-- `geo.py`: hex distance pinned against known adjacent kill/combat
-  coordinates from the fixture.
+- `geo.py`: offset conversion and hex distance pinned against known
+  adjacent move/attack coordinates from the fixture.
 - Advisors: hand-built states at each threshold boundary (both sides), as
   in v1; fixture-based expectations recorded once the fixture exists.
 - Oracle gating: the existing column-set pin is extended to the Intel
@@ -410,7 +412,7 @@ Tier: **1** = wire (phase), **2** = parse when an insight needs it,
 | Renderer.log | 14 KB | 3 | |
 | AudioContext.log | 12 KB | 3 | |
 | Game_RandomEvents.csv | 11 KB | 2 | Volcanoes/floods with coords and damage |
-| GameCore.log | 10 KB | 3 | |
+| GameCore.log | 10 KB | 1 (archive/1b) | Save seeds plus exact player/civilization/leader identity map |
 | MemoryUsage.log | 7 KB | 3 | |
 | AI_CityStrategy.csv | 7 KB | 2 | Per-city AI strategy weights |
 | AI_Victories.csv | 6 KB | 1 (v1) | |

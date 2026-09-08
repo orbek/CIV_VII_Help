@@ -12,6 +12,7 @@ def test_every_log_in_the_v2_fixture_parses(fixture_v2_dir):
     assert raw.build_queue and raw.combat and raw.gossip and raw.diplomacy_summary and raw.deals
     assert raw.unit_operations and raw.tactical and raw.operations and raw.combat_orders
     assert raw.operation_evals and raw.unit_efficiency and raw.mayhem and raw.commander_promotions
+    assert len(raw.player_identities) == 8
 
 
 def test_feed_production_and_advice_are_populated(fixture_v2_state):
@@ -37,6 +38,12 @@ def test_human_gossip_resolves_to_player_zero(fixture_v2_state):
     assert human_rows, "no gossip about the human resolved — check FACTS.md civ prefix vs Gossip Civilization"
 
 
+def test_comma_bearing_napoleon_gossip_resolves_from_gamecore(fixture_v2_state):
+    names = fixture_v2_state.names
+    assert names is not None and names.player_for("Napoleon, Revolutionary", "French Empire") == 2
+    assert fixture_v2_state.players[2].name == "Napoleon, Revolutionary"
+
+
 def test_gossip_rows_are_anchored_across_every_observed_width(fixture_v2_dir):
     rows = read_gossip(fixture_v2_dir / "Game_Gossip.csv")
     assert len(rows) == 2703
@@ -48,8 +55,8 @@ def test_gossip_rows_are_anchored_across_every_observed_width(fixture_v2_dir):
 
 def test_diplomacy_summary_has_one_numeric_mayhem_cell(fixture_v2_dir):
     rows = read_diplomacy_summary(fixture_v2_dir / "DiplomacySummary.csv")
-    assert {len(r.extra) for r in rows} == {1}
-    assert all(float(r.extra[0]) >= 0 for r in rows)
+    assert all(r.mayhem is not None and r.mayhem >= 0 for r in rows)
+    assert all(r.visibility is None for r in rows)
 
 
 def test_combat_value_sets_and_destroyed_health_order_are_pinned(fixture_v2_dir):

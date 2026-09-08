@@ -113,19 +113,19 @@ def test_gossip_anchors_on_type_when_leader_and_detail_contain_commas(tmp_path: 
 
 
 DIPLO_HEADER = "Game Turn, Initiator, Recipient, Action, Details, Mayhem, Visibility\n"
-# Captured live 2026-09-07: seven header names, six values. The trailing cells are kept raw.
+# Captured live 2026-09-07: seven header names, six values; the sixth is Mayhem.
 LIVE_DIPLO = ("82, 0, 7, Diplomacy Action Enter Stage, "
               "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE,  426.0\n")
 
 
-def test_diplomacy_summary_keeps_trailing_cells_raw(tmp_path: Path):
+def test_diplomacy_summary_reads_observed_mayhem_cell(tmp_path: Path):
     p = tmp_path / "DiplomacySummary.csv"
     p.write_text(DIPLO_HEADER + LIVE_DIPLO)
     [row] = read_diplomacy_summary(p)
     assert (row.turn, row.initiator, row.recipient) == (82, 0, 7)
     assert row.action == "Diplomacy Action Enter Stage"
     assert row.details == "Cultural Exchange Entering Stage DIPLOMACY_CULTURAL_EXCHANGE_COMPLETE"
-    assert row.extra == ("426.0",)
+    assert row.mayhem == 426.0 and row.visibility is None
     assert row.parties() == frozenset({0, 7}) and row.involves(0) and not row.involves(3)
 
 
@@ -133,17 +133,18 @@ def test_diplomacy_summary_seven_values_also_parse(tmp_path: Path):
     p = tmp_path / "DiplomacySummary.csv"
     p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce, Denounced publicly, 12.5, VISIBLE\n")
     [row] = read_diplomacy_summary(p)
-    assert row.extra == ("12.5", "VISIBLE")
+    assert row.mayhem == 12.5 and row.visibility == "VISIBLE"
 
 
-def test_diplomacy_summary_five_values_leave_extra_empty(tmp_path: Path):
+def test_diplomacy_summary_five_values_leave_optional_fields_empty(tmp_path: Path):
     p = tmp_path / "DiplomacySummary.csv"
     p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce, Denounced publicly\n")
-    assert read_diplomacy_summary(p)[0].extra == ()
+    row = read_diplomacy_summary(p)[0]
+    assert row.mayhem is None and row.visibility is None
 
 
 def test_diplomacy_summary_needs_at_least_the_five_named_cells(tmp_path: Path):
     p = tmp_path / "DiplomacySummary.csv"
     p.write_text(DIPLO_HEADER + "10, 4, 1, Denounce\n")
-    with pytest.raises(LogFormatError, match="at least 5 columns"):
+    with pytest.raises(LogFormatError, match="5 to 7 columns"):
         read_diplomacy_summary(p)

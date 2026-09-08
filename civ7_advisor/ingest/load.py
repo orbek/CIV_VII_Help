@@ -25,7 +25,7 @@ from .readers import (
 )
 from .events import CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
 from .production import BuildQueueRow, read_build_queue
-from .textlogs import DealItem, read_deals
+from .textlogs import DealItem, PlayerIdentityRow, read_deals, read_player_identities
 from .tactical import (
     CombatOrderRow,
     CommanderPromotionRow,
@@ -79,6 +79,7 @@ class RawLogs:
     unit_efficiency: list[UnitEfficiencyRow] = field(default_factory=list)
     mayhem: list[MayhemRow] = field(default_factory=list)
     commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
+    player_identities: list[PlayerIdentityRow] = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
@@ -104,6 +105,7 @@ READERS: list[tuple[str, str, Callable[[Path], list]]] = [
     ("AI_UnitEfficiency.csv", "unit_efficiency", read_unit_efficiency),
     ("AI_MayhemTracker.csv", "mayhem", read_mayhem),
     ("AI_Commander_Promotions.csv", "commander_promotions", read_commander_promotions),
+    ("GameCore.log", "player_identities", read_player_identities),
 ]
 LOG_FILES = [name for name, _, _ in READERS]
 

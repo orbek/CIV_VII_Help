@@ -97,8 +97,9 @@ def gossip_row(turn: int, leader: str, civilization: str, type: str = "GOSSIP_UN
 
 
 def diplo_event(turn: int, initiator: int, recipient: int, action: str = "Denounce",
-                details: str = "", extra: tuple[str, ...] = ()) -> DiplomacySummaryRow:
-    return DiplomacySummaryRow(turn, initiator, recipient, action, details, extra)
+                details: str = "", mayhem: float | None = None,
+                visibility: str | None = None) -> DiplomacySummaryRow:
+    return DiplomacySummaryRow(turn, initiator, recipient, action, details, mayhem, visibility)
 
 
 def deal(turn: int, from_player: int, to_player: int, kind: str = "Peace") -> DealItem:

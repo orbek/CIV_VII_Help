@@ -8,7 +8,8 @@
   };
   const fmt = (v, digits = 1) => (v === null || v === undefined) ? "—" : Number(v).toFixed(digits);
   const dim = (text = "—") => ({ text, cls: "dim" });
-  const itemName = (key) => key.replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER)_/, "").replace(/_/g, " ")
+  const itemName = (key) => key.replace(/^LOC_/, "").replace(/_NAME$/, "")
+    .replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER|DISCIPLINE|PROMOTION)_/, "").replace(/_/g, " ")
     .toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
   const ordinal = (n) => {
     const tens = n % 100, ones = n % 10;
@@ -305,7 +306,7 @@
     const plots = [...data.city_tiles, ...data.human_units.filter((u) => u.x !== null),
       ...data.enemy_units, ...data.attack_goals];
     if (!plots.length) { host.replaceChildren(el("p", "empty", "No tactical positions are available yet.")); return; }
-    const project = (p) => ({ x: (p.x + p.y / 2) * 42, y: p.y * 36 });
+    const project = (p) => ({ x: (p.x + (p.y & 1) / 2) * 42, y: p.y * 36 });
     const points = plots.map(project);
     const minX = Math.min(...points.map((p) => p.x)) - 24, maxX = Math.max(...points.map((p) => p.x)) + 24;
     const minY = Math.min(...points.map((p) => p.y)) - 24, maxY = Math.max(...points.map((p) => p.y)) + 24;
@@ -324,8 +325,11 @@
     data.human_units.forEach((p) => mark("human", p, `${itemName(p.unit_type)} — last planned ${p.x}:${p.y}`));
     data.enemy_units.forEach((p) => mark("enemy", p, `${p.name} ${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}`));
     data.attack_goals.forEach((p) => mark("goal", p, `${p.name} attack goal ${p.x}:${p.y}`));
-    const legend = el("p", "map-legend", "Squares: your city tiles · Brass: your units · Red: rival plans · Rings: attack goals");
-    host.replaceChildren(svg, legend);
+    const legend = el("p", "map-legend", "Squares: your city tiles · Brass: your targeted units · Red: rival plans · Rings: attack goals");
+    const promotions = data.commander_promotions.length ? table(
+      [{ label: "Rival commander" }, { label: "Discipline" }, { label: "Promotion" }],
+      data.commander_promotions.map((p) => [`${p.name} · ${p.commander}`, itemName(p.discipline), itemName(p.promotion)])) : null;
+    host.replaceChildren(svg, legend, ...(promotions ? [promotions] : []));
   }
 
   function renderCommentary() {
@@ -346,7 +350,13 @@
     status.replaceChildren();
     const c = result.commentary, valid = state.insights.map((i) => `[${i.id}]`);
     const paragraph = (text) => {
-      const p = el("p", valid.some((id) => text.includes(id)) ? null : "uncited", text);
+      const p = el("p"), pieces = text.split(/([.!?]+(?:\s+|$))/);
+      for (let i = 0; i < pieces.length; i += 2) {
+        const sentence = pieces[i] + (pieces[i + 1] || "");
+        if (!sentence) continue;
+        p.append(el("span", valid.some((id) => sentence.includes(id))
+          ? "commentary-sentence" : "commentary-sentence uncited", sentence));
+      }
       return p;
     };
     opinion.replaceChildren(paragraph(c.second_opinion));

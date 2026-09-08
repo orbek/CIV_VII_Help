@@ -137,8 +137,8 @@ def advise(state: GameState) -> list[Insight]:
         out.append(Insight(
             id=f"production.rival_military.{r.id}", advisor="production", severity=Severity.WARN,
             provenance=Provenance.ORACLE, title=f"{r.name} is building an army",
-            recommendation="Treat this as the earliest warning you get — the units are built before the AI "
-                           "decides to declare. Match the build, or shore up the shared border now.",
+            recommendation="Treat this as a leading signal, not proof of war. Compare it with targeting and "
+                           "war intent; match the build or reinforce the border if those signals agree.",
             why=f"{dated}: {len(mil)} of {r.name}'s {len(cities)} {city_word} {verb} producing military units "
                 f"({', '.join(humanize(c.item) for c in mil)}).",
             turn=t, subject_player=r.id,

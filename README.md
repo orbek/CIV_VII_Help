@@ -78,13 +78,13 @@ the game's own folders.
 
 The reading of the logs is verified: every number quoted in an insight's
 evidence — unit counts, yields, scores, turn numbers — is taken straight from
-the game's own files, and the parsers are tested against a snapshot of a real
-82-turn game. The advice built on top of those numbers is not. The
-recommendations that name particular buildings and mechanics, and the
-threshold values that decide when an insight fires, come from the model's
-understanding of Civ VII rather than from checked sources; a research pass to
-confirm them against current game mechanics is queued as separate work. Trust
-the evidence, and treat the recommendation as a first draft.
+the game's own files, and both real-session fixtures exercise the parsers.
+Mechanics-bearing recommendations were reviewed against the current official
+game guide; stale Legacy Path and fixed build-order claims were removed. The
+remaining numeric cutoffs are explicitly advisor triage policy, not game
+rules. Only two archived games exist today, so those cutoffs have not been
+retuned; treat recommendations as evidence-backed prompts for judgment rather
+than guaranteed optimal moves.
 
 ## Tuning
 
@@ -93,7 +93,8 @@ Every threshold is a named constant at the top of its advisor module:
 and `production.py`. Change a number, restart, done.
 
 These thresholds are advisor triage policy, not Civ VII rules. Audit their
-distribution across every locally archived session with:
+distribution once per locally archived game (using its most advanced session)
+with:
 
     uv run python scripts/calibrate_advisor.py
 
@@ -113,4 +114,5 @@ fixture without the game running:
 
 ## Design
 
-See `docs/superpowers/specs/2026-09-07-civ7-turn-advisor-design.md`.
+See `docs/superpowers/specs/2026-09-07-civ7-turn-advisor-design.md` for v1 and
+`docs/superpowers/specs/2026-09-07-civ7-advisor-v2-design.md` for this feature.

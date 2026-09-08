@@ -24,9 +24,7 @@
      tests/test_api.py pins both lists so an AI-internal column cannot drift into
      the fair set. Each label says exactly what its number is: `kills` counts the
      dead on both sides, so the rival's share is "Their losses" = kills - losses;
-     and at_war_since only sees declarations inside the advisor's recent window,
-     so the column reports the declaration ("War declared") and never asserts
-     peace. */
+     and at_war_since only sees declarations inside the advisor's recent window. */
   const THREATS_FAIR_COLUMNS = [
     { label: "Rival", cell: (t) => t.name },
     { label: "Land units", num: true, cell: (t) => t.land_units },
@@ -37,22 +35,24 @@
   const THREATS_ORACLE_COLUMNS = [
     { label: "War score", num: true, cell: (t) => t.war_score === null ? dim() : fmt(t.war_score, 0) },
     { label: "Since turn", num: true, cell: (t) => t.war_score_since === null ? dim() : t.war_score_since },
-    { label: "War declared", cell: (t) => t.at_war_since === null ? dim() : `turn ${t.at_war_since}` },
+    { label: "War declared", cell: (t) => t.at_war_since !== null
+        ? `turn ${t.at_war_since}` : t.peace_since !== null ? `peace turn ${t.peace_since}` : dim() },
     { label: "Targeting", cell: (t) => (t.city_tiles_targeted || t.units_targeted)
         ? `${t.city_tiles_targeted} city tiles, ${t.units_targeted} units` : dim() },
   ];
   const SEVERITY_WORD = { CRITICAL: "Critical.", WARN: "Warning.", ADVISE: "Advice.", INFO: "Note." };
   const NOTHING_AT_ALL = "Nothing to report yet. Start a game, or point the advisor at another log folder.";
   const ORACLE_OFF = "Oracle off — AI intent, targeting and legacy paths are hidden.";
+  const INTEL_ORACLE_OFF = "Oracle off — fights, deals and diplomacy between rivals are hidden.";
 
-  const state = { data: null, insights: [], showOracle: true, shownTurn: null, viaEvent: false };
+  const state = { data: null, insights: [], intel: [], showOracle: true, shownTurn: null, viaEvent: false };
 
   try { state.showOracle = localStorage.getItem("civ7.oracle") !== "off"; } catch (_) { /* private mode */ }
   $("#oracle").checked = state.showOracle;
   $("#oracle").addEventListener("change", (e) => {
     state.showOracle = e.target.checked;
     try { localStorage.setItem("civ7.oracle", state.showOracle ? "on" : "off"); } catch (_) { /* ignore */ }
-    render();
+    refresh();
   });
 
   const tabs = Array.from(document.querySelectorAll(".tabs button"));
@@ -78,10 +78,14 @@
   });
 
   async function refresh() {
-    const [s, i] = await Promise.all([fetch("/api/state"), fetch("/api/insights")]);
-    if (!s.ok || !i.ok) return;
+    const o = state.showOracle ? 1 : 0;
+    const [s, i, n] = await Promise.all([
+      fetch(`/api/state?oracle=${o}`), fetch("/api/insights"), fetch(`/api/intel?oracle=${o}`),
+    ]);
+    if (!s.ok || !i.ok || !n.ok) return;
     state.data = await s.json();
     state.insights = await i.json();
+    state.intel = await n.json();
     render();
   }
 
@@ -192,6 +196,7 @@
   function renderFiles(d) {
     $("#files").replaceChildren(...Object.values(d.files).filter((f) => !f.ok).map((f) =>
       el("p", "file-warn", f.error ? `${f.name} is not readable: ${f.error}` : `${f.name} is not readable.`)));
+    $("#wipe").hidden = !Object.values(d.files).every((f) => !f.ok);
   }
 
   function render() {
@@ -248,7 +253,36 @@
       { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
       fmt(c.leader_value), c.leader_name,
     ])));
+
+    const turnsCell = (c) => c.item === "" ? dim("idle")
+      : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
+    const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ");
+    const itemName = (key) => key.replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER)_/, "").replace(/_/g, " ")
+      .toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
+    const prod = d.production;
+    $("#production-table").replaceChildren(prod.human.length
+      ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
+        prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
+      : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
+        ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
+    $("#rival-production-head").hidden = prod.rivals === null;
+    $("#rival-production-table").replaceChildren(prod.rivals === null ? withheld()
+      : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
+        prod.rivals.map((r) => [r.name, r.cities.filter((c) => /^UNIT_/.test(c.item)).length,
+          `${Math.round((r.military_share || 0) * 100)}%`])));
+
     $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
+
+    const feed = el("div", "intel");
+    if (!state.intel.length) feed.append(el("p", "empty", seen ? "No events yet." : INTEL_ORACLE_OFF));
+    state.intel.forEach((e) => {
+      const row = el("div", `intel-row prov-${e.provenance}`);
+      row.append(el("span", "intel-turn", String(e.turn)), el("span", "intel-kind", e.kind),
+        el("span", "intel-text", e.text));
+      if (e.provenance === "oracle") row.append(el("span", "tag", "intercept"));
+      feed.append(row);
+    });
+    $("#intel-feed").replaceChildren(feed, ...(seen ? [] : [el("p", "oracle-off", INTEL_ORACLE_OFF)]));
   }
 
   function connect() {

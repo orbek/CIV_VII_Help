@@ -3,16 +3,23 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from civ7_advisor.advisors import Insight, economy, threat, victory
+from civ7_advisor.advisors import Insight, economy, intel, production, threat, victory
 from civ7_advisor.state.models import GameState, PlayerKind, PlayerTurn
 
 RANK_STATS = ["science", "culture", "production", "gold", "military_units"]
+INTEL_LIMIT = 300  # newest events returned by /api/intel
 
 
 def insight_to_dict(i: Insight) -> dict:
     d = asdict(i)
     d["severity"] = i.severity.name
     d["provenance"] = i.provenance.value
+    return d
+
+
+def intel_to_dict(e: intel.IntelEvent) -> dict:
+    d = asdict(e)
+    d["provenance"] = e.provenance.value
     return d
 
 
@@ -41,7 +48,26 @@ def _player_turn_dict(pt: PlayerTurn | None) -> dict | None:
     return d
 
 
-def state_to_dict(state: GameState) -> dict:
+def _production(state: GameState, oracle: bool) -> dict:
+    qs = production.queues(state)
+    human = [asdict(c) for c in qs.get(state.HUMAN, [])]
+    if not oracle:
+        return {"human": human, "rivals": None}
+    shares = production.rival_military_share(state)
+    rivals = [
+        {
+            "player": r.id,
+            "name": r.name,
+            "military_share": shares.get(r.id),
+            "cities": [asdict(c) for c in qs.get(r.id, [])],
+        }
+        for r in state.rivals()
+        if qs.get(r.id)
+    ]
+    return {"human": human, "rivals": rivals}
+
+
+def state_to_dict(state: GameState, oracle: bool = True) -> dict:
     t = state.complete_through_turn
     standings = []
     for p in sorted(state.players.values(), key=lambda p: p.id):
@@ -67,5 +93,6 @@ def state_to_dict(state: GameState) -> dict:
             for path, board in victory.leaderboards(state).items()
         },
         "economy": [asdict(c) for c in economy.comparison(state)],
+        "production": _production(state, oracle),
         "files": {name: asdict(fs) for name, fs in state.files.items()},
     }

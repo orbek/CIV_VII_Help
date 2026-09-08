@@ -10,11 +10,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
+from civ7_advisor.advisors import Provenance, intel
 from civ7_advisor.ingest.load import LOG_FILES
 from civ7_advisor.ingest.poller import snapshot, watch
 from civ7_advisor.store import Store
 
-from .serialize import insight_to_dict, state_to_dict
+from .serialize import INTEL_LIMIT, insight_to_dict, intel_to_dict, state_to_dict
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 KEEPALIVE_SECONDS = 15
@@ -45,14 +46,23 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
     app.state.store = store
 
     @app.get("/api/state")
-    def api_state() -> dict:
+    def api_state(oracle: int = 1) -> dict:
         if store.state is None:
             raise HTTPException(status_code=503, detail="state not loaded yet")
-        return state_to_dict(store.state)
+        return state_to_dict(store.state, oracle=bool(oracle))
 
     @app.get("/api/insights")
     def api_insights() -> list[dict]:
         return [insight_to_dict(i) for i in store.insights]
+
+    @app.get("/api/intel")
+    def api_intel(oracle: int = 1) -> list[dict]:
+        if store.state is None:
+            raise HTTPException(status_code=503, detail="state not loaded yet")
+        events = intel.feed(store.state)
+        if not oracle:
+            events = [e for e in events if e.provenance is Provenance.FAIR]
+        return [intel_to_dict(e) for e in events[:INTEL_LIMIT]]
 
     @app.get("/events")
     async def events() -> StreamingResponse:

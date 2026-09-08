@@ -16,6 +16,9 @@ It never writes to the game. Everything runs locally and offline.
 Open http://127.0.0.1:8765 on your second screen and play. The page updates
 by itself about a second after the game finishes writing a turn.
 
+The Economy tab also shows what each of your cities is building and, with
+Oracle on, what rivals are building.
+
 Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
 `--poll-interval`.
 
@@ -28,6 +31,19 @@ hatch and badged "intercept". Untick **Oracle** in the header to see whether
 the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
 wasn't. The toggle hides Oracle table columns too, not just the cards.
+
+The fifth tab, **Intel**, lists gossip, diplomacy, fights and deals newest
+first. Events between you and a rival are Fair; events between two rivals are
+Oracle.
+
+## The game deletes its logs
+
+Civ VII empties its `Logs/` folder every time it starts and rewrites it from
+the turn your save is on. The advisor therefore mirrors every log file in the
+folder to `~/.civ7-advisor/archive/<game>/<session>/` on every rebuild. Turn it
+off with `--no-archive`, point it elsewhere with `--archive-dir PATH`, and list
+what is kept with `civ7-advisor archive list`. Nothing is ever written under
+the game's own folders.
 
 ## What is verified, and what isn't
 

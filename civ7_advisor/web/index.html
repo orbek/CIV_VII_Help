@@ -16,6 +16,7 @@
     </div>
     <p class="ranks" id="ranks"></p>
     <div class="files" id="files"></div>
+    <p class="file-warn" id="wipe" hidden>Civ VII clears its logs when it starts — advice resumes once a game is loaded.</p>
   </div>
 </header>
 
@@ -26,6 +27,7 @@
       <button role="tab" id="tab-threats" data-tab="threats" aria-controls="threats" aria-selected="false" tabindex="-1">Threats</button>
       <button role="tab" id="tab-victory" data-tab="victory" aria-controls="victory" aria-selected="false" tabindex="-1">Victory</button>
       <button role="tab" id="tab-economy" data-tab="economy" aria-controls="economy" aria-selected="false" tabindex="-1">Economy</button>
+      <button role="tab" id="tab-intel" data-tab="intel" aria-controls="intel" aria-selected="false" tabindex="-1">Intel</button>
     </nav>
     <div class="oracle">
       <label class="oracle-switch" for="oracle">Oracle<input type="checkbox" id="oracle" checked></label>
@@ -53,8 +55,16 @@
   <section class="tab" id="economy" role="tabpanel" aria-labelledby="tab-economy" tabindex="0">
     <h2 class="section-head">Your yields against the field</h2>
     <div id="economy-table"></div>
+    <h2 class="section-head">Your production</h2>
+    <div id="production-table"></div>
+    <h2 class="section-head" id="rival-production-head">Rival production</h2>
+    <div id="rival-production-table"></div>
     <h2 class="section-head">Advice</h2>
     <div id="economy-cards"></div>
+  </section>
+  <section class="tab" id="intel" role="tabpanel" aria-labelledby="tab-intel" tabindex="0">
+    <h2 class="section-head">What happened</h2>
+    <div id="intel-feed"></div>
   </section>
 </main>
 <script src="/static/app.js"></script>

@@ -139,3 +139,72 @@ def test_events_stream_delivers_and_drops_its_subscriber_on_disconnect(fixture_d
         assert store._subscribers == set()  # no queue left behind
 
     asyncio.run(scenario())
+
+
+def test_state_has_a_production_block_gated_by_the_oracle_flag(client):
+    body = client.get("/api/state").json()
+    assert body["production"] == {"human": [], "rivals": []}
+    body = client.get("/api/state?oracle=0").json()
+    assert body["production"]["rivals"] is None and body["production"]["human"] == []
+
+
+def _v2_dir(tmp_path: Path, fixture_dir: Path) -> Path:
+    import shutil
+
+    d = tmp_path / "logs"
+    shutil.copytree(fixture_dir, d)
+    (d / "Game_Gossip.csv").write_text(
+        "Game Turn, Player, Civilization, Plot X, Plot Y, Type\n"
+        "81, Alexander, Maurya, 63, 31, GOSSIP_UNIT_DESTROYED, Warrior\n"
+    )
+    (d / "CombatLog.csv").write_text(
+        "Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, "
+        "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n"
+        "81,Unit vs Unit,(63)(30),0,4,Melee,(14)UNIT_WARRIOR,(15)UNIT_SPEARMAN,20,30,0,0,34,12,Attacker,0,(0)100,(88)100\n"
+        "81,Unit vs Unit,(10)(10),1,2,Melee,(16)UNIT_WARRIOR,(17)UNIT_WARRIOR,20,20,0,0,30,30,,0,(70)100,(70)100\n"
+    )
+    (d / "DiplomacyDeals.log").write_text(
+        "Turn 80, Incoming for player 4 and 0\n"
+        ", Item ID 1, from player 4, to player 0, type Peace, subType 1 (), value type , amount 0, duration 1\n"
+    )
+    (d / "CityBuildQueue.csv").write_text(
+        "Game Turn, Player, City, Production Added, Current Item, Current Production, Production Needed, Overflow\n"
+        "81, 4, LOC_CITY_NAME_MAYA1, 12.0, UNIT_WARRIOR, 0.0, 30, 0.0\n"
+        "82, 0, LOC_CITY_NAME_MAURYA1, 15.0, BUILDING_BRICKYARD, 47.5, 55, 0.0\n"
+    )
+    return d
+
+
+def test_intel_endpoint_filters_oracle_events_server_side(tmp_path: Path, fixture_dir: Path):
+    with TestClient(create_app(_v2_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        events = c.get("/api/intel").json()
+        kinds = {(e["kind"], e["provenance"]) for e in events}
+        assert ("gossip", "fair") in kinds and ("combat", "fair") in kinds
+        assert ("combat", "oracle") in kinds and ("deal", "fair") in kinds
+        fair_only = c.get("/api/intel?oracle=0").json()
+        assert fair_only and all(e["provenance"] == "fair" for e in fair_only)
+        assert [e["turn"] for e in events] == sorted((e["turn"] for e in events), reverse=True)
+        state = c.get("/api/state").json()
+        assert state["production"]["human"][0]["item"] == "BUILDING_BRICKYARD"
+        assert state["production"]["rivals"][0]["name"] == "José Rizal"
+        assert state["production"]["rivals"][0]["military_share"] == 1.0
+        rizal = next(t for t in state["threats"] if t["player"] == 4)
+        assert rizal["at_war_since"] is None and rizal["peace_since"] == 80
+
+
+def test_intel_is_503_before_first_rebuild(fixture_dir: Path):
+    assert TestClient(create_app(fixture_dir)).get("/api/intel").status_code == 503
+
+
+def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
+    page = client.get("/").text
+    for needle in (
+        'data-tab="intel"',
+        'id="intel-feed"',
+        'id="production-table"',
+        'id="rival-production-table"',
+        'id="wipe"',
+    ):
+        assert needle in page, needle
+    js = client.get("/static/app.js").text
+    assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js

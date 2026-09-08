@@ -280,6 +280,24 @@ td.dim, .dim { color: var(--muted); }
 td.behind { color: var(--brass); }
 .you { color: var(--brass); }
 
+/* ---------- chronological intelligence feed ---------- */
+
+.intel-row {
+  display: grid;
+  grid-template-columns: 3.5rem 6.5rem 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.intel-turn {
+  font-family: var(--figures);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.intel-kind { color: var(--muted); }
+.intel-row.prov-oracle .intel-text { color: var(--vellum); }
+
 /* ---------- the one moment of motion: a turn lands ---------- */
 
 @keyframes turn-lands {
@@ -301,4 +319,6 @@ td.behind { color: var(--brass); }
   .hero-headline { grid-column: 1; grid-row: 3; margin-top: 0.5rem; }
   .controls .wrap { align-items: flex-start; }
   .oracle { padding-bottom: 0.9rem; }
+  .intel-row { grid-template-columns: 3rem 1fr; }
+  .intel-kind { display: none; }
 }

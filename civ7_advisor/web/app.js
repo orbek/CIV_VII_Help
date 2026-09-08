@@ -256,7 +256,8 @@
 
     const turnsCell = (c) => c.item === "" ? dim("idle")
       : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
-    const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ");
+    const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
     const itemName = (key) => key.replace(/^(BUILDING|UNIT|IMPROVEMENT|WONDER)_/, "").replace(/_/g, " ")
       .toLowerCase().replace(/\b\w/g, (ch) => ch.toUpperCase());
     const prod = d.production;
@@ -268,7 +269,7 @@
     $("#rival-production-head").hidden = prod.rivals === null;
     $("#rival-production-table").replaceChildren(prod.rivals === null ? withheld()
       : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
-        prod.rivals.map((r) => [r.name, r.cities.filter((c) => /^UNIT_/.test(c.item)).length,
+        prod.rivals.map((r) => [r.name, Math.round((r.military_share || 0) * r.cities.length),
           `${Math.round((r.military_share || 0) * 100)}%`])));
 
     $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));

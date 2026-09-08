@@ -208,3 +208,4 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
         assert needle in page, needle
     js = client.get("/static/app.js").text
     assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js
+    assert "(r.military_share || 0) * r.cities.length" in js

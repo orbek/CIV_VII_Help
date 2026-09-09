@@ -44,8 +44,10 @@ def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):
     seen = {}
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
     monkeypatch.setattr(cli, "create_app", lambda *args, **kwargs: seen.update(kwargs) or object())
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--llm-model", "llama3.3:70b"])
+    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--llm-model", "llama3.3:70b",
+              "--llm-timeout", "123"])
     assert seen["commentary_worker"].client.model == "llama3.3:70b"
+    assert seen["commentary_worker"].client.timeout == 123
     cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--no-llm"])
     assert seen["commentary_worker"] is None
 

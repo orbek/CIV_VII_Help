@@ -247,6 +247,7 @@ main { padding-bottom: 5rem; }
 }
 
 .empty { margin: 1.75rem 0; max-width: 60ch; color: var(--muted); }
+.turn-summary { margin: 1.75rem 0 0; font-size: 0.8125rem; color: var(--muted); }
 
 /* ---------- tables: hairlines only, figures right and tabular ---------- */
 
@@ -300,16 +301,20 @@ td.behind { color: var(--brass); }
 
 /* ---------- tactical intercept map ---------- */
 
-.map-note, .map-legend { margin: 0 0 0.75rem; font-size: 0.8125rem; color: var(--muted); }
+.map-note, .map-legend, .map-focus-note { margin: 0 0 0.75rem; font-size: 0.8125rem; color: var(--muted); }
+.map-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; margin: 1rem 0 0.45rem; color: var(--muted); font-size: 0.8125rem; }
+.map-stat strong { color: var(--vellum); font: 0.8125rem var(--figures); }
 #tactical-map svg {
   display: block; width: 100%; max-height: 30rem; min-height: 14rem;
   background: #111926; border: 1px solid var(--rule);
 }
-.map-city { fill: rgba(200, 155, 60, 0.12); stroke: var(--muted); stroke-width: 2; }
+.map-city { fill: rgba(200, 155, 60, 0.12); stroke: var(--muted); stroke-width: 1.5; }
 .map-human { fill: var(--brass); stroke: var(--ink); stroke-width: 2; }
 .map-enemy { fill: var(--oxide); stroke: var(--ink); stroke-width: 2; }
 .map-goal { fill: none; stroke: var(--oxide); stroke-width: 4; }
+.map-number { fill: var(--vellum); font: 10px var(--figures); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
 .map-legend { margin-top: 0.65rem; }
+.map-subhead { margin: 1.65rem 0 0.5rem; font: 1rem var(--display); color: var(--muted); }
 
 /* ---------- local commentary: inert prose with visible evidence links ---------- */
 

@@ -11,6 +11,7 @@ from .base import Insight, Provenance, Severity, humanize
 
 NEAR_TILES = 4
 FRESH_TURNS = 3
+MAP_NEAR_TILES = 8
 NON_COMBAT = ("FOUNDER", "SETTLER", "MIGRANT", "MERCHANT", "COMMANDER", "TREASURE")
 
 
@@ -118,13 +119,25 @@ def attack_goals(state: GameState) -> list[dict]:
 
 def snapshot(state: GameState) -> dict:
     cities = [{"x": x, "y": y} for x, y in sorted(human_city_tiles(state))]
+    city_coords = [(p["x"], p["y"]) for p in cities]
     rivals = {p.id: p.name for p in state.rivals()}
-    enemies = [asdict(u) | {"name": rivals[u.player]} for u in enemy_units(state)]
+    enemies = []
+    for unit in enemy_units(state):
+        nearest = min(
+            ((hex_distance((unit.x, unit.y), city), city) for city in city_coords),
+            default=(None, None),
+        )
+        enemies.append(asdict(unit) | {
+            "name": rivals[unit.player], "distance_to_city": nearest[0],
+            "nearest_city_tile": ({"x": nearest[1][0], "y": nearest[1][1]}
+                                  if nearest[1] is not None else None),
+        })
     own = [asdict(u) for u in own_units(state) if u.x is not None]
     promotions = [asdict(r) | {"name": rivals[r.player]} for r in state.commander_promotions
                   if r.turn <= state.complete_through_turn and r.player in rivals]
     return {
         "available": bool(cities or enemies), "turn": state.complete_through_turn,
+        "map_near_tiles": MAP_NEAR_TILES,
         "city_tiles": cities, "human_units": own, "enemy_units": enemies,
         "attack_goals": attack_goals(state), "commander_promotions": promotions,
     }

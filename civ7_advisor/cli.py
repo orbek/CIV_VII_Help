@@ -11,6 +11,7 @@ import uvicorn
 from civ7_advisor.api.app import create_app
 from civ7_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
 from civ7_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
+from civ7_advisor.llm.client import DEFAULT_TIMEOUT_S
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
 
@@ -37,6 +38,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--no-archive", action="store_true", help="do not mirror the logs anywhere")
     parser.add_argument("--llm-model", default=DEFAULT_MODEL,
                         help=f"local Ollama model for commentary (default: {DEFAULT_MODEL})")
+    parser.add_argument("--llm-timeout", type=float, default=DEFAULT_TIMEOUT_S,
+                        help=f"seconds allowed for one local generation (default: {DEFAULT_TIMEOUT_S:.0f})")
     parser.add_argument("--no-llm", action="store_true", help="disable local Ollama commentary")
     args = parser.parse_args(argv)
 
@@ -49,7 +52,12 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     archive_root = None if args.no_archive else args.archive_dir
-    worker = None if args.no_llm else CommentaryWorker(OllamaClient(args.llm_model))
+    try:
+        worker = None if args.no_llm else CommentaryWorker(
+            OllamaClient(args.llm_model, timeout=args.llm_timeout)
+        )
+    except ValueError as exc:
+        parser.error(str(exc))
     app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root,
                      commentary_worker=worker)
     where = f"archiving to {archive_root}" if archive_root else "archiving off"

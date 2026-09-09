@@ -7,7 +7,36 @@ import httpx
 
 DEFAULT_BASE_URL = "http://127.0.0.1:11434"
 DEFAULT_MODEL = "gemma4:31b-it-qat"
-LLM_TIMEOUT_S = 90.0
+DEFAULT_TIMEOUT_S = 300.0
+
+# Ollama accepts a JSON Schema in ``format``.  Generic ``"json"`` mode still
+# lets models omit fields or stop halfway through a quoted string, which made
+# the strict worker validator reject otherwise useful generations.
+COMMENTARY_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "second_opinion": {"type": "string", "minLength": 1},
+        "explain": {
+            "type": "object",
+            "additionalProperties": {"type": "string", "minLength": 1},
+        },
+        "turn_plan": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+                "type": "object",
+                "properties": {
+                    "insight_id": {"type": "string"},
+                    "step": {"type": "string", "minLength": 1},
+                },
+                "required": ["insight_id", "step"],
+                "additionalProperties": False,
+            },
+        },
+    },
+    "required": ["second_opinion", "explain", "turn_plan"],
+    "additionalProperties": False,
+}
 
 
 class OllamaError(RuntimeError):
@@ -41,14 +70,18 @@ def _local_model(model: str) -> str:
 
 class OllamaClient:
     def __init__(self, model: str = DEFAULT_MODEL, base_url: str = DEFAULT_BASE_URL,
+                 timeout: float = DEFAULT_TIMEOUT_S,
                  transport: httpx.BaseTransport | None = None) -> None:
         self.model = _local_model(model)
         self.base_url = _local_url(base_url)
+        if timeout <= 0:
+            raise ValueError("Ollama timeout must be greater than zero")
+        self.timeout = timeout
         self._transport = transport
 
-    def generate(self, prompt: str) -> str:
+    def generate(self, prompt: str, *, schema: dict | None = None) -> str:
         try:
-            with httpx.Client(base_url=self.base_url, timeout=LLM_TIMEOUT_S,
+            with httpx.Client(base_url=self.base_url, timeout=self.timeout,
                               transport=self._transport) as client:
                 tags = client.get("/api/tags")
                 tags.raise_for_status()
@@ -57,8 +90,9 @@ class OllamaClient:
                 if self.model not in local_models:
                     raise ModelUnavailable(f"Local Ollama model {self.model!r} is not installed.")
                 response = client.post("/api/generate", json={
-                    "model": self.model, "prompt": prompt, "stream": False, "format": "json",
-                    "options": {"temperature": 0.2},
+                    "model": self.model, "prompt": prompt, "stream": False,
+                    "format": schema or COMMENTARY_SCHEMA, "keep_alive": "10m",
+                    "options": {"temperature": 0.1},
                 })
                 response.raise_for_status()
                 text = response.json().get("response")
@@ -68,6 +102,6 @@ class OllamaClient:
         except ModelUnavailable:
             raise
         except httpx.TimeoutException as exc:
-            raise OllamaTimeout(f"Ollama exceeded the {LLM_TIMEOUT_S:.0f}-second timeout.") from exc
+            raise OllamaTimeout(f"Ollama exceeded the {self.timeout:.0f}-second timeout.") from exc
         except (httpx.HTTPError, ValueError) as exc:
             raise OllamaUnavailable("Ollama is not reachable at the local endpoint.") from exc

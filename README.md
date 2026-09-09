@@ -37,7 +37,7 @@ are displayed with the result. Because the v2 prompt includes intercepted
 tactical evidence, this commentary is hidden when Oracle is off.
 
 Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
-`--poll-interval`, `--llm-model MODEL`, and `--no-llm`.
+`--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, and `--no-llm`.
 
 Ollama commentary is optional. The advisor checks only the loopback service at
 `127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the
@@ -57,9 +57,10 @@ the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
 wasn't. The toggle hides Oracle table columns too, not just the cards.
 
-The fifth tab, **Intel**, plots a compact tactical intercept and lists gossip,
+The fifth tab, **Intel**, plots a compact, city-focused tactical intercept and lists gossip,
 diplomacy, fights and deals newest first. The map is deliberately limited to
-known human city tiles and recent AI-planned unit positions; it is not terrain
+known human city-area target tiles and recent AI-planned unit positions near
+them; a contact table retains the closest off-map positions. It is not terrain
 or fog of war. Gossip is Fair because the game shows it to you. For
 party-bearing events, events involving you are Fair and events between other
 players are Oracle. The entire tactical payload is withheld server-side when

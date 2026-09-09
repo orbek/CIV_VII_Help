@@ -216,6 +216,11 @@
     renderFiles(d);
 
     const byAdvisor = (a) => ins.filter((i) => i.advisor === a);
+    const actionable = ins.filter((i) => i.severity !== "INFO").length;
+    const hidden = state.insights.length - ins.length;
+    $("#insight-summary").textContent = `${ins.length} evidence-backed call${ins.length === 1 ? "" : "s"} `
+      + `for turn ${d.complete_through_turn} · ${actionable} actionable`
+      + (hidden ? ` · ${hidden} intercept${hidden === 1 ? "" : "s"} hidden` : "");
     $("#checklist-stream").replaceChildren(stream(ins, undefined));
     renderCommentary();
 
@@ -303,8 +308,21 @@
         ? el("p", "empty", "No tactical positions are available yet.") : withheld());
       return;
     }
-    const plots = [...data.city_tiles, ...data.human_units.filter((u) => u.x !== null),
-      ...data.enemy_units, ...data.attack_goals];
+    const nearLimit = data.map_near_tiles || 8;
+    const byDistance = [...data.enemy_units].sort((a, b) =>
+      (a.distance_to_city ?? Number.MAX_SAFE_INTEGER) - (b.distance_to_city ?? Number.MAX_SAFE_INTEGER)
+      || b.turn - a.turn || a.name.localeCompare(b.name));
+    const allNearbyEnemies = byDistance.filter((u) => u.distance_to_city !== null
+      && u.distance_to_city <= nearLimit);
+    const nearbyEnemies = (data.city_tiles.length ? allNearbyEnemies : byDistance).slice(0, 12);
+    const nearestEnemyDistance = (unit) => data.enemy_units.reduce((best, enemy) => {
+      const distance = hexDistance(unit, enemy);
+      return Math.min(best, distance);
+    }, Number.MAX_SAFE_INTEGER);
+    const focusedHumans = data.human_units.filter((u) => u.x !== null &&
+      (data.city_tiles.some((city) => hexDistance(u, city) <= nearLimit)
+        || nearestEnemyDistance(u) <= 4));
+    const plots = [...data.city_tiles, ...focusedHumans, ...nearbyEnemies, ...data.attack_goals];
     if (!plots.length) { host.replaceChildren(el("p", "empty", "No tactical positions are available yet.")); return; }
     const project = (p) => ({ x: (p.x + (p.y & 1) / 2) * 42, y: p.y * 36 });
     const points = plots.map(project);
@@ -313,23 +331,73 @@
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("viewBox", `${minX} ${minY} ${Math.max(maxX - minX, 48)} ${Math.max(maxY - minY, 48)}`);
     svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", `${data.enemy_units.length} recent rival unit positions around known human city tiles`);
-    const mark = (kind, p, label) => {
-      const at = project(p), node = document.createElementNS(svg.namespaceURI, kind === "city" ? "rect" : "circle");
+    svg.setAttribute("aria-label", `${nearbyEnemies.length} recent rival unit positions within ${nearLimit} hexes of known human city-area tiles`);
+    const mark = (kind, p, label, number = null) => {
+      const at = project(p);
+      let node;
+      if (kind === "city") {
+        node = document.createElementNS(svg.namespaceURI, "polygon");
+        const corners = Array.from({ length: 6 }, (_, i) => {
+          const angle = Math.PI / 180 * (60 * i);
+          return `${at.x + 18 * Math.cos(angle)},${at.y + 18 * Math.sin(angle)}`;
+        });
+        node.setAttribute("points", corners.join(" "));
+      } else {
+        node = document.createElementNS(svg.namespaceURI, "circle");
+      }
       node.setAttribute("class", `map-${kind}`);
-      if (kind === "city") { node.setAttribute("x", at.x - 9); node.setAttribute("y", at.y - 9); node.setAttribute("width", 18); node.setAttribute("height", 18); }
-      else { node.setAttribute("cx", at.x); node.setAttribute("cy", at.y); node.setAttribute("r", kind === "goal" ? 10 : 7); }
+      if (kind !== "city") { node.setAttribute("cx", at.x); node.setAttribute("cy", at.y); node.setAttribute("r", kind === "goal" ? 13 : 10); }
       const title = document.createElementNS(svg.namespaceURI, "title"); title.textContent = label; node.append(title); svg.append(node);
+      if (number !== null) {
+        const textNode = document.createElementNS(svg.namespaceURI, "text");
+        textNode.setAttribute("class", "map-number"); textNode.setAttribute("x", at.x);
+        textNode.setAttribute("y", at.y); textNode.textContent = String(number); svg.append(textNode);
+      }
     };
-    data.city_tiles.forEach((p) => mark("city", p, `Your city tile ${p.x}:${p.y}`));
-    data.human_units.forEach((p) => mark("human", p, `${itemName(p.unit_type)} — last planned ${p.x}:${p.y}`));
-    data.enemy_units.forEach((p) => mark("enemy", p, `${p.name} ${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}`));
+    data.city_tiles.forEach((p) => mark("city", p, `Known city-area tile ${p.x}:${p.y}`));
+    focusedHumans.forEach((p) => mark("human", p, `${itemName(p.unit_type)} — targeted at ${p.x}:${p.y}`));
+    nearbyEnemies.forEach((p, i) => mark("enemy", p,
+      `${p.name} ${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}`, i + 1));
     data.attack_goals.forEach((p) => mark("goal", p, `${p.name} attack goal ${p.x}:${p.y}`));
-    const legend = el("p", "map-legend", "Squares: your city tiles · Brass: your targeted units · Red: rival plans · Rings: attack goals");
+    const stats = el("div", "map-stats");
+    [[data.city_tiles.length, "known city-area tiles"], [data.human_units.length, "targeted units"],
+      [data.enemy_units.length, "recent rival positions"], [allNearbyEnemies.length, `within ${nearLimit} hexes`]]
+      .forEach(([figure, label]) => {
+        const stat = el("span", "map-stat");
+        stat.append(el("strong", null, String(figure)), document.createTextNode(` ${label}`)); stats.append(stat);
+      });
+    const omitted = data.enemy_units.length - nearbyEnemies.length;
+    let focusCopy;
+    if (!data.city_tiles.length) {
+      focusCopy = `No city-area tile was detected; the map shows up to 12 positions without city-distance context${omitted ? ` and omits ${omitted} more` : ""}.`;
+    } else if (nearbyEnemies.length) {
+      focusCopy = `Map focus: up to 12 rival positions within ${nearLimit} hexes of a known city-area tile${omitted ? `; ${omitted} additional recent position${omitted === 1 ? " is" : "s are"} omitted` : ""}.`;
+    } else {
+      focusCopy = `No recorded rival position is within ${nearLimit} hexes of a known city-area tile; ${omitted} farther-away position${omitted === 1 ? " is" : "s are"} omitted.`;
+    }
+    const focusNote = el("p", "map-focus-note", focusCopy);
+    const legend = el("p", "map-legend", "Hexes: known city area · Brass: your targeted units · Numbered red: rival positions · Rings: attack goals");
+    const contacts = byDistance.length ? table(
+      [{ label: "#" }, { label: "Rival" }, { label: "Unit" }, { label: "From city area", num: true },
+        { label: "Last AI activity" }, { label: "Turn", num: true }],
+      byDistance.slice(0, 12).map((p) => {
+        const mapIndex = nearbyEnemies.indexOf(p);
+        return [mapIndex >= 0 ? mapIndex + 1 : "off map", p.name, itemName(p.unit_type),
+          p.distance_to_city === null ? dim() : `${p.distance_to_city} hex${p.distance_to_city === 1 ? "" : "es"}`,
+          itemName(p.activity), p.turn];
+      })) : el("p", "empty", "No recent rival positions were recorded.");
+    const contactsHead = el("h3", "map-subhead", "Closest recorded rival positions");
     const promotions = data.commander_promotions.length ? table(
       [{ label: "Rival commander" }, { label: "Discipline" }, { label: "Promotion" }],
       data.commander_promotions.map((p) => [`${p.name} · ${p.commander}`, itemName(p.discipline), itemName(p.promotion)])) : null;
-    host.replaceChildren(svg, legend, ...(promotions ? [promotions] : []));
+    host.replaceChildren(stats, focusNote, svg, legend, contactsHead, contacts,
+      ...(promotions ? [el("h3", "map-subhead", "Rival commander promotions"), promotions] : []));
+  }
+
+  function hexDistance(a, b) {
+    const axial = (p) => ({ q: p.x - (p.y - (p.y & 1)) / 2, r: p.y });
+    const aa = axial(a), bb = axial(b), dq = aa.q - bb.q, dr = aa.r - bb.r;
+    return (Math.abs(dq) + Math.abs(dr) + Math.abs(dq + dr)) / 2;
   }
 
   function renderCommentary() {

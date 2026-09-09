@@ -6,8 +6,8 @@ import httpx
 import pytest
 
 from civ7_advisor.advisors import run_all
-from civ7_advisor.llm.client import ModelUnavailable, OllamaClient, OllamaUnavailable
-from civ7_advisor.llm.prompts import build_prompt, turn_payload
+from civ7_advisor.llm.client import COMMENTARY_SCHEMA, ModelUnavailable, OllamaClient, OllamaUnavailable
+from civ7_advisor.llm.prompts import build_prompt, response_schema, turn_payload
 from civ7_advisor.llm.worker import CommentaryWorker
 from tests.factories import game_state
 
@@ -15,7 +15,7 @@ from tests.factories import game_state
 def _transport(models=("gemma4:31b-it-qat",), response=None):
     body = response or {
         "second_opinion": "Hold the frontier [threat.at_war.4].",
-        "explain": [{"insight_id": "threat.at_war.4", "text": "War makes this urgent."}],
+        "explain": {"threat.at_war.4": "War makes this urgent."},
         "turn_plan": [{"insight_id": "threat.at_war.4", "step": "Move a defender."}],
     }
 
@@ -23,7 +23,8 @@ def _transport(models=("gemma4:31b-it-qat",), response=None):
         if request.url.path == "/api/tags":
             return httpx.Response(200, json={"models": [{"name": name} for name in models]})
         payload = json.loads(request.content)
-        assert payload["stream"] is False and payload["format"] == "json"
+        assert payload["stream"] is False and payload["format"] == COMMENTARY_SCHEMA
+        assert payload["keep_alive"] == "10m" and payload["options"]["temperature"] == 0.1
         return httpx.Response(200, json={"response": json.dumps(body)})
 
     return httpx.MockTransport(handler)
@@ -60,6 +61,16 @@ def test_prompt_is_compact_evidence_json_and_demands_exact_citations(fixture_v2_
     assert all("provenance" in item for item in payload["insights"] + payload["intel"])
 
 
+def test_response_schema_pins_explanation_count_and_citation_ids():
+    schema = response_schema(["top.a", "top.b"], {"top.a", "top.b", "other.c"})
+    explain = schema["properties"]["explain"]
+    plan = schema["properties"]["turn_plan"]
+    assert explain["required"] == ["top.a", "top.b"]
+    assert set(explain["properties"]) == {"top.a", "top.b"}
+    assert explain["additionalProperties"] is False
+    assert plan["items"]["properties"]["insight_id"]["enum"] == ["other.c", "top.a", "top.b"]
+
+
 def test_even_empty_full_state_commentary_is_oracle_seen():
     prompt, saw_oracle = build_prompt(game_state(), [])
     assert saw_oracle and '"provenance":"oracle"' in prompt
@@ -73,11 +84,11 @@ def test_worker_caches_validated_commentary_per_complete_turn(fixture_state):
         model = "local:test"
         calls = 0
 
-        def generate(self, prompt):
+        def generate(self, prompt, *, schema=None):
             self.calls += 1
             return json.dumps({
                 "second_opinion": f"Act now [{top[0]}].",
-                "explain": [{"insight_id": item, "text": "It matters."} for item in top],
+                "explain": {item: "It matters." for item in top},
                 "turn_plan": [{"insight_id": top[0], "step": "Take the cited action."}],
             })
 
@@ -100,11 +111,11 @@ def test_worker_same_turn_with_changed_prompt_does_not_reuse_old_game_commentary
         model = "local:test"
         calls = 0
 
-        def generate(self, prompt):
+        def generate(self, prompt, *, schema=None):
             self.calls += 1
             return json.dumps({
                 "second_opinion": f"Generation {self.calls} [{top[0]}].",
-                "explain": [{"insight_id": item, "text": "Why."} for item in top],
+                "explain": {item: "Why." for item in top},
                 "turn_plan": [{"insight_id": top[0], "step": "Act."}],
             })
 
@@ -128,17 +139,17 @@ def test_worker_rejects_partial_top_three_explanations(fixture_state):
     class PartialClient:
         model = "local:test"
 
-        def generate(self, prompt):
+        def generate(self, prompt, *, schema=None):
             return json.dumps({
                 "second_opinion": "Incomplete.",
-                "explain": [{"insight_id": insights[0].id, "text": "Only one."}],
+                "explain": {insights[0].id: "Only one."},
                 "turn_plan": [{"insight_id": insights[0].id, "step": "Act."}],
             })
 
     worker = CommentaryWorker(PartialClient())  # type: ignore[arg-type]
     worker.schedule(fixture_state, insights)
     result = worker.wait(fixture_state.complete_through_turn)
-    assert result.status == "error" and "every requested top insight" in result.message
+    assert result.status == "error" and "evidence-backed advice above is still complete" in result.message
 
 
 def test_worker_schedule_does_not_wait_for_generation(fixture_state):
@@ -147,7 +158,7 @@ def test_worker_schedule_does_not_wait_for_generation(fixture_state):
     class SlowClient:
         model = "local:slow"
 
-        def generate(self, prompt):
+        def generate(self, prompt, *, schema=None):
             entered.set()
             release.wait(2)
             raise RuntimeError("released")
@@ -156,3 +167,49 @@ def test_worker_schedule_does_not_wait_for_generation(fixture_state):
     worker.schedule(fixture_state, run_all(fixture_state))
     assert entered.wait(1) and worker.result(fixture_state.complete_through_turn).status == "generating"
     release.set()
+
+
+def test_worker_coalesces_log_burst_into_latest_pending_prompt(fixture_state):
+    entered, release, second_started = threading.Event(), threading.Event(), threading.Event()
+    insights = run_all(fixture_state)
+    top = [item.id for item in insights[:3]]
+
+    class BurstClient:
+        model = "local:slow"
+        calls = 0
+
+        def generate(self, prompt, *, schema=None):
+            self.calls += 1
+            if self.calls == 1:
+                entered.set()
+                release.wait(2)
+            else:
+                second_started.set()
+            return json.dumps({
+                "second_opinion": f"Generation {self.calls} [{top[0]}].",
+                "explain": {item: "Why." for item in top},
+                "turn_plan": [{"insight_id": top[0], "step": "Act."}],
+            })
+
+    client = BurstClient()
+    worker = CommentaryWorker(client)  # type: ignore[arg-type]
+    first = deepcopy(fixture_state)
+    second = deepcopy(fixture_state)
+    latest = deepcopy(fixture_state)
+    second.turns[second.complete_through_turn][0] = second.turns[second.complete_through_turn][0].__class__(
+        **(second.turns[second.complete_through_turn][0].__dict__ | {"gold": 998.0})
+    )
+    latest.turns[latest.complete_through_turn][0] = latest.turns[latest.complete_through_turn][0].__class__(
+        **(latest.turns[latest.complete_through_turn][0].__dict__ | {"gold": 999.0})
+    )
+
+    worker.schedule(first, insights)
+    assert entered.wait(1)
+    worker.schedule(second, insights)
+    worker.schedule(latest, insights)
+    release.set()
+    assert second_started.wait(1)
+    result = worker.wait(latest.complete_through_turn)
+    assert result.status == "ready" and "Generation 2" in result.commentary.second_opinion
+    assert client.calls == 2
+    worker.close()

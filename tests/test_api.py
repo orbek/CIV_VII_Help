@@ -236,6 +236,7 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
         'id="intel-feed"',
         'id="tactical-map"',
         'id="commentary-panel"',
+        'id="insight-summary"',
         'id="production-table"',
         'id="rival-production-table"',
         'id="wipe"',
@@ -245,4 +246,5 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js and "/api/tactical?oracle=" in js
     assert "/api/commentary?oracle=" in js and "textContent" in js
     assert "commentary-sentence uncited" in js
+    assert "Closest recorded rival positions" in js and "distance_to_city" in js
     assert "(r.military_share || 0) * r.cities.length" in js

@@ -9,6 +9,36 @@ from civ7_advisor.state.models import GameState
 EXPLAIN_TOP_N = 3
 
 
+def response_schema(top_ids: list[str], valid_ids: set[str]) -> dict:
+    """Constrain Ollama's grammar to the exact citation vocabulary for this turn."""
+    explanations = {
+        "type": "object",
+        "properties": {insight_id: {"type": "string", "minLength": 1}
+                       for insight_id in top_ids},
+        "required": top_ids,
+        "additionalProperties": False,
+    }
+    plan_step = {
+        "type": "object",
+        "properties": {
+            "insight_id": {"type": "string", "enum": sorted(valid_ids)},
+            "step": {"type": "string", "minLength": 1},
+        },
+        "required": ["insight_id", "step"],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {
+            "second_opinion": {"type": "string", "minLength": 1},
+            "explain": explanations,
+            "turn_plan": {"type": "array", "items": plan_step, "minItems": 1, "maxItems": 6},
+        },
+        "required": ["second_opinion", "explain", "turn_plan"],
+        "additionalProperties": False,
+    }
+
+
 def turn_payload(state: GameState, insights: list[Insight]) -> dict:
     turn = state.complete_through_turn
     standings = []
@@ -50,7 +80,7 @@ def build_prompt(state: GameState, insights: list[Insight]) -> tuple[str, bool]:
         "You are a Civilization VII turn advisor. Use only the supplied deterministic JSON; do not "
         "invent or recompute figures. Every claim and every plan step must cite an exact insight id. "
         "Return JSON only with this shape: {\"second_opinion\":\"text with [insight.id] citations\","
-        "\"explain\":[{\"insight_id\":\"id\",\"text\":\"why it matters, cost of ignoring it, and alternatives\"}],"
+        "\"explain\":{\"insight.id\":\"why it matters, cost of ignoring it, and alternatives\"},"
         "\"turn_plan\":[{\"insight_id\":\"id\",\"step\":\"ordered action\"}]}. "
         f"Explain only these top ids: {json.dumps(top_ids)}. Valid insight ids occur in the JSON below.\n"
         + evidence

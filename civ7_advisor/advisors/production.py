@@ -1,27 +1,71 @@
 """What everyone is building, how soon, and whether your queue matches your worst gap."""
 from __future__ import annotations
 
+import logging
 from dataclasses import dataclass
+from functools import lru_cache
 
 from civ7_advisor.state.models import BuildQueueRow, GameState
 
 from . import economy
 from .base import Insight, Provenance, Severity, humanize
 
+log = logging.getLogger(__name__)
+
 RIVAL_MILITARY_SHARE = 0.5  # share of a rival's cities building military at/above which we warn
 QUEUE_STALE_TURNS = 1  # a city whose latest row is older than cutoff - this is treated as gone
 # Non-combat units: queueing these is not building an army, so they never count as military.
 CIVILIAN_UNITS = {"UNIT_SETTLER", "UNIT_MIGRANT", "UNIT_FOUNDER", "UNIT_SCOUT", "UNIT_MERCHANT"}
 CIVILIAN_PREFIXES = ("UNIT_GREAT_",)  # whole civilian families matched by prefix (every Great Person)
-# Which economy yield an item mainly serves. UNVERIFIED against current game rules (phase 3
-# checks it); an item that is not listed suppresses the mismatch insight rather than guessing.
-ITEM_YIELDS: dict[str, str] = {
+# Which economy yield an item mainly serves, where no reviewed guide says otherwise.
+# These are unverified heuristics: nothing in the logs or the shipped catalog establishes
+# them. `item_yield` below prefers the reviewed guide catalog, so this table is the
+# fallback for items the catalog does not cover yet — not a second rules table competing
+# with it. An item in neither suppresses the mismatch insight rather than guessing.
+UNVERIFIED_ITEM_YIELDS: dict[str, str] = {
     "BUILDING_BRICKYARD": "production", "BUILDING_SAWPIT": "production",
     "BUILDING_GRANARY": "food", "BUILDING_FISHING_QUAY": "food",
     "BUILDING_LIBRARY": "science", "BUILDING_ACADEMY": "science",
     "BUILDING_MONUMENT": "culture", "BUILDING_AMPHITHEATER": "culture",
     "BUILDING_MARKET": "gold", "BUILDING_BANK": "gold",
 }
+
+
+# Kept as the historical name so existing callers and tests keep working; it now names
+# the unverified fallback explicitly.
+ITEM_YIELDS = UNVERIFIED_ITEM_YIELDS
+
+
+@lru_cache(maxsize=1)
+def _catalog_item_yields() -> dict[str, tuple[str, ...]]:
+    """The reviewed associations, or nothing if the catalog cannot be loaded.
+
+    A broken catalog must not take the production advisor down with it: the advice degrades
+    to the unverified table, which is what shipped before the catalog existed.
+    """
+    try:
+        from civ7_advisor.knowledge.catalog import load_catalog
+        return load_catalog().item_yields
+    except Exception:  # pragma: no cover - a packaging fault, not a gameplay path
+        log.warning("guide catalog unavailable; falling back to unverified item yields")
+        return {}
+
+
+def item_yield(item: str) -> str | None:
+    """Which yield this build item serves, reviewed source first.
+
+    One lookup for the whole codebase, so the decision layer and this advisor cannot end
+    up disagreeing about what a building is for.
+    """
+    reviewed = _catalog_item_yields().get(item)
+    if reviewed:
+        return reviewed[0]
+    return UNVERIFIED_ITEM_YIELDS.get(item)
+
+
+def reviewed_yield(item: str) -> bool:
+    """Whether the association came from a reviewed guide rather than a heuristic."""
+    return bool(_catalog_item_yields().get(item))
 
 
 def is_military(item: str) -> bool:
@@ -102,9 +146,11 @@ def advise(state: GameState) -> list[Insight]:
         ))
         gaps = economy.behind(state)
         building = [c for c in human if c.item]
-        served = [ITEM_YIELDS.get(c.item) for c in building]
+        served = [item_yield(c.item) for c in building]
         if gaps and building and all(served) and gaps[0].stat not in served:
             worst = gaps[0]
+            unreviewed = sorted({humanize(c.item) for c in building
+                                 if not reviewed_yield(c.item)})
             # The queue rows are read at latest_turn, the economy comparison at complete_through_turn,
             # so each clause is dated from the rows it actually came from.
             queue_evidence = ", ".join(
@@ -118,7 +164,9 @@ def advise(state: GameState) -> list[Insight]:
                                f"{economy.YIELDS[worst.stat][1]}",
                 why=f"You are building {queue_evidence}, which {serve} "
                     f"{', '.join(sorted(set(served)))}, not {worst.label} — "
-                    f"your worst gap on turn {t}.",
+                    f"your worst gap on turn {t}."
+                    + (f" No reviewed guide establishes what {', '.join(unreviewed)} "
+                       "serves; that association is our own heuristic." if unreviewed else ""),
                 turn=t, subject_player=state.HUMAN,
             ))
 

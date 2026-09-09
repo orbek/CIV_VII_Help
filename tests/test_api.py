@@ -257,7 +257,7 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
 def test_briefing_serves_every_section_from_one_revision(client):
     body = client.get("/api/briefing").json()
     assert set(body) == {"status", "state", "insights", "hidden_insights", "intel",
-                         "tactical", "commentary"}
+                         "tactical", "commentary", "decisions"}
     status = body["status"]
     assert status["schema_version"] == 1 and status["revision"] >= 1
     assert status["session"] and status["epoch"] == 1
@@ -341,3 +341,146 @@ def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir
         assert body["previous"]["identity"]["snapshot_revision"] == 3
         assert body["previous"]["identity"]["evidence_mode"] == "oracle"
         assert c.get("/api/briefing").json()["commentary"]["status"] == "queued"
+
+
+def _behind_dir(tmp_path: Path, fixture_dir: Path) -> Path:
+    """A log directory whose human is behind on culture with one logged queue, so the
+    culture decision has something to decide."""
+    import shutil
+
+    d = tmp_path / "logs"
+    shutil.copytree(fixture_dir, d)
+    (d / "CityBuildQueue.csv").write_text(
+        "Game Turn, Player, City, Production Added, Current Item, Current Production, "
+        "Production Needed, Overflow\n"
+        "82, 0, LOC_CITY_NAME_TEST1, 20.0, UNIT_WARRIOR, 25.0, 30, 0.0\n"
+    )
+    return d
+
+
+def test_decisions_travel_with_their_evidence_and_guides_resolved(tmp_path, fixture_dir):
+    """Citations resolve on the server. A bare id the drawer cannot look up would be a
+    dead link, so the resolution happens where it can fail loudly."""
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        body = c.get("/api/decisions").json()
+        card = next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
+        assert card["subject"] == "Culture in Test1"
+        action = card["preferred"]
+        assert action["applicability"] == "inspect"
+        assert action["steps"] and action["why_now"]
+        assert action["guide_ids"]
+
+        cited = {f["id"] for f in body["evidence"]}
+        assert set(action["evidence_ids"]) <= cited
+        assert set(card["evidence_ids"]) <= cited
+        guides = {g["id"] for g in body["guides"]}
+        assert set(action["guide_ids"]) <= guides
+        # Each guide says how far it may be relied on, and carries a real URL.
+        for guide in body["guides"]:
+            assert guide["url"].startswith("https://")
+            assert guide["review_status"] == "navigation_reviewed"
+            assert "version_known" in guide and guide["attribution"]
+        # Evidence leads with a readable label, not the internal id.
+        fact = next(f for f in body["evidence"] if f["kind"] == "derived")
+        assert fact["label"] and fact["contributing"]
+        assert body["context"]["catalog_revision"]
+
+
+def test_the_briefing_carries_the_decision_brief(tmp_path, fixture_dir):
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        body = c.get("/api/briefing").json()
+        assert body["decisions"]["cards"]
+        assert body["decisions"]["context"]["snapshot_revision"] == body["status"]["revision"]
+        assert body["decisions"]["context"]["evidence_mode"] == "oracle"
+        fair = c.get("/api/briefing?oracle=0").json()
+        assert fair["decisions"]["context"]["evidence_mode"] == "fair"
+
+
+def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision(
+        tmp_path, fixture_dir):
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        session = c.get("/api/status").json()["session"]
+        before = c.get("/api/decisions").json()
+        assert before["cards"][0]["preferred"]["applicability"] == "inspect"
+
+        def submit(label, value, unit=None, base_revision=None, session_id=None):
+            revision = (c.get("/api/context").json()["revision"]
+                        if base_revision is None else base_revision)
+            return c.post("/api/context", json={
+                "id": f"report.TEST1.{label}.{value}", "subject": "LOC_CITY_NAME_TEST1",
+                "label": label, "value": value, "unit": unit, "observed_turn": 81,
+                "session": session_id or session, "reported_at": "2026-09-08T12:00:00",
+                "epoch": 1, "base_revision": revision,
+            })
+
+        assert submit("available_options", "BUILDING_MONUMENT,BUILDING_AMPHITHEATER").status_code == 200
+        assert submit("objective", "soonest_culture").status_code == 200
+        for item, turns, delta in (("BUILDING_MONUMENT", 4, 3), ("BUILDING_AMPHITHEATER", 6, 5)):
+            assert submit(f"preview.{item}.completion_turns", turns, "turns").status_code == 200
+            assert submit(f"preview.{item}.culture_delta", delta, "culture per turn").status_code == 200
+
+        held = c.get("/api/context").json()
+        assert held["revision"] >= 6 and len(held["reports"]) == 6
+
+        after = c.get("/api/decisions").json()
+        card = after["cards"][0]
+        assert card["preferred"]["id"].endswith("BUILDING_MONUMENT")
+        # Named, and still conditional: availability of a *placement* and Age
+        # applicability are not things any log settles.
+        assert card["preferred"]["applicability"] == "conditional"
+        states = {p["name"]: p["state"] for p in card["preferred"]["prerequisites"]}
+        assert states["offered in this settlement"] == "met"
+        assert states["Age and ruleset applicability"] == "unknown"
+        shown = " ".join(card["preferred"]["trade_offs"])
+        assert "2 more culture per turn" in shown and "2 turns longer" in shown
+        assert after["context"]["context_revision"] == held["revision"]
+        # The player's own figures are cited as reports, not dressed up as log rows.
+        reports = [f for f in after["evidence"] if f["kind"] == "player_report"]
+        assert reports and all(f["source_file"] is None for f in reports)
+
+
+def test_a_submission_from_another_session_is_refused_with_a_recoverable_conflict(
+        tmp_path, fixture_dir):
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        response = c.post("/api/context", json={
+            "id": "report.stale", "subject": "LOC_CITY_NAME_TEST1", "label": "objective",
+            "value": "soonest_culture", "observed_turn": 81, "session": "a-previous-session",
+            "reported_at": "2026-09-08T12:00:00", "epoch": 1, "base_revision": 0,
+        })
+        assert response.status_code == 409
+        body = response.json()
+        assert body["reason"] == "session_changed"
+        assert body["session"] == c.get("/api/status").json()["session"]
+        assert c.get("/api/context").json()["reports"] == []
+
+
+def test_a_field_the_panel_does_not_collect_is_refused(tmp_path, fixture_dir):
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        session = c.get("/api/status").json()["session"]
+        response = c.post("/api/context", json={
+            "id": "report.free", "subject": "LOC_CITY_NAME_TEST1", "label": "my_hopes",
+            "value": "win", "observed_turn": 81, "session": session,
+            "reported_at": "2026-09-08T12:00:00", "epoch": 1, "base_revision": 0,
+        })
+        assert response.status_code == 409 and response.json()["reason"] == "unknown_label"
+        assert c.post("/api/context", json={"id": "x"}).status_code == 422
+
+
+def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
+        tmp_path, fixture_dir):
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+        session = c.get("/api/status").json()["session"]
+        c.post("/api/context", json={
+            "id": "report.options", "subject": "LOC_CITY_NAME_TEST1",
+            "label": "available_options", "value": "BUILDING_MONUMENT",
+            "observed_turn": 81, "session": session, "reported_at": "2026-09-08T12:00:00",
+            "epoch": 1, "base_revision": 0,
+        })
+        assert any("BUILDING_MONUMENT" in x["id"]
+                   for x in c.get("/api/decisions").json()["cards"][0]["alternatives"]
+                   + [c.get("/api/decisions").json()["cards"][0]["preferred"]])
+        cleared = c.delete("/api/context/report.options").json()
+        assert cleared["removed"] is True and cleared["revision"] == 2
+        card = c.get("/api/decisions").json()["cards"][0]
+        assert card["preferred"]["applicability"] == "inspect"
+        assert all("BUILDING_MONUMENT" not in x["id"] for x in card["alternatives"])

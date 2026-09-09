@@ -163,3 +163,41 @@ def test_rival_military_copy_dates_mixed_rows_and_pluralises_one_city():
 
 def test_production_is_registered():
     assert production in ADVISORS and ADVISOR_ORDER["production"] == 4
+
+
+def test_the_reviewed_catalog_wins_over_the_unverified_yield_table():
+    """One lookup for the whole codebase, so the decision layer and this advisor cannot
+    disagree about what a building is for."""
+    from civ7_advisor.advisors import production
+
+    assert production.item_yield("BUILDING_MONUMENT") == "culture"
+    assert production.reviewed_yield("BUILDING_MONUMENT") is True
+    # Covered only by the unverified fallback, and labelled as such.
+    assert production.item_yield("BUILDING_BRICKYARD") == "production"
+    assert production.reviewed_yield("BUILDING_BRICKYARD") is False
+    assert production.item_yield("BUILDING_NOT_A_REAL_THING") is None
+
+
+def test_a_mismatch_says_when_its_yield_association_is_only_a_heuristic():
+    from civ7_advisor.advisors import production
+    from tests.factories import build_queue_row, game_state
+
+    state = game_state(turn=20, rivals={1: "Rival"},
+                       human_stats={"culture": 5.0}, rival_stats={1: {"culture": 40.0}})
+    state.build_queues = [build_queue_row(state.latest_turn, 0, "LOC_CITY_NAME_A",
+                                          "BUILDING_BRICKYARD")]
+    mismatch = next(i for i in production.advise(state) if i.id == "production.mismatch")
+    assert "No reviewed guide establishes what Brickyard serves" in mismatch.why
+    assert "our own heuristic" in mismatch.why
+
+
+def test_a_reviewed_item_carries_no_heuristic_caveat():
+    from civ7_advisor.advisors import production
+    from tests.factories import build_queue_row, game_state
+
+    state = game_state(turn=20, rivals={1: "Rival"},
+                       human_stats={"science": 5.0}, rival_stats={1: {"science": 40.0}})
+    state.build_queues = [build_queue_row(state.latest_turn, 0, "LOC_CITY_NAME_A",
+                                          "BUILDING_MONUMENT")]
+    mismatch = next(i for i in production.advise(state) if i.id == "production.mismatch")
+    assert "heuristic" not in mismatch.why

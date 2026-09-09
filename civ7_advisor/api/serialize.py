@@ -11,6 +11,10 @@ from dataclasses import asdict
 
 from civ7_advisor.advisors import Insight, economy, intel, production, threat, victory
 from civ7_advisor.advisors.base import visible
+from civ7_advisor.decisions.context import DecisionContext
+from civ7_advisor.decisions.evidence import EvidenceLedger
+from civ7_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
+from civ7_advisor.knowledge.catalog import GuideEntry
 from civ7_advisor.llm.models import Commentary, CommentaryResult
 from civ7_advisor.state.models import GameState, PlayerKind, PlayerTurn
 from civ7_advisor.store import Snapshot
@@ -164,7 +168,104 @@ def commentary_to_dict(result: CommentaryResult) -> dict:
     }
 
 
-def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult) -> dict:
+def evidence_to_dict(fact: EvidenceFact, analysis_turn: int) -> dict:
+    """One observation, readable. `label` leads, not the id: an internal key is a handle
+    for the code, not something to put in front of a player as the primary label."""
+    return {
+        "id": fact.id, "label": fact.label, "kind": fact.source_kind.value,
+        "provenance": fact.provenance.value, "value": fact.value, "unit": fact.unit,
+        "observed_turn": fact.observed_turn, "age": fact.age_in(analysis_turn),
+        "source_file": fact.source_file, "record_key": list(fact.record_key),
+        "subject_id": fact.subject_id, "contributing": list(fact.contributing),
+        "note": fact.note, "reported_at": fact.reported_at,
+    }
+
+
+def guide_to_dict(entry: GuideEntry) -> dict:
+    """A guide reference with everything needed to say how far it may be trusted."""
+    return {
+        "id": entry.id, "title": entry.title, "publisher": entry.publisher,
+        "url": entry.url, "reviewed_url": entry.reviewed_url, "section": entry.section,
+        "instructions": list(entry.instructions),
+        "prerequisites": list(entry.prerequisites),
+        "review_status": entry.review_status, "reviewed_at": entry.reviewed_at,
+        "supported_rulesets": list(entry.supported_rulesets),
+        "version_known": entry.version_known,
+        "notes": entry.notes, "attribution": entry.attribution,
+    }
+
+
+def candidate_to_dict(candidate: ActionCandidate) -> dict:
+    return {
+        "id": candidate.id, "title": candidate.title, "target": candidate.target,
+        "why_now": candidate.why_now, "applicability": candidate.applicability.value,
+        "steps": list(candidate.steps), "evidence_ids": list(candidate.evidence_ids),
+        "guide_ids": list(candidate.guide_ids),
+        "prerequisites": [{"name": name, "state": state.value}
+                          for name, state in candidate.prerequisites],
+        "trade_offs": list(candidate.trade_offs), "unknowns": list(candidate.unknowns),
+        "provenance": candidate.provenance.value,
+    }
+
+
+def decision_to_dict(card: DecisionCard) -> dict:
+    return {
+        "id": card.id, "subject": card.subject, "severity": card.severity.name,
+        "priority_reason": card.priority_reason, "insight_ids": list(card.insight_ids),
+        "preferred": candidate_to_dict(card.preferred) if card.preferred else None,
+        "alternatives": [candidate_to_dict(c) for c in card.alternatives],
+        "evidence_ids": list(card.evidence_ids), "evidence_mode": card.evidence_mode,
+        "observed_turns": list(card.observed_turns), "unknowns": list(card.unknowns),
+    }
+
+
+def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...]) -> dict:
+    """The decisions plus every fact and guide they cite, resolved once.
+
+    Citations travel resolved rather than as bare ids so the evidence drawer never has to
+    guess what an id meant, and an id nothing can resolve fails here instead of rendering
+    as a dead link.
+    """
+    fact_ids: list[str] = []
+    guide_ids: list[str] = []
+    for card in cards:
+        fact_ids.extend(card.evidence_ids)
+        for candidate in card.candidates:
+            fact_ids.extend(candidate.evidence_ids)
+            guide_ids.extend(candidate.guide_ids)
+    unique_facts = tuple(dict.fromkeys(fact_ids))
+    unique_guides = tuple(dict.fromkeys(guide_ids))
+    return {
+        "cards": [decision_to_dict(c) for c in cards],
+        "evidence": [evidence_to_dict(f, context.analysis_turn)
+                     for f in context.ledger.resolve(unique_facts)],
+        "guides": [guide_to_dict(g) for g in context.catalog.resolve(unique_guides)],
+        "context": {
+            "session": context.session, "epoch": context.epoch,
+            "snapshot_revision": context.snapshot_revision,
+            "context_revision": context.context_revision,
+            "catalog_revision": context.catalog_revision,
+            "evidence_mode": context.evidence_mode,
+            "analysis_turn": context.analysis_turn,
+            "unobserved_settlements": context.unobserved_settlements,
+            "settlements": [
+                {"city": s.city, "name": s.name, "item": s.item,
+                 "turns_to_complete": s.turns_to_complete, "observed_turn": s.observed_turn,
+                 "idle": s.idle, "completed_items": list(s.completed_items)}
+                for s in context.settlements
+            ],
+            "reports": [
+                {"id": r.id, "subject": r.subject, "label": r.label, "value": r.value,
+                 "unit": r.unit, "observed_turn": r.observed_turn,
+                 "reported_at": r.reported_at, "base_revision": r.base_revision}
+                for r in context.player.reports
+            ],
+        },
+    }
+
+
+def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult,
+                     decisions: dict | None = None) -> dict:
     """The whole dashboard from one revision.
 
     The browser used to assemble five independent responses, which let a late reply from
@@ -184,4 +285,5 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
         "tactical": (tactical.snapshot(state) if oracle
                      else {"available": False, "reason": "oracle_off"}),
         "commentary": commentary_to_dict(commentary),
+        "decisions": decisions,
     }

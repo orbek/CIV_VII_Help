@@ -232,7 +232,7 @@ def test_the_refinement_panel_changes_the_recommendation_and_can_be_cleared(dash
     panel.locator('[name="objective"]').select_option("soonest_culture")
     for item, turns, delta in (("BUILDING_MONUMENT", "4", "3"), ("BUILDING_AMPHITHEATER", "6", "5")):
         panel.locator(f'[name="preview.{item}.completion_turns"]').fill(turns)
-        panel.locator(f'[name="preview.{item}.culture_delta"]').fill(delta)
+        panel.locator(f'[name="preview.{item}.yield_delta"]').fill(delta)
         panel.locator(f'[name="preview.{item}.gold_upkeep"]').fill("2")
     panel.locator('button[type="submit"]').click()
 

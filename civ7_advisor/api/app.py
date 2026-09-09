@@ -13,7 +13,7 @@ from fastapi.staticfiles import StaticFiles
 
 from civ7_advisor.advisors import tactical
 from civ7_advisor.advisors.base import visible
-from civ7_advisor.decisions import culture
+from civ7_advisor.decisions import decide_all
 from civ7_advisor.decisions.context import (
     PREVIEW_METRICS,
     ContextConflict,
@@ -60,7 +60,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         """
         context_store.adopt(captured)
         context = build_context(captured, context_store.context())
-        cards = tuple(card for card in (culture.decide(context),) if card is not None)
+        cards = decide_all(context)
         return {
             "decision_revision": decision_fingerprint(cards),
             "context_revision": context.context_revision,
@@ -125,8 +125,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         """
         context_store.adopt(captured)
         context = build_context(captured, context_store.context(), oracle=oracle)
-        cards = tuple(card for card in (culture.decide(context),) if card is not None)
-        return decisions_to_dict(context, cards)
+        return decisions_to_dict(context, decide_all(context))
 
     @app.get("/api/briefing")
     def api_briefing(oracle: int = 1) -> dict:

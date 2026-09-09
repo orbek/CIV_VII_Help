@@ -186,6 +186,8 @@ def guide_to_dict(entry: GuideEntry) -> dict:
     return {
         "id": entry.id, "title": entry.title, "publisher": entry.publisher,
         "url": entry.url, "reviewed_url": entry.reviewed_url, "section": entry.section,
+        "kind": entry.kind, "item_keys": list(entry.item_keys),
+        "mechanic_keys": list(entry.mechanic_keys), "yields": list(entry.yields),
         "instructions": list(entry.instructions),
         "prerequisites": list(entry.prerequisites),
         "review_status": entry.review_status, "reviewed_at": entry.reviewed_at,
@@ -216,6 +218,8 @@ def decision_to_dict(card: DecisionCard) -> dict:
         "alternatives": [candidate_to_dict(c) for c in card.alternatives],
         "evidence_ids": list(card.evidence_ids), "evidence_mode": card.evidence_mode,
         "observed_turns": list(card.observed_turns), "unknowns": list(card.unknowns),
+        "family": card.family,
+        "also_behind": [{"label": label, "ratio": ratio} for label, ratio in card.also_behind],
     }
 
 

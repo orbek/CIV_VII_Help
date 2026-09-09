@@ -18,9 +18,10 @@ from dataclasses import dataclass, field, replace
 from civ7_advisor.advisors import tactical
 from civ7_advisor.advisors.base import Severity, visible
 from civ7_advisor.knowledge.catalog import Catalog, load_catalog
+from civ7_advisor.state.models import GameState
 from civ7_advisor.store import Snapshot
 
-from .evidence import EvidenceLedger, build_ledger
+from .evidence import YIELD_STATS, EvidenceLedger, build_ledger
 from .models import EvidenceFact, PlayerContext, PlayerReport, Prerequisite
 
 # The report vocabulary. A submission naming anything else is refused, so the panel
@@ -32,9 +33,12 @@ LOCAL_HAPPINESS_OK = "local_happiness_ok"   # value: item key the settlement can
 NO_DISPLACEMENT = "no_displacement"         # value: item key that displaces nothing
 PREVIEW = "preview"                         # label: preview.<ITEM_KEY>.<metric>
 
+# One metric vocabulary for every family. `yield_delta` is the change to the yield the
+# decision is about — the unit string says which — rather than a per-family field name,
+# so a second family with item-level guides needs no new plumbing.
 PREVIEW_METRICS = {
     "completion_turns": "turns",
-    "culture_delta": "culture per turn",
+    "yield_delta": "per turn",
     "gold_upkeep": "gold per turn",
     "happiness_cost": "happiness per turn",
 }
@@ -43,9 +47,11 @@ PREVIEW_METRICS = {
 # utility score: "best" is not a property of the game state, it is a property of a goal.
 SOONEST = "soonest_culture"
 LARGEST = "largest_culture"
+# Written with a {yield_label} placeholder so one objective vocabulary serves every
+# family: the player's goal is "soonest" or "largest", not "soonest culture".
 OBJECTIVES = {
-    SOONEST: "the next culture increase as soon as possible",
-    LARGEST: "the largest eventual culture increase among feasible options",
+    SOONEST: "the next {yield_label} increase as soon as possible",
+    LARGEST: "the largest eventual {yield_label} increase among feasible options",
 }
 
 SIMPLE_LABELS = (OBJECTIVE, AVAILABLE_OPTIONS, PLACEMENT_LEGAL, LOCAL_HAPPINESS_OK,
@@ -212,7 +218,7 @@ class Previews:
 
     item: str
     completion_turns: float | None = None
-    culture_delta: float | None = None
+    yield_delta: float | None = None
     gold_upkeep: float | None = None
     happiness_cost: float | None = None
     observed_turn: int | None = None
@@ -250,13 +256,14 @@ class DecisionContext:
     catalog_revision: str
     analysis_turn: int
     evidence_mode: str
+    state: GameState
     ledger: EvidenceLedger
     catalog: Catalog
     player: PlayerContext
     settlements: tuple[SettlementView, ...] = ()
     unobserved_settlements: int | None = None
     coverage_fact_id: str | None = None
-    culture_comparison: EvidenceFact | None = None
+    comparisons: dict[str, EvidenceFact] = field(default_factory=dict)
     net_gold: EvidenceFact | None = None
     happiness: EvidenceFact | None = None
     age: EvidenceFact | None = None
@@ -267,6 +274,11 @@ class DecisionContext:
     insight_ids: tuple[str, ...] = ()
 
     # -- what the player told us ---------------------------------------------------
+
+    @property
+    def culture_comparison(self) -> EvidenceFact | None:
+        """The culture pilot's own comparison. One family's view of `comparisons`."""
+        return self.comparisons.get("culture")
 
     def objective(self, city: str) -> str | None:
         for report in self.player.for_subject(city):
@@ -369,10 +381,12 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
         context_revision=(player.revision if player else 0),
         catalog_revision=catalog.revision, analysis_turn=snapshot.analysis_turn,
         evidence_mode="oracle" if oracle else "fair",
-        ledger=ledger, catalog=catalog, player=player,
+        state=state, ledger=ledger, catalog=catalog, player=player,
         settlements=tuple(settlements), unobserved_settlements=unobserved,
         coverage_fact_id=coverage.id if coverage else None,
-        culture_comparison=ledger.get(f"comparison.culture.{snapshot.analysis_turn}"),
+        comparisons={stat: fact for stat in YIELD_STATS
+                     if (fact := ledger.get(f"comparison.{stat}.{snapshot.analysis_turn}"))
+                     is not None},
         net_gold=ledger.get(f"gold.net.{snapshot.analysis_turn}"),
         happiness=ledger.get(f"happiness.total.{snapshot.analysis_turn}"),
         age=ledger.get(f"age.observed.{snapshot.analysis_turn}"),

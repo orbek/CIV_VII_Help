@@ -133,6 +133,11 @@ class DecisionCard:
     evidence_mode: str = "oracle"    # the mode this card was computed under
     observed_turns: tuple[int, ...] = ()   # the turns its evidence comes from
     unknowns: tuple[str, ...] = ()
+    family: str = ""                 # the yield or mechanic this decision is about
+    # Other families trailing the field in the same settlement, worst first, as
+    # (label, ratio). One inspection covers them all, so they are folded in here rather
+    # than becoming near-identical cards that would push a real alert out of the brief.
+    also_behind: tuple[tuple[str, float], ...] = ()
 
     @property
     def candidates(self) -> tuple[ActionCandidate, ...]:

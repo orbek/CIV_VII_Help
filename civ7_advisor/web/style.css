@@ -465,3 +465,34 @@ td.behind { color: var(--brass); }
   .decision-controls button { padding: .35rem .55rem; }   /* keep the target tappable */
   .refine-grid { grid-template-columns: 1fr; }
 }
+
+/* ---- tactical view picker and contact table ----------------------------------- */
+.view-picker { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 .75rem; }
+.view-picker button { display: flex; flex-direction: column; gap: .1rem; text-align: left;
+  font: inherit; padding: .3rem .6rem; background: transparent; color: inherit; cursor: pointer;
+  border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; }
+.view-picker button.active { border-color: currentColor; background: rgba(201, 138, 46, .12); }
+.view-picker button:focus-visible { outline: 2px solid #c98a2e; outline-offset: 2px; }
+.view-label { font-size: .88rem; font-weight: 600; }
+.view-detail { font-size: .74rem; color: var(--muted, #8b8578); }
+
+.contact-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  margin: .4rem 0; font-size: .82rem; }
+.contact-controls input { font: inherit; font-size: .84rem; padding: .2rem .4rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .5);
+  border-radius: 3px; }
+.contact-controls button { font: inherit; font-size: .82rem; padding: .2rem .6rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .5);
+  border-radius: 3px; cursor: pointer; }
+.contact-controls button[disabled] { opacity: .45; cursor: default; }
+.contact-controls button:focus-visible, .contact-controls input:focus-visible {
+  outline: 2px solid #c98a2e; outline-offset: 2px; }
+.contact-count { color: var(--muted, #8b8578); }
+
+tbody tr[role="button"] { cursor: pointer; }
+tbody tr[role="button"]:focus-visible { outline: 2px solid #c98a2e; outline-offset: -2px; }
+tbody tr.selected { background: rgba(201, 138, 46, .16); }
+.map-selected { stroke: #c98a2e; }
+.contact-detail { margin: .5rem 0; padding: .5rem .7rem; border-left: 3px solid #c98a2e;
+  background: rgba(201, 138, 46, .08); }
+.contact-detail h4 { margin: 0 0 .2rem; font-size: .92rem; }

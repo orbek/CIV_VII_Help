@@ -233,14 +233,14 @@ def test_confirmed_options_without_previews_ask_for_exactly_what_is_missing():
     assert "previews needed to choose between them are not all supplied" in card.priority_reason
     assert all(c.applicability is not Applicability.READY for c in card.candidates)
     missing = next(u for u in card.unknowns if u.startswith("Preview figures still missing"))
-    assert "culture_delta" in missing and MONUMENT in missing
-    assert f"{AMPHITHEATER}: completion_turns, culture_delta" in missing
+    assert "yield_delta" in missing and MONUMENT in missing
+    assert f"{AMPHITHEATER}: completion_turns, yield_delta" in missing
 
 
 def test_a_named_build_stays_conditional_even_when_the_player_confirmed_it():
     reports = (report(AVAILABLE_OPTIONS, MONUMENT),
                report(preview_label(MONUMENT, "completion_turns"), 4),
-               report(preview_label(MONUMENT, "culture_delta"), 3))
+               report(preview_label(MONUMENT, "yield_delta"), 3))
     card = culture.decide(context_for(behind_state(), reports))
     named = next(c for c in card.candidates if c.id.endswith(MONUMENT))
     assert named.applicability is Applicability.CONDITIONAL
@@ -285,11 +285,11 @@ def refinement_reports(objective: str) -> tuple[PlayerReport, ...]:
         report(LOCAL_HAPPINESS_OK, MONUMENT), report(LOCAL_HAPPINESS_OK, AMPHITHEATER),
         report(NO_DISPLACEMENT, MONUMENT), report(NO_DISPLACEMENT, AMPHITHEATER),
         report(preview_label(MONUMENT, "completion_turns"), 4, unit="turns"),
-        report(preview_label(MONUMENT, "culture_delta"), 3, unit="culture per turn"),
+        report(preview_label(MONUMENT, "yield_delta"), 3, unit="culture per turn"),
         report(preview_label(MONUMENT, "gold_upkeep"), 2, unit="gold per turn"),
         report(preview_label(MONUMENT, "happiness_cost"), 2, unit="happiness per turn"),
         report(preview_label(AMPHITHEATER, "completion_turns"), 6, unit="turns"),
-        report(preview_label(AMPHITHEATER, "culture_delta"), 5, unit="culture per turn"),
+        report(preview_label(AMPHITHEATER, "yield_delta"), 5, unit="culture per turn"),
         report(preview_label(AMPHITHEATER, "gold_upkeep"), 2, unit="gold per turn"),
         report(preview_label(AMPHITHEATER, "happiness_cost"), 2, unit="happiness per turn"),
     )
@@ -341,12 +341,12 @@ def test_returning_compare_the_options_would_fail_the_case():
 
 def test_withdrawing_the_previews_removes_the_choice_and_asks_only_for_what_is_missing():
     kept = tuple(r for r in refinement_reports(SOONEST)
-                 if "culture_delta" not in r.label)
+                 if "yield_delta" not in r.label)
     card = culture.decide(context_for(behind_state(net_gold=10.0), kept))
     assert card.preferred.applicability is not Applicability.READY
     assert "not all supplied" in card.priority_reason
     missing = next(u for u in card.unknowns if u.startswith("Preview figures still missing"))
-    assert "culture_delta" in missing and "completion_turns" not in missing
+    assert "yield_delta" in missing and "completion_turns" not in missing
 
 
 def test_withdrawing_availability_removes_the_named_choice_entirely():
@@ -371,14 +371,14 @@ def test_a_missing_metric_is_missing_and_never_zero():
         report(AVAILABLE_OPTIONS, f"{MONUMENT},{AMPHITHEATER}"),
         report(OBJECTIVE, SOONEST),
         report(preview_label(MONUMENT, "completion_turns"), 4),
-        report(preview_label(MONUMENT, "culture_delta"), 3),
+        report(preview_label(MONUMENT, "yield_delta"), 3),
         report(preview_label(AMPHITHEATER, "completion_turns"), 6),
     ))
     comparison = culture.compare(context, CITY, (MONUMENT, AMPHITHEATER), SOONEST)
     assert comparison.winner is None, "one usable option is not a comparison"
-    assert comparison.incomplete == (f"{AMPHITHEATER}: culture_delta",)
+    assert comparison.incomplete == (f"{AMPHITHEATER}: yield_delta",)
     preview = context.previews(CITY, AMPHITHEATER)
-    assert preview.culture_delta is None and preview.completion_turns == 6
+    assert preview.yield_delta is None and preview.completion_turns == 6
 
 
 # ---- the player-context concurrency contract (plan section 4) --------------------
@@ -413,7 +413,7 @@ def test_a_stale_submission_is_accepted_when_nothing_it_depends_on_moved():
     store = make_store()
     store.submit(report(OBJECTIVE, SOONEST), epoch=1, base_revision=0)
     accepted = store.submit(
-        report(preview_label(MONUMENT, "culture_delta"), 3), epoch=1, base_revision=0,
+        report(preview_label(MONUMENT, "yield_delta"), 3), epoch=1, base_revision=0,
         dependencies={"queue": "UNIT_WARRIOR@33"},
         current_dependencies={"queue": "UNIT_WARRIOR@33"},
     )
@@ -424,7 +424,7 @@ def test_a_stale_submission_is_refused_when_a_dependency_changed():
     store = make_store()
     store.submit(report(OBJECTIVE, SOONEST), epoch=1, base_revision=0)
     with pytest.raises(ContextConflict) as caught:
-        store.submit(report(preview_label(MONUMENT, "culture_delta"), 3), epoch=1,
+        store.submit(report(preview_label(MONUMENT, "yield_delta"), 3), epoch=1,
                      base_revision=0, dependencies={"queue": "UNIT_WARRIOR@33"},
                      current_dependencies={"queue": "BUILDING_MONUMENT@34"})
     assert caught.value.reason == "stale_revision"
@@ -434,13 +434,13 @@ def test_a_stale_submission_is_refused_when_a_dependency_changed():
 
 def test_only_a_relevant_change_invalidates_a_report():
     store = make_store()
-    store.submit(report(preview_label(MONUMENT, "culture_delta"), 3), epoch=1, base_revision=0)
+    store.submit(report(preview_label(MONUMENT, "yield_delta"), 3), epoch=1, base_revision=0)
     store.submit(report(OBJECTIVE, SOONEST, subject="LOC_CITY_NAME_OTHER"),
                  epoch=1, base_revision=store.revision)
     assert store.invalidate("LOC_CITY_NAME_UNRELATED", "a rival did something") == ()
     assert len(store.context().reports) == 2
     dropped = store.invalidate(CITY, "this settlement's queue changed")
-    assert dropped == (f"report.{CITY}.preview.{MONUMENT}.culture_delta",)
+    assert dropped == (f"report.{CITY}.preview.{MONUMENT}.yield_delta",)
     assert [r.subject for r in store.context().reports] == ["LOC_CITY_NAME_OTHER"]
 
 

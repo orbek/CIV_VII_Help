@@ -30,6 +30,10 @@ IDENTITY_FILE = "GameCore.log"
 OPERATIONS_FILE = "AI_Operation.csv"
 TACTICAL_FILE = "AI_Tactical.csv"
 
+# The yields the economy advisor compares, and so the families a decision can be about.
+# Kept in the same order the advisor uses so a ledger built twice is identical.
+YIELD_STATS: tuple[str, ...] = ("culture", "science", "gold", "production", "food")
+
 
 @dataclass
 class EvidenceLedger:
@@ -392,8 +396,8 @@ def _city(city_key: str) -> str:
     return city_key.removeprefix("LOC_CITY_NAME_").replace("_", " ").title()
 
 
-def build_ledger(state: GameState, stats: tuple[str, ...] = ("culture",)) -> EvidenceLedger:
-    """Every fact the culture pilot needs, from one state.
+def build_ledger(state: GameState, stats: tuple[str, ...] = YIELD_STATS) -> EvidenceLedger:
+    """Every fact the decision layer needs, from one state.
 
     Builders that have no source return nothing rather than a placeholder, so a caller
     that needs a missing fact finds it absent and has to say so.

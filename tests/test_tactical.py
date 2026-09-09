@@ -5,7 +5,7 @@ from civ7_advisor.ingest.tactical import (
 )
 from civ7_advisor.state.geo import hex_distance
 from civ7_advisor.state.models import GameState, Player, PlayerKind
-from tests.factories import combat
+from tests.factories import city_target, combat
 
 
 def test_odd_row_offset_hex_distance_has_six_adjacent_directions():
@@ -136,3 +136,110 @@ def test_known_city_area_tiles_carry_the_turn_they_were_observed_on():
     assert snap["city_tiles"] == [{"x": 4, "y": 5, "turn": 14, "age": 6}]
     assert snap["goal_fresh_turns"] == tactical.GOAL_FRESH_TURNS
     assert tactical.city_tile_observations(state) == {(4, 5): 14}
+
+
+def _two_frontier_state(now: int = 20) -> GameState:
+    """Two city areas far apart, with contacts near each and one exposed unit between."""
+    tiles = [(10, 10), (11, 10), (10, 11)] + [(70, 40), (71, 40)]
+    return GameState(
+        players={
+            0: Player(0, "You", PlayerKind.HUMAN, True, now),
+            1: Player(1, "Rival One", PlayerKind.RIVAL, True, now),
+            2: Player(2, "Rival Two", PlayerKind.RIVAL, True, now),
+        },
+        complete_through_turn=now,
+        targets=[city_target(now, 1, owner=0, x=x, y=y) for x, y in tiles]
+        + [TargetRow(now, 1, "TARGET_HIGH_PRIORITY_UNIT", 0, 900, 40, 25)],
+        unit_operations=[UnitOperationRow(now, "Adding", 0, "UNIT_SCOUT", 900, "UNITOPERATION_ALERT")],
+        tactical=[
+            TacticalRow(now, 1, "Attack Units", "", None, None, None,
+                        "UNIT_SPEARMAN", 5001, (12, 12), None, ()),
+            TacticalRow(now, 1, "Attack Units", "", None, None, None,
+                        "UNIT_ARCHER", 5002, (13, 12), None, ()),
+            TacticalRow(now, 1, "Attack Units", "", None, None, None,
+                        "UNIT_ARCHER", 5003, (13, 12), None, ()),
+            TacticalRow(now, 2, "Attack Units", "", None, None, None,
+                        "UNIT_IMMORTAL", 5004, (72, 41), None, ()),
+            TacticalRow(now, 1, "Attack Units", "", None, None, None,
+                        "UNIT_SCOUT", 5007, (41, 26), None, ()),
+        ],
+    )
+
+
+def test_distant_city_areas_are_separate_frontiers():
+    """One viewBox around both would be a picture of the sea between them."""
+    state = _two_frontier_state()
+    clusters = tactical.city_clusters(state)
+    assert [c["id"] for c in clusters] == ["area-10-10", "area-70-40"]
+    assert [len(c["tiles"]) for c in clusters] == [3, 2]
+    # Labelled by coordinates: the source is a list of plots and says nothing about which
+    # settlement any plot belongs to, so no settlement name is invented.
+    assert clusters[0]["label"] == "Area around 10:10"
+    assert all("tiles" in c and c["turn"] == 20 for c in clusters)
+    assert clusters[0]["bounds"] == {"min_x": 10, "max_x": 11, "min_y": 10, "max_y": 11}
+
+
+def test_a_contact_belongs_to_a_frontier_only_when_it_is_actually_near_one():
+    snap = tactical.snapshot(_two_frontier_state())
+    by_key = {u["key"]: u for u in snap["enemy_units"]}
+    assert by_key["1:5001"]["cluster"] == "area-10-10"
+    assert by_key["2:5004"]["cluster"] == "area-70-40"
+    # Nearest to *something* by arithmetic, but nowhere near it.
+    stray = by_key["1:5007"]
+    assert stray["cluster"] is None and stray["near"] is False
+    assert stray["nearest_cluster"] is not None and stray["distance_to_city"] > tactical.MAP_NEAR_TILES
+
+
+def test_a_contact_keeps_a_stable_identity_as_it_moves():
+    """Selecting a row selects the same unit on the map, and keeps doing so next turn."""
+    first = tactical.snapshot(_two_frontier_state())
+    moved = _two_frontier_state()
+    moved.tactical = [
+        r if r.unit_id != 5001 else type(r)(**(r.__dict__ | {"move": (11, 12)}))
+        for r in moved.tactical
+    ]
+    second = tactical.snapshot(moved)
+    before = next(u for u in first["enemy_units"] if u["key"] == "1:5001")
+    after = next(u for u in second["enemy_units"] if u["key"] == "1:5001")
+    assert (before["x"], before["y"]) != (after["x"], after["y"])
+    assert before["key"] == after["key"] == "1:5001"
+
+
+def test_a_distant_exposed_unit_gets_its_own_focus():
+    """Stretching a frontier's bounds to include it would shrink the frontier itself."""
+    snap = tactical.snapshot(_two_frontier_state())
+    exposed = [u for u in snap["human_units"] if u["exposed"]]
+    assert [u["key"] for u in exposed] == ["0:900"]
+    unit = exposed[0]
+    assert unit["distance_to_enemy"] <= tactical.NEAR_TILES
+    assert unit["distance_to_city"] > tactical.MAP_NEAR_TILES
+    assert unit["cluster"] is None
+
+
+def test_every_contact_is_in_the_snapshot_however_many_there_are():
+    """The old twelve-position cap is gone: the payload carries them all and the browser
+    pages through them."""
+    state = _two_frontier_state()
+    state.tactical = [
+        TacticalRow(20, 1, "Attack Units", "", None, None, None,
+                    "UNIT_ARCHER", 6000 + n, (12 + n % 3, 12), None, ())
+        for n in range(30)
+    ]
+    snap = tactical.snapshot(state)
+    assert len(snap["enemy_units"]) == 30
+    assert len({u["key"] for u in snap["enemy_units"]}) == 30
+
+
+def test_missing_tactical_data_cannot_be_read_as_safe():
+    """No city area and no contact is a gap in these logs, and the snapshot says nothing
+    that could be mistaken for an all-clear."""
+    state = GameState(
+        players={0: Player(0, "You", PlayerKind.HUMAN, True, 20),
+                 1: Player(1, "Rival", PlayerKind.RIVAL, True, 20)},
+        complete_through_turn=20,
+    )
+    snap = tactical.snapshot(state)
+    assert snap["available"] is False
+    assert snap["clusters"] == [] and snap["enemy_units"] == []
+    assert snap["city_tile_turn"] is None
+    assert "safe" not in repr(snap) and "clear" not in repr(snap)

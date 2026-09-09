@@ -250,7 +250,9 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     assert "/api/briefing?oracle=" in js and "textContent" in js
     assert "/api/state?oracle=" not in js and "/api/tactical?oracle=" not in js
     assert "commentary-sentence uncited" in js
-    assert "Closest recorded rival positions" in js and "distance_to_city" in js
+    assert "Recorded rival positions" in js and "distance_to_city" in js
+    # Every contact is reachable: the view picker and paged table replace the old cap.
+    assert "All contacts" in client.get("/static/tactical.js").text
     assert "(r.military_share || 0) * r.cities.length" in js
 
 
@@ -343,9 +345,17 @@ def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir
         assert c.get("/api/briefing").json()["commentary"]["status"] == "queued"
 
 
+CULTURE_COLUMN = 15   # "Culture" in Player_Stats.csv, zero-based
+
+
 def _behind_dir(tmp_path: Path, fixture_dir: Path) -> Path:
-    """A log directory whose human is behind on culture with one logged queue, so the
-    culture decision has something to decide."""
+    """A log directory whose human trails worst on *culture*, with one logged queue.
+
+    Several yields trail the field in this session and the brief folds same-settlement
+    gaps into the worst one, so the pilot's own card only exists when culture is the worst.
+    An override row for the analysis turn makes that so — the last row for a
+    (turn, player) pair wins.
+    """
     import shutil
 
     d = tmp_path / "logs"
@@ -355,6 +365,17 @@ def _behind_dir(tmp_path: Path, fixture_dir: Path) -> Path:
         "Production Needed, Overflow\n"
         "82, 0, LOC_CITY_NAME_TEST1, 20.0, UNIT_WARRIOR, 25.0, 30, 0.0\n"
     )
+    stats = d / "Player_Stats.csv"
+    rows = stats.read_text().splitlines()
+    index = next(i for i, r in enumerate(rows)
+                 if [c.strip() for c in r.split(",")[:2]] == ["81", "0"])
+    cells = rows[index].split(",")
+    cells[CULTURE_COLUMN] = " 1.0"
+    # Immediately after the row it overrides, not at the end of the file: the reader
+    # treats a turn number that moves backwards as a new game and would drop everything
+    # before it.
+    rows.insert(index + 1, ",".join(cells))
+    stats.write_text("\n".join(rows) + "\n")
     return d
 
 
@@ -400,8 +421,17 @@ def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision
         tmp_path, fixture_dir):
     with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
         session = c.get("/api/status").json()["session"]
+        def culture_card(body):
+            return next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
+
         before = c.get("/api/decisions").json()
-        assert before["cards"][0]["preferred"]["applicability"] == "inspect"
+        # Culture is the worst gap here, so it owns the settlement's card and the other
+        # trailing yields are folded into it rather than repeated.
+        assert [x["id"].split(".")[1] for x in before["cards"]] == ["culture"]
+        card = culture_card(before)
+        assert card["preferred"]["applicability"] == "inspect"
+        assert {row["label"] for row in card["also_behind"]} >= {"food", "science"}
+        assert "the same inspection covers them" in card["priority_reason"]
 
         def submit(label, value, unit=None, base_revision=None, session_id=None):
             revision = (c.get("/api/context").json()["revision"]
@@ -417,13 +447,13 @@ def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision
         assert submit("objective", "soonest_culture").status_code == 200
         for item, turns, delta in (("BUILDING_MONUMENT", 4, 3), ("BUILDING_AMPHITHEATER", 6, 5)):
             assert submit(f"preview.{item}.completion_turns", turns, "turns").status_code == 200
-            assert submit(f"preview.{item}.culture_delta", delta, "culture per turn").status_code == 200
+            assert submit(f"preview.{item}.yield_delta", delta, "culture per turn").status_code == 200
 
         held = c.get("/api/context").json()
         assert held["revision"] >= 6 and len(held["reports"]) == 6
 
         after = c.get("/api/decisions").json()
-        card = after["cards"][0]
+        card = culture_card(after)
         assert card["preferred"]["id"].endswith("BUILDING_MONUMENT")
         # Named, and still conditional: availability of a *placement* and Age
         # applicability are not things any log settles.
@@ -476,11 +506,15 @@ def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
             "observed_turn": 81, "session": session, "reported_at": "2026-09-08T12:00:00",
             "epoch": 1, "base_revision": 0,
         })
+        def culture_card():
+            body = c.get("/api/decisions").json()
+            return next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
+
+        named = culture_card()
         assert any("BUILDING_MONUMENT" in x["id"]
-                   for x in c.get("/api/decisions").json()["cards"][0]["alternatives"]
-                   + [c.get("/api/decisions").json()["cards"][0]["preferred"]])
+                   for x in named["alternatives"] + [named["preferred"]])
         cleared = c.delete("/api/context/report.options").json()
         assert cleared["removed"] is True and cleared["revision"] == 2
-        card = c.get("/api/decisions").json()["cards"][0]
+        card = culture_card()
         assert card["preferred"]["applicability"] == "inspect"
         assert all("BUILDING_MONUMENT" not in x["id"] for x in card["alternatives"])

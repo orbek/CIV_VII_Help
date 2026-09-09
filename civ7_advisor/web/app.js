@@ -65,7 +65,10 @@
        view — intent, never a game action. `expanded` remembers which decisions are open
        through a refresh so a turn update does not collapse what is being read. */
     decisions: null, acks: {}, pins: {}, expanded: {}, briefOpen: false,
-    drawerOpener: null, refineStatus: {} };
+    drawerOpener: null, refineStatus: {},
+    /* Tactical view state, kept through a refresh so a turn update does not throw the
+       player back to a different frontier or lose the contact they had selected. */
+    tacticalView: null, contactPage: 0, contactFilter: "", selectedContact: null };
 
   try { state.acks = JSON.parse(localStorage.getItem("civ7.acks") || "{}"); } catch (_) { /* ignore */ }
   try { state.pins = JSON.parse(localStorage.getItem("civ7.pins") || "{}"); } catch (_) { /* ignore */ }
@@ -548,6 +551,12 @@
           : `Evidence observed on turns ${turns[0]}–${turns[turns.length - 1]}.`));
       }
     }
+    if (card && (card.also_behind || []).length) {
+      const listed = card.also_behind
+        .map((row) => `${row.label} at ${Math.round(row.ratio * 100)}%`).join(", ");
+      node.append(el("p", "decision-dates",
+        `The same inspection also covers ${listed}, which trail the field here too.`));
+    }
     if (entry.insights.length > 1) {
       node.append(el("p", "decision-dates",
         `${entry.insights.length} warnings about this subject are grouped here; each is `
@@ -669,7 +678,10 @@
         card.unknowns.forEach((u) => list.append(el("li", null, u)));
         wrap.append(list);
       }
-      if (card.id.indexOf("decision.culture.") === 0 && card.id !== "decision.culture.unobserved") {
+      /* Offer the panel only where a named build is actually possible: the card must be
+         about a settlement, and the catalog must document a build for that family. */
+      if (card.id.split(".").length > 2 && !card.id.endsWith(".unobserved")
+          && refinableItems(card).length) {
         wrap.append(refinePanel(card));
       }
     } else {
@@ -808,15 +820,18 @@
 
   /* ================= the refinement panel ================= */
 
+  /* The panel's fields. The yield label comes from the card, so one panel serves any
+     family the catalog documents specific buildings for. */
   const REFINE_METRICS = [
     ["completion_turns", "Turns to complete", "turns"],
-    ["culture_delta", "Culture added", "culture per turn"],
+    ["yield_delta", "added", "per turn"],
     ["gold_upkeep", "Gold upkeep", "gold per turn"],
     ["happiness_cost", "Local happiness cost", "happiness per turn"],
   ];
 
   function refinePanel(card) {
-    const city = card.id.replace("decision.culture.", "");
+    const family = card.id.split(".")[1];
+    const city = card.id.split(".").slice(2).join(".");
     const context = (state.decisions && state.decisions.context) || {};
     const settlement = (context.settlements || []).find((s) => s.city === city);
     const panel = el("details", "refine");
@@ -830,7 +845,8 @@
     const form = el("form");
     form.dataset.focusKey = `refine:${city}`;
     const options = el("label", null);
-    options.append(el("span", null, "Culture options this settlement offers (comma separated, blank if none)"));
+    options.append(el("span", null,
+      `${family} options this settlement offers (comma separated, blank if none)`));
     const optionsInput = el("input");
     optionsInput.type = "text";
     optionsInput.name = "available_options";
@@ -842,8 +858,8 @@
     objective.append(el("span", null, "What are you optimising for?"));
     const select = el("select");
     select.name = "objective";
-    [["", "not stated"], ["soonest_culture", "the next culture increase soonest"],
-      ["largest_culture", "the largest eventual culture increase"]].forEach(([value, text]) => {
+    [["", "not stated"], ["soonest_culture", `the next ${family} increase soonest`],
+      ["largest_culture", `the largest eventual ${family} increase`]].forEach(([value, text]) => {
       const option = el("option", null, text);
       option.value = value;
       select.append(option);
@@ -852,23 +868,17 @@
     form.append(objective);
 
     const grid = el("div", "refine-grid");
-    /* The catalog is the only source of which items we have reviewed guides for, so the
-       panel offers exactly those and never invents a build to ask about. */
-    const askable = Array.from(new Set(
-      ((state.decisions && state.decisions.guides) || [])
-        .filter((g) => g.id.indexOf("guide.building.") === 0)
-        .map((g) => g.id.replace("guide.building.", "BUILDING_").toUpperCase())
-    ));
-    const items = askable.length ? askable : ["BUILDING_MONUMENT", "BUILDING_AMPHITHEATER"];
+    const items = refinableItems(card);
     items.forEach((item) => {
       REFINE_METRICS.forEach(([metric, label, unit]) => {
         const field = el("label", null);
-        field.append(el("span", null, `${itemName(item)} — ${label}`));
+        field.append(el("span", null, metric === "yield_delta"
+          ? `${itemName(item)} — ${family} ${label}` : `${itemName(item)} — ${label}`));
         const input = el("input");
         input.type = "number";
         input.step = "any";
         input.name = `preview.${item}.${metric}`;
-        input.dataset.unit = unit;
+        input.dataset.unit = metric === "yield_delta" ? `${family} ${unit}` : unit;
         field.append(input);
         grid.append(field);
       });
@@ -897,6 +907,18 @@
     clear.addEventListener("click", () => clearRefinement(city));
     panel.append(form);
     return panel;
+  }
+
+  /* Which items this card's panel may ask about: exactly the ones the server sent a
+     reviewed item guide for. Never a build we invented a name for. */
+  function refinableItems(card) {
+    const family = card.id.split(".")[1];
+    return Array.from(new Set(
+      ((state.decisions && state.decisions.guides) || [])
+        .filter((g) => g.id.indexOf("guide.building.") === 0
+          && (g.yields || []).indexOf(family) !== -1)
+        .flatMap((g) => g.item_keys || [])
+    ));
   }
 
   function refinementReports(city, settlement, form) {
@@ -965,6 +987,10 @@
     await refresh();
   }
 
+  /* ================= the tactical view ================= */
+
+  const T = window.Civ7Tactical;
+
   function renderTactical() {
     const host = $("#tactical-map");
     const data = state.tactical;
@@ -973,106 +999,287 @@
       host.replaceChildren(el("p", "empty", "No tactical positions are available yet."));
       return;
     }
-    const nearLimit = data.map_near_tiles || 8;
-    const byDistance = [...data.enemy_units].sort((a, b) =>
-      (a.distance_to_city ?? Number.MAX_SAFE_INTEGER) - (b.distance_to_city ?? Number.MAX_SAFE_INTEGER)
-      || b.turn - a.turn || a.name.localeCompare(b.name));
-    const allNearbyEnemies = byDistance.filter((u) => u.distance_to_city !== null
-      && u.distance_to_city <= nearLimit);
-    const nearbyEnemies = (data.city_tiles.length ? allNearbyEnemies : byDistance).slice(0, 12);
-    const nearestEnemyDistance = (unit) => data.enemy_units.reduce((best, enemy) => {
-      const distance = hexDistance(unit, enemy);
-      return Math.min(best, distance);
-    }, Number.MAX_SAFE_INTEGER);
-    const focusedHumans = data.human_units.filter((u) => u.x !== null &&
-      (data.city_tiles.some((city) => hexDistance(u, city) <= nearLimit)
-        || nearestEnemyDistance(u) <= 4));
-    const plots = [...data.city_tiles, ...focusedHumans, ...nearbyEnemies, ...data.attack_goals];
-    if (!plots.length) { host.replaceChildren(el("p", "empty", "No tactical positions are available yet.")); return; }
-    const project = (p) => ({ x: (p.x + (p.y & 1) / 2) * 42, y: p.y * 36 });
-    const points = plots.map(project);
-    const minX = Math.min(...points.map((p) => p.x)) - 24, maxX = Math.max(...points.map((p) => p.x)) + 24;
-    const minY = Math.min(...points.map((p) => p.y)) - 24, maxY = Math.max(...points.map((p) => p.y)) + 24;
+    const available = T.views(data);
+    if (!available.length) {
+      host.replaceChildren(el("p", "empty", "No tactical positions are available yet."));
+      return;
+    }
+    if (!available.some((v) => v.id === state.tacticalView)) {
+      /* Default to the busiest frontier rather than the first, so the view that opens is
+         the one with something in it. */
+      const busiest = available
+        .filter((v) => v.kind === "cluster")
+        .sort((a, b) => b.count - a.count)[0];
+      state.tacticalView = (busiest || available[available.length - 1]).id;
+    }
+    const view = available.find((v) => v.id === state.tacticalView);
+    const content = T.contents(data, state.tacticalView);
+
+    host.replaceChildren(
+      viewPicker(available, view),
+      coverageSummary(data, view, content),
+      frontierMap(data, content),
+      el("p", "map-legend", "Hexes: known city area · Brass: your units · Numbered red: "
+        + "rival positions · Rings: recorded attack objectives"),
+      ...contactSection(content),
+      ...promotionSection(data),
+    );
+  }
+
+  function viewPicker(available, current) {
+    const wrap = el("div", "view-picker");
+    wrap.setAttribute("role", "tablist");
+    wrap.setAttribute("aria-label", "Tactical views");
+    available.forEach((view) => {
+      const on = view.id === current.id;
+      const b = el("button");
+      b.type = "button";
+      b.dataset.focusKey = `view:${view.id}`;
+      b.setAttribute("role", "tab");
+      b.setAttribute("aria-selected", on ? "true" : "false");
+      b.className = on ? "active" : "";
+      b.append(el("span", "view-label", view.label), el("span", "view-detail", view.detail));
+      b.addEventListener("click", () => {
+        state.tacticalView = view.id;
+        state.contactPage = 0;
+        state.selectedContact = null;
+        render();
+        focusKey(`view:${view.id}`);
+      });
+      wrap.append(b);
+    });
+    return wrap;
+  }
+
+  function coverageSummary(data, view, content) {
+    const wrap = el("div");
+    const stats = el("div", "map-stats");
+    const rows = [
+      [content.tiles.length || (data.city_tiles || []).length, "known city-area tiles"],
+      [content.contacts.length, "positions in this view"],
+      [(data.enemy_units || []).length, "recorded positions in all"],
+      [content.units.length, "of your units here"],
+    ];
+    rows.forEach(([figure, label]) => {
+      const stat = el("span", "map-stat");
+      stat.append(el("strong", null, String(figure)), document.createTextNode(` ${label}`));
+      stats.append(stat);
+    });
+    wrap.append(stats);
+    const notes = [];
+    if (content.offMap > 0) {
+      notes.push(`${content.offMap} recorded position${content.offMap === 1 ? " is" : "s are"} `
+        + "outside this view — open All contacts to see every one.");
+    }
+    if (content.cluster) {
+      notes.push(`This area's tiles were last observed on turn ${content.cluster.turn}.`);
+    } else if (data.city_tile_turn) {
+      notes.push(`City-area tiles were last observed on turn ${data.city_tile_turn}.`);
+    }
+    notes.push(`Rival positions are kept for ${data.fresh_turns} turns after they are seen. `
+      + "Nothing recorded here does not mean nothing is there.");
+    const stale = (data.attack_goals || []).filter((g) => g.fresh === false).length;
+    if (stale) {
+      notes.push(`${stale} recorded attack objective${stale === 1 ? " is" : "s are"} dated: `
+        + "no newer plan has been logged either way.");
+    }
+    notes.forEach((note) => wrap.append(el("p", "map-coverage-note", note)));
+    return wrap;
+  }
+
+  function frontierMap(data, content) {
+    const plots = [...content.tiles, ...content.units, ...content.contacts, ...content.goals]
+      .filter((p) => p.x !== null && p.x !== undefined);
+    const geometry = T.frame(plots);
+    if (!geometry) {
+      return el("p", "empty", "Nothing in this view has a recorded position.");
+    }
     const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-    svg.setAttribute("viewBox", `${minX} ${minY} ${Math.max(maxX - minX, 48)} ${Math.max(maxY - minY, 48)}`);
+    svg.setAttribute("viewBox", geometry.viewBox);
     svg.setAttribute("role", "img");
-    svg.setAttribute("aria-label", `${nearbyEnemies.length} recent rival unit positions within ${nearLimit} hexes of known human city-area tiles`);
+    svg.setAttribute("aria-label",
+      `${content.contacts.length} recorded rival positions and ${content.tiles.length} `
+      + "known city-area tiles in this view. The table below lists the same contacts and "
+      + "is the way to select one.");
+    const at = (p) => ({ x: (p.x + (p.y & 1) / 2) * 42, y: p.y * 36 });
     const mark = (kind, p, label, number = null) => {
-      const at = project(p);
+      const point = at(p);
       let node;
       if (kind === "city") {
         node = document.createElementNS(svg.namespaceURI, "polygon");
-        const corners = Array.from({ length: 6 }, (_, i) => {
+        node.setAttribute("points", Array.from({ length: 6 }, (_, i) => {
           const angle = Math.PI / 180 * (60 * i);
-          return `${at.x + 18 * Math.cos(angle)},${at.y + 18 * Math.sin(angle)}`;
-        });
-        node.setAttribute("points", corners.join(" "));
+          return `${point.x + geometry.tile * Math.cos(angle)},`
+            + `${point.y + geometry.tile * Math.sin(angle)}`;
+        }).join(" "));
       } else {
         node = document.createElementNS(svg.namespaceURI, "circle");
+        node.setAttribute("cx", point.x);
+        node.setAttribute("cy", point.y);
+        node.setAttribute("r", kind === "goal" ? geometry.marker * 1.3 : geometry.marker);
       }
-      node.setAttribute("class", `map-${kind}`);
-      if (kind !== "city") { node.setAttribute("cx", at.x); node.setAttribute("cy", at.y); node.setAttribute("r", kind === "goal" ? 13 : 10); }
-      const title = document.createElementNS(svg.namespaceURI, "title"); title.textContent = label; node.append(title); svg.append(node);
+      node.setAttribute("class", `map-${kind}`
+        + (p.key && p.key === state.selectedContact ? " map-selected" : ""));
+      node.setAttribute("stroke-width", String(geometry.stroke));
+      const title = document.createElementNS(svg.namespaceURI, "title");
+      title.textContent = label;
+      node.append(title);
+      svg.append(node);
       if (number !== null) {
-        const textNode = document.createElementNS(svg.namespaceURI, "text");
-        textNode.setAttribute("class", "map-number"); textNode.setAttribute("x", at.x);
-        textNode.setAttribute("y", at.y); textNode.textContent = String(number); svg.append(textNode);
+        const text = document.createElementNS(svg.namespaceURI, "text");
+        text.setAttribute("class", "map-number");
+        text.setAttribute("x", point.x);
+        text.setAttribute("y", point.y);
+        text.setAttribute("font-size", String(geometry.font));
+        text.textContent = String(number);
+        svg.append(text);
       }
     };
-    /* Date every marker. "Known city area" with no turn on it reads as present-tense
-       fact, when it is the newest AI targeting row we have — which can be several turns
-       old if no rival has re-targeted since. */
-    const dateOf = (p) => p.turn === undefined || p.turn === null ? ""
+    const dated = (p) => p.turn === undefined || p.turn === null ? ""
       : ` — observed turn ${p.turn}${p.age ? ` (${p.age} turn${p.age === 1 ? "" : "s"} ago)` : ""}`;
-    data.city_tiles.forEach((p) => mark("city", p, `Known city-area tile ${p.x}:${p.y}${dateOf(p)}`));
-    focusedHumans.forEach((p) => mark("human", p, `${itemName(p.unit_type)} — targeted at ${p.x}:${p.y}`));
-    nearbyEnemies.forEach((p, i) => mark("enemy", p,
-      `${p.name} ${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}`, i + 1));
-    data.attack_goals.forEach((p) => mark("goal", p, `${p.name} attack goal ${p.x}:${p.y}`
-      + `${dateOf(p)}${p.fresh === false ? " — dated, no newer plan recorded" : ""}`));
-    const stats = el("div", "map-stats");
-    [[data.city_tiles.length, "known city-area tiles"], [data.human_units.length, "targeted units"],
-      [data.enemy_units.length, "recent rival positions"], [allNearbyEnemies.length, `within ${nearLimit} hexes`]]
-      .forEach(([figure, label]) => {
-        const stat = el("span", "map-stat");
-        stat.append(el("strong", null, String(figure)), document.createTextNode(` ${label}`)); stats.append(stat);
-      });
-    const omitted = data.enemy_units.length - nearbyEnemies.length;
-    let focusCopy;
-    if (!data.city_tiles.length) {
-      focusCopy = `No city-area tile was detected; the map shows up to 12 positions without city-distance context${omitted ? ` and omits ${omitted} more` : ""}.`;
-    } else if (nearbyEnemies.length) {
-      focusCopy = `Map focus: up to 12 rival positions within ${nearLimit} hexes of a known city-area tile${omitted ? `; ${omitted} additional recent position${omitted === 1 ? " is" : "s are"} omitted` : ""}.`;
-    } else {
-      focusCopy = `No recorded rival position is within ${nearLimit} hexes of a known city-area tile; ${omitted} farther-away position${omitted === 1 ? " is" : "s are"} omitted.`;
+    content.tiles.forEach((p) => mark("city", p, `Known city-area tile ${p.x}:${p.y}${dated(p)}`));
+    content.units.forEach((p) => mark("human", p,
+      `${itemName(p.unit_type)} — ${p.activity} at ${p.x}:${p.y}${dated(p)}`));
+    content.contacts.forEach((p, i) => mark("enemy", p,
+      `${p.name} ${itemName(p.unit_type)} — ${itemName(p.activity)} at ${p.x}:${p.y}${dated(p)}`,
+      i + 1));
+    content.goals.forEach((p) => mark("goal", p,
+      `${p.name} attack objective ${p.x}:${p.y}${dated(p)}`
+      + (p.fresh === false ? " — dated, no newer plan recorded" : "")));
+    return svg;
+  }
+
+  function contactSection(content) {
+    const nodes = [el("h3", "map-subhead", "Recorded rival positions")];
+    if (!content.contacts.length) {
+      nodes.push(el("p", "empty",
+        "No rival position is recorded in this view. That is what these logs contain, "
+        + "not a statement that the area is clear."));
+      return nodes;
     }
-    const focusNote = el("p", "map-focus-note", focusCopy);
-    const legend = el("p", "map-legend", "Hexes: known city area · Brass: your targeted units · Numbered red: rival positions · Rings: attack goals");
-    /* Say what the map does not know. No contact recorded means these logs recorded
-       none, which is not the same as a frontier being safe. */
-    const stale = data.attack_goals.filter((g) => g.fresh === false).length;
-    const coverageCopy = [
-      data.city_tile_turn ? `City-area tiles last observed on turn ${data.city_tile_turn}.` : null,
-      `Rival positions are kept for ${data.fresh_turns} turns after they are seen.`,
-      stale ? `${stale} attack goal${stale === 1 ? " is" : "s are"} dated: no newer plan has been recorded either way.` : null,
-      "Nothing recorded here does not mean nothing is there.",
-    ].filter(Boolean).join(" ");
-    const coverageNote = el("p", "map-coverage-note", coverageCopy);
-    const contacts = byDistance.length ? table(
-      [{ label: "#" }, { label: "Rival" }, { label: "Unit" }, { label: "From city area", num: true },
-        { label: "Last AI activity" }, { label: "Turn", num: true }],
-      byDistance.slice(0, 12).map((p) => {
-        const mapIndex = nearbyEnemies.indexOf(p);
-        return [mapIndex >= 0 ? mapIndex + 1 : "off map", p.name, itemName(p.unit_type),
-          p.distance_to_city === null ? dim() : `${p.distance_to_city} hex${p.distance_to_city === 1 ? "" : "es"}`,
-          itemName(p.activity), p.turn];
-      })) : el("p", "empty", "No recent rival positions were recorded.");
-    const contactsHead = el("h3", "map-subhead", "Closest recorded rival positions");
-    const promotions = data.commander_promotions.length ? table(
-      [{ label: "Rival commander" }, { label: "Discipline" }, { label: "Promotion" }],
-      data.commander_promotions.map((p) => [`${p.name} · ${p.commander}`, itemName(p.discipline), itemName(p.promotion)])) : null;
-    host.replaceChildren(stats, focusNote, svg, legend, coverageNote, contactsHead, contacts,
-      ...(promotions ? [el("h3", "map-subhead", "Rival commander promotions"), promotions] : []));
+    const paged = T.page(content.contacts, {
+      page: state.contactPage, filter: state.contactFilter,
+    });
+    nodes.push(contactControls(paged));
+
+    const numbering = new Map(content.contacts.map((c, i) => [c.key, i + 1]));
+    const cols = [
+      { label: "#" }, { label: "Rival" }, { label: "Unit" },
+      { label: "From city area", num: true }, { label: "At" },
+      { label: "Last AI activity" }, { label: "Seen", num: true },
+    ];
+    const rows = paged.rows.map((p) => [
+      String(numbering.get(p.key)), p.name, itemName(p.unit_type),
+      p.distance_to_city === null || p.distance_to_city === undefined ? dim()
+        : `${p.distance_to_city} hex${p.distance_to_city === 1 ? "" : "es"}`,
+      `${p.x}:${p.y}`, itemName(p.activity),
+      p.age === 0 ? "this turn" : `turn ${p.turn}`,
+    ]);
+    const wrap = table(cols, rows);
+    /* Selection is driven from the table, not the markers: two contacts can share a hex,
+       and a shared marker cannot be used to pick between them — nor reached by keyboard. */
+    Array.from(wrap.querySelectorAll("tbody tr")).forEach((tr, index) => {
+      const contact = paged.rows[index];
+      tr.tabIndex = 0;
+      tr.dataset.focusKey = `contact:${contact.key}`;
+      tr.setAttribute("role", "button");
+      tr.setAttribute("aria-pressed", contact.key === state.selectedContact ? "true" : "false");
+      if (contact.key === state.selectedContact) tr.classList.add("selected");
+      const select = () => {
+        state.selectedContact = contact.key === state.selectedContact ? null : contact.key;
+        render();
+        focusKey(`contact:${contact.key}`);
+      };
+      tr.addEventListener("click", select);
+      tr.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") { event.preventDefault(); select(); }
+      });
+    });
+    nodes.push(wrap);
+
+    const selected = content.contacts.find((c) => c.key === state.selectedContact);
+    if (selected) nodes.push(contactDetail(selected));
+
+    const shared = T.coincident(paged.rows);
+    if (shared.length) {
+      const lines = shared.map((group) => `${group.tile}: `
+        + group.contacts.map((c) => `${c.name} ${itemName(c.unit_type)}`).join(", "));
+      nodes.push(el("p", "map-coverage-note",
+        `Sharing a tile, so one marker covers more than one contact — select them here: ${lines.join(" · ")}`));
+    }
+    return nodes;
+  }
+
+  function contactControls(paged) {
+    const row = el("div", "contact-controls");
+    const label = el("label", "contact-filter");
+    label.append(el("span", "sr-only", "Filter contacts by rival or unit"));
+    const input = el("input");
+    input.type = "search";
+    input.placeholder = "Filter by rival or unit";
+    input.value = state.contactFilter || "";
+    input.dataset.focusKey = "contact-filter";
+    input.addEventListener("input", (event) => {
+      state.contactFilter = event.target.value;
+      state.contactPage = 0;
+      render();
+      focusKey("contact-filter");
+    });
+    label.append(input);
+    row.append(label);
+
+    const count = paged.filtered
+      ? `${paged.matched} of ${paged.total} contacts match`
+      : `${paged.total} contact${paged.total === 1 ? "" : "s"}`;
+    row.append(el("span", "contact-count",
+      `${count} · page ${paged.page + 1} of ${paged.pages}`));
+
+    if (paged.pages > 1) {
+      const step = (delta, text) => {
+        const b = el("button", null, text);
+        b.type = "button";
+        b.dataset.focusKey = `contact-page:${delta}`;
+        b.disabled = delta < 0 ? paged.page === 0 : paged.page >= paged.pages - 1;
+        b.addEventListener("click", () => {
+          state.contactPage = paged.page + delta;
+          render();
+          focusKey(`contact-page:${delta}`);
+        });
+        return b;
+      };
+      row.append(step(-1, "Previous"), step(1, "Next"));
+    }
+    return row;
+  }
+
+  function contactDetail(contact) {
+    const wrap = el("div", "contact-detail");
+    wrap.append(el("h4", null, `${contact.name}'s ${itemName(contact.unit_type)}`));
+    const lines = [
+      `Recorded at ${contact.x}:${contact.y} on turn ${contact.turn}`
+      + (contact.age ? `, ${contact.age} turn${contact.age === 1 ? "" : "s"} ago.` : "."),
+      `Last activity the AI logged: ${itemName(contact.activity)}.`,
+    ];
+    if (contact.order) lines.push(`Order recorded: ${itemName(contact.order)}.`);
+    if (contact.nearest_city_tile) {
+      lines.push(`Nearest known city-area tile: `
+        + `${contact.nearest_city_tile.x}:${contact.nearest_city_tile.y}, `
+        + `${contact.distance_to_city} hex${contact.distance_to_city === 1 ? "" : "es"} away.`);
+    }
+    lines.push("This is the position the AI planned, not necessarily where the unit ended "
+      + "the turn, and it is intercepted rather than something you can see.");
+    lines.forEach((line) => wrap.append(el("p", "fact-meta", line)));
+    return wrap;
+  }
+
+  function promotionSection(data) {
+    if (!data.commander_promotions || !data.commander_promotions.length) return [];
+    return [
+      el("h3", "map-subhead", "Rival commander promotions"),
+      table([{ label: "Rival commander" }, { label: "Discipline" }, { label: "Promotion" }],
+        data.commander_promotions.map((p) => [
+          `${p.name} · ${p.commander}`, itemName(p.discipline), itemName(p.promotion)])),
+    ];
   }
 
   function hexDistance(a, b) {

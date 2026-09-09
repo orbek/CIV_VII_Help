@@ -35,10 +35,18 @@ def _free_port() -> int:
         return s.getsockname()[1]
 
 
+CULTURE_COLUMN = 15   # "Culture" in Player_Stats.csv, zero-based
+
+
 @pytest.fixture(scope="session")
 def brief_logs(tmp_path_factory) -> Path:
-    """A log directory whose human is behind on culture with one logged settlement, so the
-    culture decision has something to decide and a critical threat sits above it."""
+    """A session where culture is the worst gap, with one logged settlement.
+
+    Several yields trail the field here and the brief folds same-settlement gaps into the
+    worst one, so the pilot's card only exists when culture is that gap. The override row
+    goes immediately after the row it replaces: a turn number that moves backwards reads
+    as a new game and would drop everything before it.
+    """
     logs = tmp_path_factory.mktemp("logs")
     shutil.copytree(FIXTURES / "logs_82turns", logs, dirs_exist_ok=True)
     (logs / "CityBuildQueue.csv").write_text(
@@ -46,6 +54,14 @@ def brief_logs(tmp_path_factory) -> Path:
         "Production Needed, Overflow\n"
         "82, 0, LOC_CITY_NAME_TEST1, 20.0, UNIT_WARRIOR, 25.0, 30, 0.0\n"
     )
+    stats = logs / "Player_Stats.csv"
+    rows = stats.read_text().splitlines()
+    index = next(i for i, r in enumerate(rows)
+                 if [c.strip() for c in r.split(",")[:2]] == ["81", "0"])
+    cells = rows[index].split(",")
+    cells[CULTURE_COLUMN] = " 1.0"
+    rows.insert(index + 1, ",".join(cells))
+    stats.write_text("\n".join(rows) + "\n")
     return logs
 
 
@@ -100,6 +116,69 @@ def crowded_server(crowded_logs: Path):
     yield f"http://127.0.0.1:{port}"
     running.should_exit = True
     thread.join(timeout=10)
+
+
+@pytest.fixture(scope="session")
+def frontier_logs(brief_logs: Path, tmp_path_factory) -> Path:
+    """Two city areas far apart, contacts near each, two sharing a tile, and one exposed
+    unit of the player's own well away from both.
+
+    Written as real log rows so the whole pipeline runs — the point of the checks is that
+    the render path handles two frontiers, not that a stub can be drawn.
+    """
+    logs = tmp_path_factory.mktemp("frontier")
+    shutil.copytree(brief_logs, logs, dirs_exist_ok=True)
+
+    targets = ["Game Turn, Player, Target Type, Unit Type, Target Owner, Target ID, Location"]
+    for x, y in ((10, 10), (11, 10), (10, 11), (12, 11)):
+        targets.append(f"81, 1, TARGET_ENEMY_CITY, not implemented, 0, 1, {x}:{y}")
+    for x, y in ((70, 40), (71, 40), (70, 41)):
+        targets.append(f"81, 2, TARGET_ENEMY_CITY, not implemented, 0, 2, {x}:{y}")
+    targets.append("81, 1, TARGET_HIGH_PRIORITY_UNIT, not implemented, 0, 900, 40:25")
+    (logs / "AI_Targets.csv").write_text("\n".join(targets) + "\n")
+
+    contacts = ["Game Turn, Player, Category, Target Type, Target Info, Unit Info, Extra"]
+    plan = [(1, 5001, "UNIT_SPEARMAN", 12, 12), (1, 5002, "UNIT_ARCHER", 13, 12),
+            (1, 5003, "UNIT_ARCHER", 13, 12), (2, 5004, "UNIT_IMMORTAL", 72, 41),
+            (2, 5005, "UNIT_SPEARMAN", 73, 42), (2, 5006, "UNIT_ARCHER", 74, 43),
+            (1, 5007, "UNIT_SCOUT", 41, 26)]
+    for player, unit, kind, x, y in plan:
+        contacts.append(f"81, {player}, Attack Units, , , {kind} ({unit}), Move To {x} {y}")
+    (logs / "AI_Tactical.csv").write_text("\n".join(contacts) + "\n")
+
+    (logs / "UnitOperations.log").write_text(
+        "Game Turn, Mode, Player, Unit, Operation\n"
+        "081, Adding, 0, UNIT_SCOUT (900), UNITOPERATION_ALERT (1)\n")
+    return logs
+
+
+@pytest.fixture(scope="session")
+def frontier_server(frontier_logs: Path):
+    port = _free_port()
+    config = uvicorn.Config(create_app(frontier_logs, poll_interval=60),
+                            host="127.0.0.1", port=port, log_level="error")
+    running = uvicorn.Server(config)
+    thread = threading.Thread(target=running.run, daemon=True)
+    thread.start()
+    deadline = time.monotonic() + 20
+    while not running.started:
+        if time.monotonic() > deadline:
+            raise AssertionError("the frontier fixture server did not start")
+        time.sleep(0.05)
+    yield f"http://127.0.0.1:{port}"
+    running.should_exit = True
+    thread.join(timeout=10)
+
+
+@pytest.fixture
+def frontier(page, frontier_server):
+    """The Intel tab of the two-frontier session."""
+    page.set_viewport_size({"width": 1200, "height": 842})
+    page.goto(frontier_server)
+    page.wait_for_selector("#brief-critical .decision, #brief-cards .decision")
+    page.locator('[data-tab="intel"]').click()
+    page.wait_for_selector(".view-picker button")
+    return page
 
 
 @pytest.fixture

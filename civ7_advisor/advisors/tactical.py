@@ -18,6 +18,10 @@ MAP_NEAR_TILES = 8
 # instead of an immediate one. Persistent state — a declared war, a signed peace — has
 # nothing to do with this window and is dated by the threat advisor from its own sources.
 GOAL_FRESH_TURNS = 2
+# Known city-area tiles within this many hexes of each other are one frontier. An empire
+# with settlements on two continents has two frontiers, and squeezing both into one view
+# shrinks each until neither is readable — which is the defect this exists to fix.
+CLUSTER_RADIUS = 6
 NON_COMBAT = ("FOUNDER", "SETTLER", "MIGRANT", "MERCHANT", "COMMANDER", "TREASURE")
 
 
@@ -31,6 +35,16 @@ class UnitSighting:
     y: int | None
     activity: str
     order: str | None = None
+
+    @property
+    def key(self) -> str:
+        """A stable identity for this contact within the session.
+
+        The AI's own player and unit ids, not a position or a list index: a contact keeps
+        its identity when it moves, and selecting it in a table selects the same unit on
+        the map. Not stable across a reload, which is why the session's epoch changes.
+        """
+        return f"{self.player}:{self.unit_id}"
 
 
 def _latest_turn(rows, through: int) -> int | None:
@@ -138,35 +152,136 @@ def attack_goals(state: GameState) -> list[dict]:
     return sorted(out, key=lambda x: (x["player"], x["x"], x["y"]))
 
 
+def city_clusters(state: GameState) -> list[dict]:
+    """Known city-area tiles grouped into contiguous frontiers.
+
+    Single-linkage on hex distance: tiles within `CLUSTER_RADIUS` of each other are one
+    frontier. Each is labelled by its own coordinates, never by a settlement name — the
+    source is a list of plots the AI targets, and nothing in it says which settlement any
+    plot belongs to.
+    """
+    observed = city_tile_observations(state)
+    tiles = sorted(observed)
+    parent = list(range(len(tiles)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    for a in range(len(tiles)):
+        for b in range(a + 1, len(tiles)):
+            if hex_distance(tiles[a], tiles[b]) <= CLUSTER_RADIUS:
+                parent[find(a)] = find(b)
+
+    grouped: dict[int, list[tuple[int, int]]] = {}
+    for index, tile in enumerate(tiles):
+        grouped.setdefault(find(index), []).append(tile)
+
+    clusters = []
+    for members in sorted(grouped.values(), key=lambda m: (-len(m), m[0])):
+        xs = [x for x, _ in members]
+        ys = [y for _, y in members]
+        centre = (round(sum(xs) / len(xs)), round(sum(ys) / len(ys)))
+        turns = [observed[t] for t in members]
+        clusters.append({
+            "id": f"area-{centre[0]}-{centre[1]}",
+            "label": f"Area around {centre[0]}:{centre[1]}",
+            "centre": {"x": centre[0], "y": centre[1]},
+            "tiles": [{"x": x, "y": y, "turn": observed[(x, y)],
+                       "age": state.complete_through_turn - observed[(x, y)]}
+                      for x, y in members],
+            "turn": max(turns),
+            "bounds": {"min_x": min(xs), "max_x": max(xs),
+                       "min_y": min(ys), "max_y": max(ys)},
+        })
+    return clusters
+
+
+def _nearest_cluster(clusters: list[dict],
+                     point: tuple[int, int]) -> tuple[str | None, int | None]:
+    """(nearest frontier id, hexes to it). Both None when no city area is known at all."""
+    best_id, best = None, None
+    for cluster in clusters:
+        distance = min(hex_distance(point, (t["x"], t["y"])) for t in cluster["tiles"])
+        if best is None or distance < best:
+            best_id, best = cluster["id"], distance
+    return best_id, best
+
+
+def _assign(clusters: list[dict], point: tuple[int, int]) -> dict:
+    """Which frontier a position belongs to, and how far it is from the nearest one.
+
+    `cluster` is only set when the position is actually near that frontier. A unit sixty
+    hexes away is nearest to *some* area by arithmetic, and calling that its frontier
+    would put it on a map of a place it is nowhere near — so it stays unassigned and
+    appears under All contacts with its distance shown.
+    """
+    nearest_id, distance = _nearest_cluster(clusters, point)
+    near = distance is not None and distance <= MAP_NEAR_TILES
+    return {"cluster": nearest_id if near else None,
+            "nearest_cluster": nearest_id, "distance_to_city": distance, "near": near}
+
+
 def snapshot(state: GameState) -> dict:
     observed = city_tile_observations(state)
     cities = [{"x": x, "y": y, "turn": observed[(x, y)],
                "age": state.complete_through_turn - observed[(x, y)]}
               for x, y in sorted(observed)]
-    city_coords = [(p["x"], p["y"]) for p in cities]
+    clusters = city_clusters(state)
     rivals = {p.id: p.name for p in state.rivals()}
     enemies = []
     for unit in enemy_units(state):
-        nearest = min(
-            ((hex_distance((unit.x, unit.y), city), city) for city in city_coords),
-            default=(None, None),
-        )
-        enemies.append(asdict(unit) | {
-            "name": rivals[unit.player], "distance_to_city": nearest[0],
-            "nearest_city_tile": ({"x": nearest[1][0], "y": nearest[1][1]}
-                                  if nearest[1] is not None else None),
+        placement = _assign(clusters, (unit.x, unit.y))
+        enemies.append(asdict(unit) | placement | {
+            "key": unit.key,
+            "name": rivals[unit.player],
+            "age": state.complete_through_turn - unit.turn,
+            "nearest_city_tile": None,
         })
-    own = [asdict(u) for u in own_units(state) if u.x is not None]
+        cluster_id = placement["nearest_cluster"]
+        if cluster_id is not None:
+            nearest = min(
+                ((hex_distance((unit.x, unit.y), (t["x"], t["y"])), t)
+                 for c in clusters if c["id"] == cluster_id for t in c["tiles"]),
+                key=lambda pair: pair[0])[1]
+            enemies[-1]["nearest_city_tile"] = {"x": nearest["x"], "y": nearest["y"]}
+    own = []
+    for unit in own_units(state):
+        if unit.x is None:
+            continue
+        placement = _assign(clusters, (unit.x, unit.y))
+        nearest_enemy = min(
+            (hex_distance((unit.x, unit.y), (e["x"], e["y"]))
+             for e in enemies if e["x"] is not None),
+            default=None)
+        distance = placement["distance_to_city"]
+        own.append(asdict(unit) | placement | {
+            "key": unit.key,
+            "age": state.complete_through_turn - unit.turn,
+            "distance_to_enemy": nearest_enemy,
+            # A unit far from every known city area with an enemy close by needs its own
+            # focus: folding it into the selected frontier would zoom that frontier out
+            # until the thing being looked at is a dot.
+            "exposed": nearest_enemy is not None and nearest_enemy <= NEAR_TILES
+            and (distance is None or distance > MAP_NEAR_TILES),
+        })
     promotions = [asdict(r) | {"name": rivals[r.player]} for r in state.commander_promotions
                   if r.turn <= state.complete_through_turn and r.player in rivals]
     goals = attack_goals(state)
+    for goal in goals:
+        # A goal names a tile the AI classifies as ours, so it always belongs to the
+        # frontier that tile is in.
+        goal["cluster"] = _nearest_cluster(clusters, (goal["x"], goal["y"]))[0]
     return {
         "available": bool(cities or enemies), "turn": state.complete_through_turn,
         "map_near_tiles": MAP_NEAR_TILES, "fresh_turns": FRESH_TURNS,
-        "goal_fresh_turns": GOAL_FRESH_TURNS,
+        "goal_fresh_turns": GOAL_FRESH_TURNS, "cluster_radius": CLUSTER_RADIUS,
         # Coverage, not safety: "no contact recorded" means these logs recorded none,
         # which is not the same as a quiet frontier.
         "city_tile_turn": max(observed.values(), default=None),
+        "clusters": clusters,
         "city_tiles": cities, "human_units": own, "enemy_units": enemies,
         "attack_goals": goals, "commander_promotions": promotions,
     }

@@ -9,7 +9,7 @@ from civ7_advisor.ingest.events import CombatRow, DiplomacySummaryRow, GossipRow
 from civ7_advisor.ingest.load import FileStatus
 from civ7_advisor.ingest.production import BuildQueueRow
 from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
-from civ7_advisor.ingest.textlogs import DealItem
+from civ7_advisor.ingest.textlogs import DealItem, PlayerIdentityRow
 from civ7_advisor.ingest.tactical import (
     CombatOrderRow, CommanderPromotionRow, MayhemRow, OperationEvalRow, OperationRow,
     TacticalRow, UnitEfficiencyRow, UnitOperationRow,
@@ -25,7 +25,7 @@ HistorianEvent = HistorianRow
 __all__ = [
     "BuildQueueRow", "CombatRow", "DealItem", "DiplomacySummaryRow", "DiplomaticIntent",
     "FileStatus", "GameState", "GossipRow", "HistorianEvent", "IntentKind",
-    "Player", "PlayerKind", "PlayerTurn", "StrategyStatus", "Target",
+    "Player", "PlayerIdentityRow", "PlayerKind", "PlayerTurn", "StrategyStatus", "Target",
 ]
 
 
@@ -139,6 +139,10 @@ class GameState:
     mayhem: list[MayhemRow] = field(default_factory=list)
     commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
     peace_turns: dict[frozenset[int], int] = field(default_factory=dict)  # pair -> latest Peace deal turn
+    # Civilization and leader per player, as the engine recorded them when the save
+    # loaded. Carried explicitly rather than left inside the name resolver: a unique
+    # ability depends on exact identity, and a city-name prefix is not an identity.
+    identities: dict[int, PlayerIdentityRow] = field(default_factory=dict)
     names: NameResolver | None = None
 
     HUMAN: ClassVar[int] = 0

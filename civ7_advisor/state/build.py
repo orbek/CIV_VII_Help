@@ -112,6 +112,7 @@ def build_state(raw: RawLogs) -> GameState:
             v.player, v.strategy, v.status, v.weight, since_turn=v.turn,
         )
 
+    state.identities = dict(identities)
     state.intents = list(raw.diplomacy)
     state.targets = list(raw.targets)
     state.events = list(raw.historian)

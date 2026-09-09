@@ -206,3 +206,10 @@ def test_a_log_written_once_per_save_is_not_reported_as_stale(fixture_v2_dir):
     assert identity.status == "ok" and identity.rows > 0
     assert identity.latest_turn is None and identity.lag is None
     assert [c.name for c in captured.coverage if c.status != "ok"] == []
+
+
+def test_two_stores_started_in_the_same_second_get_different_sessions(fixture_dir):
+    """The session id is what the player's saved acknowledgements are filed under, so a
+    collision could apply one game's record to another."""
+    sessions = {Store(fixture_dir).rebuild().session for _ in range(5)}
+    assert len(sessions) == 5

@@ -269,6 +269,7 @@ def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...])
 
 
 def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult,
+                     changes: dict | None = None, record: dict | None = None,
                      decisions: dict | None = None) -> dict:
     """The whole dashboard from one revision.
 
@@ -290,4 +291,55 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
                      else {"available": False, "reason": "oracle_off"}),
         "commentary": commentary_to_dict(commentary),
         "decisions": decisions,
+        "changes": changes,
+        "record": record,
+    }
+
+
+def changes_to_dict(entry, previous, history, changes, acknowledged) -> dict:
+    """What moved since the previous turn, and what cannot be compared.
+
+    `comparable` is false when there is no earlier turn of this sitting to compare
+    against. The UI must say that rather than showing an empty change list, which reads
+    as "nothing changed".
+    """
+    from civ7_advisor.decisions import changes as tracking
+
+    return {
+        "session": entry.session, "epoch": entry.epoch, "turn": entry.turn,
+        "previous_turn": previous.turn if previous is not None else None,
+        "comparable": previous is not None,
+        "reason": ("" if previous is not None else
+                   "This is the first turn recorded for this game, so there is nothing to "
+                   "compare it with. A single observation is not a trend."),
+        "observed_turns": list(history.turns(entry.session, entry.epoch)),
+        "changes": [
+            {"signal_id": c.signal_id, "label": c.label, "state": c.state,
+             "detail": c.detail, "severity": c.severity,
+             "previous_turn": c.previous_turn, "observed_turn": c.observed_turn}
+            for c in changes
+        ],
+        "retrospective": tracking.retrospective(
+            changes, tuple(e.subject for e in acknowledged)),
+    }
+
+
+def player_record_to_dict(record) -> dict:
+    """The player's own goals, watchlist and acknowledgements — plus what is held back."""
+    def entry(e):
+        return {"id": e.id, "kind": e.kind, "subject": e.subject, "turn": e.turn,
+                "created_at": e.created_at, "text": e.text, "fingerprint": e.fingerprint}
+
+    return {
+        "session": record.session, "epoch": record.epoch, "revision": record.revision,
+        "game_key": record.game_key,
+        "entries": [entry(e) for e in sorted(record.entries.values(), key=lambda e: e.id)],
+        # Never applied automatically: the player has to say these belong to this game.
+        "pending": [
+            {"session": a.session, "epoch": a.epoch, "game_key": a.game_key,
+             "count": a.count, "reason": a.reason,
+             "entries": [entry(e) for e in a.entries]}
+            for a in record.pending
+        ],
+        "error": record.last_error,
     }

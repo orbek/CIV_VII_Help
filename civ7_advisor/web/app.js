@@ -68,7 +68,8 @@
     drawerOpener: null, refineStatus: {},
     /* Tactical view state, kept through a refresh so a turn update does not throw the
        player back to a different frontier or lose the contact they had selected. */
-    tacticalView: null, contactPage: 0, contactFilter: "", selectedContact: null };
+    tacticalView: null, contactPage: 0, contactFilter: "", selectedContact: null,
+    changes: null, record: null, answers: {}, challengeText: {} };
 
   try { state.acks = JSON.parse(localStorage.getItem("civ7.acks") || "{}"); } catch (_) { /* ignore */ }
   try { state.pins = JSON.parse(localStorage.getItem("civ7.pins") || "{}"); } catch (_) { /* ignore */ }
@@ -147,6 +148,8 @@
     state.tactical = body.tactical;
     state.commentary = body.commentary;
     state.decisions = body.decisions;
+    state.changes = body.changes;
+    state.record = body.record;
     state.connected = true;
     state.lastUpdate = Date.now();
     render();
@@ -472,12 +475,56 @@
     return rows.length ? rows : null;
   }
 
+  /* Acknowledgements and pins live in the server's own record, so they survive a
+     restart and are scoped to the sitting they were made in. `localStorage` stays as a
+     fallback for when that store cannot be written — the control must still work. */
+  const recordEntries = (kind) => ((state.record && state.record.entries) || [])
+    .filter((e) => e.kind === kind);
+  const storeBroken = () => Boolean(state.record && state.record.error);
+
+  function acknowledged(entry) {
+    const print = B.fingerprint(entry);
+    if (recordEntries("acknowledged").some((e) => e.subject === entry.id
+        && e.fingerprint === print)) return true;
+    const session = (state.status && state.status.session) || "";
+    return storeBroken() && B.isAcknowledged(state.acks, session, entry);
+  }
+
+  function pinned(entry) {
+    if (recordEntries("watch").some((e) => e.subject === entry.id)) return true;
+    const session = (state.status && state.status.session) || "";
+    return storeBroken() && Boolean(state.pins[B.acknowledgementKey(session, entry)]);
+  }
+
+  async function writeRecord(kind, entry, on) {
+    const status = state.status || {};
+    if (storeBroken()) {                       // keep working without the server store
+      const key = B.acknowledgementKey(status.session || "", entry);
+      const bucket = kind === "acknowledged" ? state.acks : state.pins;
+      if (on) bucket[key] = kind === "acknowledged" ? B.fingerprint(entry) : true;
+      else delete bucket[key];
+      persist(kind === "acknowledged" ? "civ7.acks" : "civ7.pins", bucket);
+      render();
+      return;
+    }
+    if (on) {
+      await fetch("/api/record", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind, subject: entry.id, turn: status.analysis_turn,
+                               fingerprint: B.fingerprint(entry) }),
+      });
+    } else {
+      const held = recordEntries(kind).find((e) => e.subject === entry.id);
+      if (held) await fetch(`/api/record/${encodeURIComponent(held.id)}`, { method: "DELETE" });
+    }
+    await refresh();
+  }
+
   function renderBrief() {
     const cards = (state.decisions && state.decisions.cards) || [];
     const entries = B.groupDecisions(visible(), cards);
     const session = (state.status && state.status.session) || "";
-    const live = entries.filter((e) => state.pins[B.acknowledgementKey(session, e)]
-      || !B.isAcknowledged(state.acks, session, e));
+    const live = entries.filter((e) => pinned(e) || !acknowledged(e));
     const { critical, top, overflow } = B.splitBrief(live);
 
     $("#brief-critical").replaceChildren(...critical.map((e) => decisionCard(e, session)));
@@ -496,12 +543,14 @@
       rest.replaceChildren();
     }
 
+    renderChanges();
+    renderAssociation();
     announce(critical.length);
-    const acknowledged = entries.length - live.length;
+    const hidden = entries.length - live.length;
     const parts = [];
     if (critical.length) parts.push(`${critical.length} critical`);
     parts.push(`${live.length} to weigh`);
-    if (acknowledged) parts.push(`${acknowledged} acknowledged`);
+    if (hidden) parts.push(`${hidden} acknowledged`);
     $("#brief-count").textContent = parts.join(" · ");
     const empty = $("#brief-empty");
     empty.hidden = live.length > 0;
@@ -510,6 +559,90 @@
       : (state.insights.length || state.hiddenInsights
         ? "Nothing above the noticing threshold this turn."
         : "Nothing to report yet.");
+  }
+
+  const CHANGE_WORD = {
+    newly_observed: "new", worsening: "worse", improving: "better",
+    unchanged: "unchanged", no_longer_observed: "no longer reported",
+    resolved: "resolved", not_comparable: "not comparable",
+  };
+  /* States worth opening the panel for. "Unchanged" is recorded but not counted: a list
+     of things that did not move is not news. */
+  const NOTABLE = ["worsening", "newly_observed", "resolved", "improving",
+                   "no_longer_observed", "not_comparable"];
+
+  function renderChanges() {
+    const panel = $("#changes-panel"), body = $("#changes-body");
+    const data = state.changes;
+    if (!data) { panel.hidden = true; return; }
+    panel.hidden = false;
+    if (!data.comparable) {
+      $("#changes-summary").textContent = "Since last turn — nothing to compare yet";
+      body.replaceChildren(el("p", "refine-note", data.reason));
+      return;
+    }
+    const notable = (data.changes || []).filter((c) => NOTABLE.includes(c.state));
+    const counts = NOTABLE
+      .map((state_) => [state_, notable.filter((c) => c.state === state_).length])
+      .filter(([, n]) => n > 0)
+      .map(([state_, n]) => `${n} ${CHANGE_WORD[state_]}`);
+    $("#changes-summary").textContent = `Since turn ${data.previous_turn} — `
+      + (counts.length ? counts.join(", ") : "nothing observed moved");
+
+    const nodes = [];
+    NOTABLE.forEach((wanted) => {
+      const rows = notable.filter((c) => c.state === wanted);
+      if (!rows.length) return;
+      nodes.push(el("h4", null, `${CHANGE_WORD[wanted][0].toUpperCase()}`
+        + `${CHANGE_WORD[wanted].slice(1)}`));
+      const list = el("ul", "decision-unknowns");
+      rows.forEach((c) => {
+        const item = el("li");
+        item.append(el("strong", null, c.label), document.createTextNode(` — ${c.detail}`));
+        list.append(item);
+      });
+      nodes.push(list);
+    });
+    const turns = data.observed_turns || [];
+    if (turns.length > 1) {
+      nodes.push(el("p", "refine-note",
+        `Turns recorded this session: ${turns.join(", ")}. Gaps are turns the advisor `
+        + "did not see, not turns where nothing happened."));
+    }
+    const retro = data.retrospective || {};
+    if ((retro.acknowledged || []).length) {
+      nodes.push(el("h4", null, "Alongside what you acknowledged"));
+      const list = el("ul", "decision-unknowns");
+      retro.acknowledged.forEach((subject) => list.append(el("li", null, subject)));
+      nodes.push(list, el("p", "guide-note", retro.caveat));
+    }
+    body.replaceChildren(...nodes);
+  }
+
+  /* Entries from another sitting are offered, never applied: after a reload the advisor
+     cannot tell whether this is the same line of play. */
+  function renderAssociation() {
+    const node = $("#association");
+    const pending = (state.record && state.record.pending) || [];
+    if (!pending.length) { node.hidden = true; node.replaceChildren(); return; }
+    node.hidden = false;
+    const group = pending[0];
+    node.replaceChildren(document.createTextNode(group.reason + " "));
+    const adopt = button("These belong to this game", "associate", async () => {
+      await fetch("/api/record/associate", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session: group.session, epoch: group.epoch }),
+      });
+      await refresh();
+    });
+    const drop = button("Discard them", "discard", async () => {
+      await fetch("/api/record/associate", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ session: group.session, epoch: group.epoch, discard: true }),
+      });
+      await refresh();
+    });
+    node.append(adopt, document.createTextNode(" "), drop);
   }
 
   $("#brief-more").addEventListener("click", () => {
@@ -521,7 +654,7 @@
   function decisionCard(entry, session) {
     const key = B.acknowledgementKey(session, entry);
     const node = el("article", `decision sev-${entry.severity.toLowerCase()}`
-      + (B.isAcknowledged(state.acks, session, entry) ? " acknowledged" : ""));
+      + (acknowledged(entry) ? " acknowledged" : ""));
     node.dataset.decision = entry.id;
 
     const head = el("div", "decision-head");
@@ -592,27 +725,19 @@
       }));
     }
 
-    const session = (state.status && state.status.session) || "";
-    const acknowledged = B.isAcknowledged(state.acks, session, entry);
-    const ack = button(acknowledged ? "Acknowledged" : "Acknowledge", `ack:${entry.id}`, () => {
-      if (acknowledged) delete state.acks[key];
-      else state.acks[key] = B.fingerprint(entry);
-      persist("civ7.acks", state.acks);
-      render();
-    });
-    ack.setAttribute("aria-pressed", acknowledged ? "true" : "false");
+    const isAcknowledged = acknowledged(entry);
+    const ack = button(isAcknowledged ? "Acknowledged" : "Acknowledge", `ack:${entry.id}`,
+      () => writeRecord("acknowledged", entry, !isAcknowledged));
+    ack.setAttribute("aria-pressed", isAcknowledged ? "true" : "false");
     ack.title = "Records that you have seen this. It is not an action in the game, and it "
       + "comes back if the evidence or severity changes.";
     row.append(ack);
 
-    const pinned = Boolean(state.pins[key]);
-    const pin = button(pinned ? "Pinned" : "Pin for this session", `pin:${entry.id}`, () => {
-      if (pinned) delete state.pins[key];
-      else state.pins[key] = true;
-      persist("civ7.pins", state.pins);
-      render();
-    });
-    pin.setAttribute("aria-pressed", pinned ? "true" : "false");
+    const isPinned = pinned(entry);
+    const pin = button(isPinned ? "Pinned" : "Pin", `pin:${entry.id}`,
+      () => writeRecord("watch", entry, !isPinned));
+    pin.setAttribute("aria-pressed", isPinned ? "true" : "false");
+    pin.title = "Keeps this in view even once acknowledged.";
     row.append(pin);
     return row;
   }
@@ -697,6 +822,8 @@
         + "observation above stands on its own."));
     }
 
+    if (card) wrap.append(questionPanel(card));
+
     const explanation = explanationFor(entry);
     if (explanation) {
       const block = el("div", "generated");
@@ -704,6 +831,113 @@
         "Generated interpretation — written about this exact decision context"));
       explanation.forEach((row) => block.append(el("p", null, row.text)));
       wrap.append(block);
+    }
+    return wrap;
+  }
+
+  /* ================= questions about one decision ================= */
+
+  const QUESTIONS = [
+    ["why", "Why this?"],
+    ["inspect", "What should I inspect?"],
+    ["what_changes", "What would change this call?"],
+  ];
+
+  function questionPanel(card) {
+    const wrap = el("div", "questions");
+    wrap.append(el("h4", null, "Ask about this decision"));
+    const row = el("div", "decision-controls");
+    QUESTIONS.forEach(([kind, label]) => {
+      const b = button(label, `ask:${kind}:${card.id}`, () => ask(card, kind));
+      row.append(b);
+    });
+    wrap.append(row);
+
+    const form = el("form", "challenge");
+    const field = el("label", null);
+    field.append(el("span", null, "Challenge this: say what you mean to do instead"));
+    const input = el("input");
+    input.type = "text";
+    input.name = "challenge";
+    input.maxLength = 400;
+    input.dataset.focusKey = `challenge:${card.id}`;
+    input.value = (state.challengeText || {})[card.id] || "";
+    field.append(input);
+    form.append(field);
+    const send = el("button", null, "Weigh it");
+    send.type = "submit";
+    send.dataset.focusKey = `challenge-send:${card.id}`;
+    form.append(send);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      state.challengeText = Object.assign({}, state.challengeText,
+        { [card.id]: input.value });
+      ask(card, "challenge", input.value);
+    });
+    wrap.append(form);
+    wrap.append(el("p", "refine-note",
+      "Your words are recorded as your intention, never as something the advisor "
+      + "observed happening."));
+
+    const held = (state.answers || {})[`${card.id}`];
+    if (held) wrap.append(answerBlock(held));
+    return wrap;
+  }
+
+  async function ask(card, kind, text) {
+    const status = state.status || {};
+    state.answers = Object.assign({}, state.answers, {
+      [card.id]: { kind, status: "asking", answer: null },
+    });
+    render();
+    try {
+      const response = await fetch("/api/question", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          kind, decision_id: card.id, oracle: state.showOracle ? 1 : 0, text: text || "",
+        }),
+      });
+      const body = await response.json();
+      if (!response.ok) {
+        state.answers[card.id] = { kind, status: "error",
+          answer: { text: body.detail || "That could not be asked.", unknowns: [] } };
+      } else {
+        state.answers[card.id] = body;
+      }
+    } catch (_) {
+      state.answers[card.id] = { kind, status: "error",
+        answer: { text: "The advisor could not be reached.", unknowns: [] } };
+    }
+    render();
+    /* A "generating" answer means a local model is working on prose to replace the
+       deterministic answer already on screen. Poll for it; nothing waits on it. */
+    if (state.answers[card.id].status === "generating") {
+      setTimeout(() => ask(card, kind, text), 2500);
+    }
+  }
+
+  function answerBlock(held) {
+    const wrap = el("div", "answer");
+    const answer = held.answer || {};
+    const label = held.status === "asking" ? "Asking…"
+      : held.status === "generating" ? "Structured answer — the local model is writing one"
+        : held.status === "ready" ? "Generated interpretation"
+          : held.status === "unsupported" ? "This cannot be answered"
+            : held.status === "error" ? "Could not ask" : "Structured answer";
+    wrap.append(el("p", "generated-label", label));
+    if (answer.text) wrap.append(el("p", null, answer.text));
+    if ((answer.unknowns || []).length) {
+      const list = el("ul", "decision-unknowns");
+      answer.unknowns.forEach((u) => list.append(el("li", null, u)));
+      wrap.append(list);
+    }
+    if (held.status === "ready") {
+      wrap.append(el("p", "guide-note",
+        "Written by the local model from this decision's own facts. It cites them, which "
+        + "is not the same as being verified: what is verified is the evidence itself."));
+    } else if (answer.generated === false && held.status !== "unsupported") {
+      wrap.append(el("p", "guide-note",
+        "Assembled from the structured decision data, not written by a model."));
     }
     return wrap;
   }

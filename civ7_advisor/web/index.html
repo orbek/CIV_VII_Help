@@ -57,6 +57,12 @@
     <!-- Every distinct critical alert lives here, expanded, however many there are. -->
     <div class="brief-critical" id="brief-critical"></div>
     <div id="brief-cards"></div>
+    <!-- What moved since the previous turn of this sitting, and what cannot be compared. -->
+    <details class="changes" id="changes-panel" hidden>
+      <summary id="changes-summary"></summary>
+      <div id="changes-body"></div>
+    </details>
+    <p class="association" id="association" hidden></p>
     <div class="brief-overflow" id="brief-overflow" hidden>
       <button type="button" id="brief-more" aria-expanded="false" aria-controls="brief-rest"></button>
       <div id="brief-rest" hidden></div>

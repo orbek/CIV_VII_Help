@@ -17,6 +17,7 @@ from dataclasses import dataclass, replace
 
 from civ7_advisor.store import Snapshot
 
+from . import questions
 from .client import OllamaClient, OllamaError
 from .models import Commentary, CommentaryIdentity, CommentaryResult, Explanation, PlanStep
 from .prompts import EXPLAIN_TOP_N, build_prompt, response_schema
@@ -56,6 +57,12 @@ class CommentaryWorker:
         self._ready: dict[tuple[str, str], Commentary] = {}    # session/mode -> newest ready
         self._active: tuple | None = None
         self._pending: _Request | None = None
+        # Questions run on their own single-worker pool. A turn's commentary can take a
+        # 31B model minutes; a question the player just asked must not queue behind it,
+        # and neither may block a rebuild or the refinement workflow.
+        self._questions = ThreadPoolExecutor(max_workers=1, thread_name_prefix="civ7-answer")
+        self._answers: dict[tuple, questions.Answer | str] = {}
+        self._answer_futures: dict[tuple, Future] = {}
         self._closed = False
 
     # ---- scheduling -------------------------------------------------------------
@@ -253,8 +260,85 @@ class CommentaryWorker:
             else:
                 time.sleep(0.005)      # queued behind another generation
 
+    # ---- questions ---------------------------------------------------------------
+
+    def answer(self, request: questions.QuestionRequest) -> tuple[str, questions.Answer]:
+        """(status, answer) for one question. Never blocks.
+
+        Statuses: "ready" for a validated generation, "fallback" for the deterministic
+        answer — which is what the caller shows immediately while a generation runs, and
+        what it keeps if one fails or is rejected — and "generating" alongside that
+        fallback while the model works.
+
+        The deterministic answer is always available, so a slow or absent model delays
+        nothing: the player reads the structured version now and the prose replaces it
+        when and if it arrives.
+        """
+        answerable, missing = questions.answerable(request)
+        if not answerable:
+            return "unsupported", questions.Answer(
+                text=questions.UNSUPPORTED, evidence_ids=(), action_ids=(), guide_ids=(),
+                unknowns=missing, generated=False)
+        key = request.cache_key
+        with self._lock:
+            held = self._answers.get(key)
+            if isinstance(held, questions.Answer):
+                return "ready", held
+            if held is not None:                       # a recorded rejection or failure
+                return "fallback", questions.fallback(request, held)
+            running = key in self._answer_futures
+            if not running and not self._closed:
+                future = self._questions.submit(self._generate_answer, request)
+                self._answer_futures[key] = future
+                future.add_done_callback(lambda _: self._answer_done(key))
+                running = True
+        return ("generating" if running else "fallback"), questions.fallback(request)
+
+    def _answer_done(self, key: tuple) -> None:
+        with self._lock:
+            self._answer_futures.pop(key, None)
+
+    def _generate_answer(self, request: questions.QuestionRequest) -> None:
+        key = request.cache_key
+        try:
+            data = json.loads(self.client.generate(
+                questions.prompt_for(request), schema=questions.response_schema(request)))
+            answer = questions.validate(request, data)
+            result: questions.Answer | str = questions.Answer(
+                **{**answer.__dict__, "model": self.client.model})
+        except (OllamaError, json.JSONDecodeError, ValueError, KeyError) as exc:
+            # A rejection is recorded as a reason, so the fallback can say why the prose is
+            # missing rather than silently looking like there was never a model.
+            log.warning("question %s for %s rejected: %s", request.kind,
+                        request.decision_id, exc)
+            result = f"the generated answer was rejected: {exc}"
+        except Exception as exc:  # pragma: no cover - the optional path must never bite
+            log.exception("unexpected question failure")
+            result = f"the model failed: {exc}"
+        with self._lock:
+            self._answers[key] = result
+
+    def wait_for_answer(self, request: questions.QuestionRequest,
+                        timeout: float = 2.0) -> tuple[str, questions.Answer]:
+        """Block until this question reaches a terminal state. Tests and the smoke check."""
+        status, answer = self.answer(request)
+        deadline = time.monotonic() + timeout
+        while status == "generating" and time.monotonic() < deadline:
+            with self._lock:
+                future = self._answer_futures.get(request.cache_key)
+            if future is None:
+                time.sleep(0.005)
+            else:
+                try:
+                    future.result(timeout=max(deadline - time.monotonic(), 0.01))
+                except Exception:
+                    pass
+            status, answer = self.answer(request)
+        return status, answer
+
     def close(self) -> None:
         with self._lock:
             self._closed = True
             self._pending = None
         self._executor.shutdown(wait=False, cancel_futures=True)
+        self._questions.shutdown(wait=False, cancel_futures=True)

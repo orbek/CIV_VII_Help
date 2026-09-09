@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import secrets
 import threading
 import time
 from dataclasses import dataclass
@@ -171,7 +172,7 @@ class Store:
         self._session_reason = FIRST_LOAD
         self._session_has_data = False   # has this session ever seen a Player_Stats row?
         self._observed_key: str | None = None  # newest seeds this session read
-        self._session_seq = 0            # keeps two sessions started in the same second distinct
+        self._session_seq = 0            # distinguishes sessions within this store
         self._pending_reason: str | None = None  # why the next data-bearing snapshot starts an epoch
         self.commentary_worker = commentary_worker
 
@@ -218,7 +219,12 @@ class Store:
         if reason is not None:
             self._epoch += 1
             self._session_seq += 1
-            self._session = f"{time.strftime('%Y%m%dT%H%M%S')}-{self._session_seq}"
+            # The timestamp and counter alone are not unique: two advisors started in
+            # the same second, or two stores in one process, would collide — and the
+            # session id is what the player's saved acknowledgements are filed under, so
+            # a collision could apply one game's record to another.
+            self._session = (f"{time.strftime('%Y%m%dT%H%M%S')}-{self._session_seq}"
+                             f"-{secrets.token_hex(3)}")
             self._session_reason = reason
             self._session_has_data = False
             self._observed_key = key   # a new epoch never inherits the old save's seeds

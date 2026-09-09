@@ -14,6 +14,7 @@ import shutil
 import socket
 import threading
 import time
+import urllib.parse
 from pathlib import Path
 
 import pytest
@@ -24,6 +25,7 @@ pytest.importorskip("playwright", reason="the browser group is not installed")
 import uvicorn  # noqa: E402
 
 from civ7_advisor.api.app import create_app  # noqa: E402
+from civ7_advisor.context_store import PersistentContextStore  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -66,10 +68,17 @@ def brief_logs(tmp_path_factory) -> Path:
 
 
 @pytest.fixture(scope="session")
-def server(brief_logs: Path):
+def notes_path(tmp_path_factory) -> Path:
+    """A throwaway player record. Never the developer's own file."""
+    return tmp_path_factory.mktemp("notes") / "player-context.json"
+
+
+@pytest.fixture(scope="session")
+def server(brief_logs: Path, notes_path: Path):
     """The real app on a real port. No archive root, no commentary worker."""
     port = _free_port()
-    app = create_app(brief_logs, poll_interval=60)
+    app = create_app(brief_logs, poll_interval=60,
+                     player_store=PersistentContextStore(path=notes_path))
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
     running = uvicorn.Server(config)
     thread = threading.Thread(target=running.run, daemon=True)
@@ -181,10 +190,32 @@ def frontier(page, frontier_server):
     return page
 
 
+def _clear_record(base_url: str) -> None:
+    """Empty the player record between tests.
+
+    It is deliberately durable and server-side now, and the fixture server is shared, so
+    without this one test's acknowledgement would hide the decision every later test
+    works on.
+    """
+    import json
+    import urllib.request
+
+    with urllib.request.urlopen(f"{base_url}/api/record") as response:
+        record = json.load(response)
+    for entry in record["entries"]:
+        request = urllib.request.Request(
+            f"{base_url}/api/record/{urllib.parse.quote(entry['id'], safe='')}",
+            method="DELETE")
+        with urllib.request.urlopen(request):
+            pass
+
+
 @pytest.fixture
 def dashboard(page, server):
-    """The dashboard, loaded, with its first briefing painted."""
+    """The dashboard, loaded, with its first briefing painted and an empty record."""
+    _clear_record(server)
     page.set_viewport_size({"width": 1200, "height": 842})
     page.goto(server)
     page.wait_for_selector("#brief-critical .decision")
+    page.wait_for_selector('.decision[data-decision*="culture"]')
     return page

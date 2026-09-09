@@ -31,13 +31,32 @@ def test_server_is_started_with_parsed_options(fixture_dir: Path, monkeypatch):
 def test_archive_flags_reach_create_app(fixture_dir, monkeypatch, tmp_path):
     seen = {}
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
-    monkeypatch.setattr(cli, "create_app", lambda logs_dir, poll, archive_root=None, commentary_worker=None:
-                        seen.update(root=archive_root, worker=commentary_worker) or
+    monkeypatch.setattr(cli, "create_app",
+                        lambda logs_dir, poll, archive_root=None, commentary_worker=None,
+                        player_store=None:
+                        seen.update(root=archive_root, worker=commentary_worker,
+                                    store=player_store) or
                         object.__new__(type("A", (), {"title": "x"})))
     cli.main(["--logs-dir", str(fixture_dir), "--no-archive"])
     assert seen["root"] is None
     cli.main(["--logs-dir", str(fixture_dir), "--archive-dir", str(tmp_path / "arc")])
     assert seen["root"] == tmp_path / "arc"
+
+
+def test_the_notes_file_is_configurable_and_can_be_turned_off(fixture_dir, monkeypatch, tmp_path):
+    """Goals and acknowledgements are written to disk, so where must be the player's
+    choice — and running without keeping any must be possible."""
+    seen = {}
+    monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
+    monkeypatch.setattr(cli, "create_app", lambda *args, **kwargs:
+                        seen.update(kwargs) or object.__new__(type("A", (), {"title": "x"})))
+    notes = tmp_path / "notes.json"
+    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--context-file", str(notes)])
+    assert seen["player_store"].path == notes
+    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--no-context-file"])
+    throwaway = seen["player_store"].path
+    assert throwaway != notes and throwaway != cli.DEFAULT_STORE_PATH
+    assert not throwaway.exists()      # nothing is written until something is recorded
 
 
 def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):

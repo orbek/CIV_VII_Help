@@ -4,12 +4,14 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import tempfile
 from pathlib import Path
 
 import uvicorn
 
 from civ7_advisor.api.app import create_app
 from civ7_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
+from civ7_advisor.context_store import DEFAULT_STORE_PATH, PersistentContextStore
 from civ7_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
 from civ7_advisor.llm.client import DEFAULT_TIMEOUT_S
 
@@ -41,6 +43,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--llm-timeout", type=float, default=DEFAULT_TIMEOUT_S,
                         help=f"seconds allowed for one local generation (default: {DEFAULT_TIMEOUT_S:.0f})")
     parser.add_argument("--no-llm", action="store_true", help="disable local Ollama commentary")
+    parser.add_argument("--context-file", type=Path, default=DEFAULT_STORE_PATH,
+                        help="where to keep your goals and acknowledgements "
+                             f"(default: {DEFAULT_STORE_PATH})")
+    parser.add_argument("--no-context-file", action="store_true",
+                        help="keep goals and acknowledgements for this run only")
     args = parser.parse_args(argv)
 
     if not args.logs_dir.is_dir():
@@ -58,12 +65,18 @@ def main(argv: list[str] | None = None) -> int:
         )
     except ValueError as exc:
         parser.error(str(exc))
+    # With --no-context-file the store is pointed at a throwaway path, so nothing is
+    # written and nothing from a previous run is offered.
+    store_path = (Path(tempfile.mkdtemp(prefix="civ7-context-")) / "player-context.json"
+                  if args.no_context_file else args.context_file)
     app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root,
-                     commentary_worker=worker)
+                     commentary_worker=worker,
+                     player_store=PersistentContextStore(path=store_path))
     where = f"archiving to {archive_root}" if archive_root else "archiving off"
     llm = "LLM off" if worker is None else f"Ollama {args.llm_model}"
+    notes = "notes off" if args.no_context_file else f"notes in {store_path}"
     print(f"Civ VII Advisor -> http://{args.host}:{args.port}  "
-          f"(reading {args.logs_dir}; {where}; {llm})")
+          f"(reading {args.logs_dir}; {where}; {llm}; {notes})")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

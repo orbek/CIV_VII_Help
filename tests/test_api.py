@@ -259,7 +259,7 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
 def test_briefing_serves_every_section_from_one_revision(client):
     body = client.get("/api/briefing").json()
     assert set(body) == {"status", "state", "insights", "hidden_insights", "intel",
-                         "tactical", "commentary", "decisions"}
+                         "tactical", "commentary", "decisions", "changes", "record"}
     status = body["status"]
     assert status["schema_version"] == 1 and status["revision"] >= 1
     assert status["session"] and status["epoch"] == 1
@@ -518,3 +518,148 @@ def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
         card = culture_card()
         assert card["preferred"]["applicability"] == "inspect"
         assert all("BUILDING_MONUMENT" not in x["id"] for x in card["alternatives"])
+
+
+def _client_with_notes(tmp_path: Path, fixture_dir: Path, worker=None):
+    """A client whose player record is a throwaway file, never the developer's own."""
+    from civ7_advisor.context_store import PersistentContextStore
+
+    return TestClient(create_app(
+        _behind_dir(tmp_path, fixture_dir), poll_interval=60, commentary_worker=worker,
+        player_store=PersistentContextStore(path=tmp_path / "notes.json")))
+
+
+def test_the_first_turn_reports_no_trend_at_all(tmp_path, fixture_dir):
+    """A single observation is not a direction, and an empty change list would read as
+    "nothing changed"."""
+    with _client_with_notes(tmp_path, fixture_dir) as c:
+        body = c.get("/api/changes").json()
+        assert body["comparable"] is False and body["changes"] == []
+        assert "nothing to compare it with" in body["reason"]
+        assert body["previous_turn"] is None and body["observed_turns"] == [81]
+        assert body["retrospective"]["states"] == {}
+
+
+def test_repeated_reads_of_the_same_turn_do_not_become_history(tmp_path, fixture_dir):
+    with _client_with_notes(tmp_path, fixture_dir) as c:
+        for _ in range(4):
+            body = c.get("/api/changes").json()
+        assert body["observed_turns"] == [81]
+        assert body["comparable"] is False
+
+
+def test_a_question_is_answered_from_the_decisions_own_facts(tmp_path, fixture_dir):
+    with _client_with_notes(tmp_path, fixture_dir) as c:
+        card = next(x for x in c.get("/api/decisions").json()["cards"]
+                    if x["id"].startswith("decision.culture."))
+        for kind in ("why", "inspect", "what_changes"):
+            body = c.post("/api/question", json={
+                "kind": kind, "decision_id": card["id"], "oracle": 1}).json()
+            assert body["status"] == "fallback"          # no model configured
+            assert body["answer"]["generated"] is False
+            assert body["answer"]["text"]
+            assert set(body["answer"]["evidence_ids"]) <= set(card["evidence_ids"]) | {
+                f["id"] for f in c.get("/api/decisions").json()["evidence"]}
+        assert c.post("/api/question", json={
+            "kind": "why", "decision_id": "decision.nope.X"}).status_code == 404
+        assert c.post("/api/question", json={
+            "kind": "sing", "decision_id": card["id"]}).status_code == 422
+
+
+def test_a_fair_question_never_receives_intercepted_evidence(tmp_path, fixture_dir):
+    """The evidence is filtered before the request exists, so nothing downstream has to
+    remember to strip it."""
+    from civ7_advisor.llm import questions
+
+    seen: list[questions.QuestionRequest] = []
+
+    class RecordingWorker:
+        def schedule(self, snapshot, oracle=True, revisions=None):
+            pass
+
+        def result(self, snapshot, oracle=True, revisions=None):
+            return CommentaryResult("idle", snapshot.analysis_turn, "")
+
+        def answer(self, request):
+            seen.append(request)
+            return "fallback", questions.fallback(request)
+
+        def close(self):
+            pass
+
+    with _client_with_notes(tmp_path, fixture_dir, RecordingWorker()) as c:
+        oracle_brief = c.get("/api/decisions?oracle=1").json()
+        defensive = [x for x in oracle_brief["cards"] if x["id"].startswith("decision.defense")]
+        target = (defensive or [x for x in oracle_brief["cards"]
+                                if x["id"].startswith("decision.culture.")])[0]
+        c.post("/api/question", json={"kind": "why", "decision_id": target["id"],
+                                      "oracle": 0})
+        [request] = seen
+        assert request.evidence_mode == "fair"
+        every = {f["id"]: f for f in oracle_brief["evidence"]}
+        for fact_id in request.evidence_ids:
+            assert every[fact_id]["provenance"] == "fair", fact_id
+        assert "oracle" not in questions.prompt_for(request).lower().split('"provenance":')[-1][:40]
+
+
+def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fixture_dir):
+    from civ7_advisor.context_store import PersistentContextStore
+
+    logs = _behind_dir(tmp_path, fixture_dir)
+    notes = tmp_path / "notes.json"
+    first = PersistentContextStore(path=notes)
+    with TestClient(create_app(logs, poll_interval=60, player_store=first)) as c:
+        card = next(x for x in c.get("/api/decisions").json()["cards"]
+                    if x["id"].startswith("decision.culture."))
+        written = c.post("/api/record", json={
+            "kind": "acknowledged", "subject": card["id"], "fingerprint": "fp1"}).json()
+        assert written["error"] is None and written["revision"] >= 1
+        assert c.post("/api/record", json={"kind": "goal", "subject": card["id"],
+                                           "text": "level with the field"}).status_code == 200
+        held = c.get("/api/record").json()
+        assert sorted(e["kind"] for e in held["entries"]) == ["acknowledged", "goal"]
+        assert held["pending"] == []
+        assert c.post("/api/record", json={"kind": "whatever", "subject": "x"}).status_code == 409
+        assert c.post("/api/record", json={"subject": "x"}).status_code == 422
+
+    # A second process is a new session, so the entries are offered rather than applied.
+    second = PersistentContextStore(path=notes)
+    with TestClient(create_app(logs, poll_interval=60, player_store=second)) as c:
+        held = c.get("/api/record").json()
+        assert held["entries"] == [] and len(held["pending"]) == 1
+        group = held["pending"][0]
+        assert group["count"] == 2 and group["reason"]
+        # Still held on a second read, so the UI can offer it more than once.
+        assert len(c.get("/api/record").json()["pending"]) == 1
+        adopted = c.post("/api/record/associate", json={
+            "session": group["session"], "epoch": group["epoch"]}).json()
+        assert len(adopted["associated"]) == 2
+        assert c.get("/api/record").json()["pending"] == []
+        assert c.post("/api/record/associate", json={"session": "nope", "epoch": 1}
+                      ).status_code == 409
+
+
+def test_held_entries_can_be_discarded_instead(tmp_path, fixture_dir):
+    from civ7_advisor.context_store import PersistentContextStore
+
+    logs = _behind_dir(tmp_path, fixture_dir)
+    notes = tmp_path / "notes.json"
+    with TestClient(create_app(logs, poll_interval=60,
+                               player_store=PersistentContextStore(path=notes))) as c:
+        c.post("/api/record", json={"kind": "watch", "subject": "decision.x"})
+    with TestClient(create_app(logs, poll_interval=60,
+                               player_store=PersistentContextStore(path=notes))) as c:
+        group = c.get("/api/record").json()["pending"][0]
+        assert c.post("/api/record/associate", json={
+            "session": group["session"], "epoch": group["epoch"],
+            "discard": True}).json()["discarded"] == 1
+        assert c.get("/api/record").json() == {
+            **c.get("/api/record").json(), "pending": [], "entries": []}
+
+
+def test_the_briefing_carries_changes_and_the_record(tmp_path, fixture_dir):
+    with _client_with_notes(tmp_path, fixture_dir) as c:
+        body = c.get("/api/briefing").json()
+        assert body["changes"]["turn"] == 81
+        assert body["record"]["session"] == body["status"]["session"]
+        assert body["record"]["entries"] == [] and body["record"]["error"] is None

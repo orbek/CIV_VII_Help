@@ -65,6 +65,54 @@ do not support. "Readable but empty", "nothing recent enough" and "cannot be
 read" are reported as what they are, because none of them means the thing being
 measured is quiet.
 
+### Since last turn
+
+The brief carries a **Since last turn** panel: what is newly observed, what got worse or
+better, what is no longer reported, and what cannot be compared. It is deliberately
+reluctant to claim a trend:
+
+- On the first turn of a game it says there is nothing to compare with, rather than
+  showing an empty list that would read as "nothing changed".
+- A reload starts a new sitting, so the previous game's turns are not this turn's past.
+- If a log a signal depends on became readable or unreadable between the two turns, the
+  signal is reported as **not comparable** and says which source moved. A warning that
+  vanished with its log has not improved.
+- **Resolved** is reserved for a present observation showing the condition has lifted —
+  a yield back level with the field, for instance. A signal that merely stopped being
+  reported is *no longer reported*, which is a different thing.
+- Several rebuilds within one turn replace that turn's record rather than stacking up, so
+  a burst of log writes is not history.
+
+### Asking about a decision
+
+Each decision has **Why this?**, **What should I inspect?** and **What would change this
+call?**, plus a box to say what you mean to do instead. Every answer is scoped to that one
+decision and built from its own facts, candidates and guides.
+
+The structured answer appears immediately. If a local model is running, its prose replaces
+it once generated *and* validated: it may only cite ids the decision actually supplied, it
+may not contain a URL, and output that is truncated or fenced is rejected. Those checks
+catch broken output, not wrong output — which is why generated prose stays labelled as
+interpretation while every number, prerequisite and link comes from the structured data.
+A slow model delays nothing; the structured answer is already on screen.
+
+What you type in the challenge box is treated as your intention. "I already built a
+Monument here" is recorded as a plan, never as an observation that a Monument exists.
+
+### Your own notes
+
+**Acknowledge** and **Pin** are kept in a small local JSON file
+(`~/.civ7-advisor/player-context.json` by default; use `--context-file` to move it or
+`--no-context-file` to keep nothing). Goals and watchlist entries live there too. It is
+written atomically, so a crash cannot leave a half-file, and a damaged one is moved aside
+and reported rather than silently replaced.
+
+Entries are filed under the sitting they were made in. When the advisor restarts or the
+game is reloaded it **offers** the old entries rather than applying them, saying why it
+cannot tell whether this is the same game — the same save seeds do not settle it, because
+a save can be branched. Silently carrying an acknowledgement across a reload could hide a
+live alert.
+
 ### Guides and figures
 
 No figure in a recommendation comes from a wiki or from this advisor's own
@@ -106,7 +154,8 @@ screen. Fair mode gets its own generation from a fair prompt rather than hiding
 every result that ever read an intercept.
 
 Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
-`--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, and `--no-llm`.
+`--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, `--no-llm`,
+`--context-file PATH`, and `--no-context-file`.
 
 Ollama commentary is optional. The advisor checks only the loopback service at
 `127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the

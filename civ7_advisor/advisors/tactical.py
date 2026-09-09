@@ -12,6 +12,12 @@ from .base import Insight, Provenance, Severity, humanize
 NEAR_TILES = 4
 FRESH_TURNS = 3
 MAP_NEAR_TILES = 8
+# An attack operation is an episodic plan: the AI re-emits it on every turn it still
+# holds the objective, so a row that stops appearing is a plan that stopped, not a
+# standing threat. Beyond this age the goal is reported as a dated last-known objective
+# instead of an immediate one. Persistent state — a declared war, a signed peace — has
+# nothing to do with this window and is dated by the threat advisor from its own sources.
+GOAL_FRESH_TURNS = 2
 NON_COMBAT = ("FOUNDER", "SETTLER", "MIGRANT", "MERCHANT", "COMMANDER", "TREASURE")
 
 
@@ -33,10 +39,22 @@ def _latest_turn(rows, through: int) -> int | None:
 
 def human_city_tiles(state: GameState) -> set[tuple[int, int]]:
     """Latest plots rivals classify as enemy-city tiles owned by player zero."""
+    return set(city_tile_observations(state))
+
+
+def city_tile_observations(state: GameState) -> dict[tuple[int, int], int]:
+    """Those same tiles, each mapped to the turn it was observed on.
+
+    Every tile in one reading comes from the same latest targeting turn, but the caller
+    still needs that turn: "known city area" with no date reads as current fact, and
+    these rows can be several turns old when the AI has not re-targeted since.
+    """
     eligible = [r for r in state.targets if r.turn <= state.complete_through_turn
                 and r.owner == state.HUMAN and r.target_type == "TARGET_ENEMY_CITY"]
     latest = _latest_turn(eligible, state.complete_through_turn)
-    return {(r.x, r.y) for r in eligible if r.turn == latest} if latest is not None else set()
+    if latest is None:
+        return {}
+    return {(r.x, r.y): r.turn for r in eligible if r.turn == latest}
 
 
 def _orders_by_unit(state: GameState) -> dict[tuple[int, int], object]:
@@ -114,11 +132,17 @@ def attack_goals(state: GameState) -> list[dict]:
                 found.add(key)
                 out.append({"player": row.player, "name": rivals[row.player], "x": row.move[0],
                             "y": row.move[1], "kind": row.action, "turn": row.turn})
+    for goal in out:
+        goal["age"] = state.complete_through_turn - goal["turn"]
+        goal["fresh"] = goal["age"] <= GOAL_FRESH_TURNS
     return sorted(out, key=lambda x: (x["player"], x["x"], x["y"]))
 
 
 def snapshot(state: GameState) -> dict:
-    cities = [{"x": x, "y": y} for x, y in sorted(human_city_tiles(state))]
+    observed = city_tile_observations(state)
+    cities = [{"x": x, "y": y, "turn": observed[(x, y)],
+               "age": state.complete_through_turn - observed[(x, y)]}
+              for x, y in sorted(observed)]
     city_coords = [(p["x"], p["y"]) for p in cities]
     rivals = {p.id: p.name for p in state.rivals()}
     enemies = []
@@ -135,11 +159,16 @@ def snapshot(state: GameState) -> dict:
     own = [asdict(u) for u in own_units(state) if u.x is not None]
     promotions = [asdict(r) | {"name": rivals[r.player]} for r in state.commander_promotions
                   if r.turn <= state.complete_through_turn and r.player in rivals]
+    goals = attack_goals(state)
     return {
         "available": bool(cities or enemies), "turn": state.complete_through_turn,
-        "map_near_tiles": MAP_NEAR_TILES,
+        "map_near_tiles": MAP_NEAR_TILES, "fresh_turns": FRESH_TURNS,
+        "goal_fresh_turns": GOAL_FRESH_TURNS,
+        # Coverage, not safety: "no contact recorded" means these logs recorded none,
+        # which is not the same as a quiet frontier.
+        "city_tile_turn": max(observed.values(), default=None),
         "city_tiles": cities, "human_units": own, "enemy_units": enemies,
-        "attack_goals": attack_goals(state), "commander_promotions": promotions,
+        "attack_goals": goals, "commander_promotions": promotions,
     }
 
 
@@ -229,22 +258,45 @@ def advise(state: GameState) -> list[Insight]:
     for player in sorted({g["player"] for g in goals}):
         theirs = [g for g in goals if g["player"] == player]
         coords = ", ".join(f"{g['x']}:{g['y']}" for g in theirs)
-        out.append(Insight(
-            id=f"tactical.ordered_attack.{player}", advisor="tactical", severity=Severity.CRITICAL,
-            provenance=Provenance.ORACLE, title=f"{rivals[player]} is planning against your city tiles",
-            recommendation="Treat the marked tiles as immediate attack objectives and reposition defenders now.",
-            why=f"Turn {max(g['turn'] for g in theirs)} AI attack goals/orders overlap human city tiles at {coords}.",
-            turn=t, subject_player=player,
-        ))
+        observed = max(g["turn"] for g in theirs)
+        age = t - observed
+        if age <= GOAL_FRESH_TURNS:
+            out.append(Insight(
+                id=f"tactical.ordered_attack.{player}", advisor="tactical", severity=Severity.CRITICAL,
+                provenance=Provenance.ORACLE,
+                title=f"{rivals[player]} is planning against your city tiles",
+                recommendation="Treat the marked tiles as immediate attack objectives and reposition defenders now.",
+                why=f"Turn {observed} AI attack goals/orders overlap human city tiles at {coords}.",
+                turn=t, subject_player=player,
+            ))
+        else:
+            # An attack operation the AI has stopped re-emitting for several turns is a
+            # last-known objective, not an order in force. Keep the observation — the
+            # frontier was contested — but do not tell the player to react now to a plan
+            # that may already be abandoned, and do not read the silence as safety either.
+            out.append(Insight(
+                id=f"tactical.stale_attack_goal.{player}", advisor="tactical", severity=Severity.ADVISE,
+                provenance=Provenance.ORACLE,
+                title=f"{rivals[player]}'s last recorded objective was your city tiles",
+                recommendation=("Re-inspect that frontier before relying on it: this objective is "
+                                "dated, and no newer plan has been recorded either way."),
+                why=(f"Turn {observed} AI attack goals/orders overlapped human city tiles at {coords}; "
+                     f"that is {age} turns before turn {t}, and no attack goal has been logged since. "
+                     "Absence of a newer record is not evidence the objective was dropped."),
+                turn=t, subject_player=player,
+            ))
         evals = [r for r in state.operation_evals if r.player == player and r.turn <= t
                  and r.kind == "Attack Enemy City"]
         if evals:
             latest = max(evals, key=lambda r: r.turn)
+            eval_age = t - latest.turn
+            dated = "" if eval_age <= GOAL_FRESH_TURNS else f" That estimate is {eval_age} turns old."
             out.append(Insight(
                 id=f"tactical.odds.{player}", advisor="tactical", severity=Severity.INFO,
                 provenance=Provenance.ORACLE, title=f"{rivals[player]} attack estimate: {latest.odds:.0%}",
                 recommendation="Use this as AI confidence context, not as a combat probability.",
-                why=f"AI_Operation_Eval recorded Attack Enemy City odds {latest.odds:.2f} on turn {latest.turn}.",
+                why=(f"AI_Operation_Eval recorded Attack Enemy City odds {latest.odds:.2f} "
+                     f"on turn {latest.turn}.{dated}"),
                 turn=t, subject_player=player,
             ))
     exposed = []

@@ -353,3 +353,24 @@ td.behind { color: var(--brass); }
   .intel-row { grid-template-columns: 3rem 1fr; }
   .intel-kind { display: none; }
 }
+
+/* Status line: connection, freshness and analysis turn, stated separately. */
+.status-line { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
+  margin: .35rem 0 0; font-size: .82rem; }
+.conn { font-weight: 600; letter-spacing: .02em; }
+.conn-up { color: var(--ok, #4c9a5f); }
+.conn-down { color: var(--warn, #c98a2e); }
+.status-detail { color: var(--muted, #8b8578); }
+
+/* A missing optional log is not a fault; it reads quieter than a real warning. */
+.file-note { margin: .2rem 0; font-size: .82rem; color: var(--muted, #8b8578); }
+
+/* Older generated prose, kept only as dated history. */
+.commentary-dated { margin-top: 1rem; padding: .75rem .9rem; border-left: 3px solid var(--muted, #8b8578);
+  background: rgba(139, 133, 120, .08); }
+.commentary-dated-head { margin: 0; font-size: .9rem; }
+.commentary-dated-note { margin: .25rem 0 .5rem; font-size: .78rem; color: var(--muted, #8b8578); }
+.commentary-dated-text { margin: 0; font-size: .88rem; }
+
+/* What the tactical sketch does not know, stated next to it. */
+.map-coverage-note { margin: .35rem 0 .75rem; font-size: .78rem; color: var(--muted, #8b8578); }

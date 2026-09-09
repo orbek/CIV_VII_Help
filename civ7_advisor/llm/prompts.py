@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 
 from civ7_advisor.advisors import Insight, intel, tactical
+from civ7_advisor.advisors.base import visible
 from civ7_advisor.state.models import GameState
 
 EXPLAIN_TOP_N = 3
@@ -39,7 +40,15 @@ def response_schema(top_ids: list[str], valid_ids: set[str]) -> dict:
     }
 
 
-def turn_payload(state: GameState, insights: list[Insight]) -> dict:
+def turn_payload(state: GameState, insights: list[Insight], oracle: bool = True) -> dict:
+    """The evidence the model is allowed to read this turn.
+
+    With `oracle` false this is the fair payload: Oracle insights and Oracle intel events
+    are dropped and the tactical block — which reads the AI's own planning logs and is
+    Oracle whether or not its lists happen to be empty — is omitted entirely. Filtering
+    here rather than after generation is what lets fair mode have commentary at all
+    instead of hiding every generation that ever saw an intercept.
+    """
     turn = state.complete_through_turn
     standings = []
     for player in state.majors():
@@ -50,6 +59,7 @@ def turn_payload(state: GameState, insights: list[Insight]) -> dict:
                 "culture": row.culture, "gold": row.gold, "production": row.production,
                 "military_units": row.military_units, "settlements": row.settlements,
             })
+    insights = visible(insights, oracle)
     insight_rows = [{
         "id": item.id, "severity": item.severity.name, "provenance": item.provenance.value,
         "title": item.title, "recommendation": item.recommendation, "why": item.why,
@@ -57,23 +67,31 @@ def turn_payload(state: GameState, insights: list[Insight]) -> dict:
     events = [{
         "turn": event.turn, "kind": event.kind, "provenance": event.provenance.value,
         "text": event.text,
-    } for event in intel.feed(state)[:80]]
-    tactical_data = tactical.snapshot(state)
-    tactical_summary = {
-        "provenance": "oracle", "enemy_units": len(tactical_data["enemy_units"]),
-        "attack_goals": tactical_data["attack_goals"],
-        "commander_promotions": tactical_data["commander_promotions"][-20:],
-    }
-    return {"turn": turn, "standings": standings, "insights": insight_rows,
-            "intel": events, "tactical": tactical_summary}
+    } for event in visible(intel.feed(state), oracle)[:80]]
+    payload = {"turn": turn, "standings": standings, "insights": insight_rows, "intel": events}
+    if oracle:
+        tactical_data = tactical.snapshot(state)
+        payload["tactical"] = {
+            "provenance": "oracle", "enemy_units": len(tactical_data["enemy_units"]),
+            "attack_goals": tactical_data["attack_goals"],
+            "commander_promotions": tactical_data["commander_promotions"][-20:],
+        }
+    return payload
 
 
-def build_prompt(state: GameState, insights: list[Insight]) -> tuple[str, bool]:
-    payload = turn_payload(state, insights)
-    # v2 always sends the full tactical block, which is explicitly Oracle even
-    # when its current lists happen to be empty. Fair mode must therefore never
-    # reveal this generation.
-    saw_oracle = True
+def build_prompt(state: GameState, insights: list[Insight],
+                 oracle: bool = True) -> tuple[str, bool, list[str]]:
+    """The prompt, whether it read any Oracle evidence, and the insight ids it may cite.
+
+    `saw_oracle` is a property of this prompt's contents, not of who asked for it: an
+    oracle-mode prompt for a turn with no intercepted evidence at all is fair, and the
+    result is safe to show in either mode.
+    """
+    insights = visible(insights, oracle)
+    payload = turn_payload(state, insights, oracle)
+    saw_oracle = "tactical" in payload or any(
+        row["provenance"] == "oracle" for row in payload["insights"] + payload["intel"]
+    )
     top_ids = [i.id for i in insights[:EXPLAIN_TOP_N]]
     evidence = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     prompt = (
@@ -85,4 +103,4 @@ def build_prompt(state: GameState, insights: list[Insight]) -> tuple[str, bool]:
         f"Explain only these top ids: {json.dumps(top_ids)}. Valid insight ids occur in the JSON below.\n"
         + evidence
     )
-    return prompt, saw_oracle
+    return prompt, saw_oracle, [i.id for i in insights]

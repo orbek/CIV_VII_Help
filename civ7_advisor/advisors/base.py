@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum
+from typing import Iterable, Protocol, TypeVar
 
 
 class Provenance(Enum):
@@ -17,6 +18,13 @@ class Severity(IntEnum):
     CRITICAL = 3
 
 
+class HasProvenance(Protocol):
+    provenance: Provenance
+
+
+T = TypeVar("T", bound=HasProvenance)
+
+
 @dataclass(frozen=True)
 class Insight:
     id: str             # stable key, e.g. "threat.war_intent.1"
@@ -28,6 +36,18 @@ class Insight:
     why: str            # the evidence, in plain language, with the numbers
     turn: int           # complete_through_turn it was computed on
     subject_player: int | None = None
+
+
+def visible(items: Iterable[T], oracle: bool) -> list[T]:
+    """Drop Oracle-provenance items unless the player asked to see intercepts.
+
+    One place decides what "fair mode" means for insights, intel events and anything
+    else carrying a `provenance`, so a serializer, a model prompt and a decision cannot
+    each filter slightly differently. Filtering has to happen before the data is used,
+    not after: a comparison computed from an Oracle fact is itself Oracle, so removing
+    the sentence that mentions it is not enough.
+    """
+    return [i for i in items if oracle or i.provenance is Provenance.FAIR]
 
 
 _DOMAIN_PREFIXES = ("GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_", "WONDER_")

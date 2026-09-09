@@ -7,6 +7,7 @@ from civ7_advisor.ingest.production import BuildQueueRow
 from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
 from civ7_advisor.ingest.textlogs import DealItem
 from civ7_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from civ7_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
 
 
 def insight(
@@ -104,3 +105,20 @@ def diplo_event(turn: int, initiator: int, recipient: int, action: str = "Denoun
 
 def deal(turn: int, from_player: int, to_player: int, kind: str = "Peace") -> DealItem:
     return DealItem(turn, 1, from_player, to_player, kind, 0, 1)
+
+
+def snapshot(
+    state: GameState, insights=None, session: str = "session-1", epoch: int = 1,
+    revision: int = 1, captured_at: float = 0.0,
+) -> Snapshot:
+    """A published snapshot around a hand-made state, for worker and serializer tests."""
+    from civ7_advisor.advisors import run_all
+
+    ranked = run_all(state) if insights is None else list(insights)
+    return Snapshot(
+        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        epoch_reason="first_load", game_key=None, revision=revision,
+        captured_at=captured_at, latest_turn=state.latest_turn,
+        analysis_turn=state.complete_through_turn, state=state, insights=tuple(ranked),
+        coverage=_coverage(state, state.complete_through_turn),
+    )

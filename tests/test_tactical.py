@@ -87,3 +87,52 @@ def test_matchup_covers_each_nearby_type_and_exposed_uses_target_join():
     assert "Archer → Archer" in by_id["tactical.matchup"].recommendation
     assert "Recent realized combat disagreed for Warrior vs Spearman" in by_id["tactical.matchup"].why
     assert "your Warrior at 9:10" in by_id["tactical.own_exposed"].why
+
+
+def _attack_state(observed_turn: int, now: int = 20) -> GameState:
+    return GameState(
+        players={
+            0: Player(0, "You", PlayerKind.HUMAN, True, now),
+            1: Player(1, "Rival", PlayerKind.RIVAL, True, now),
+        },
+        complete_through_turn=now,
+        targets=[TargetRow(observed_turn, 1, "TARGET_ENEMY_CITY", 0, 9, 4, 5)],
+        operations=[OperationRow(observed_turn, 1, "Attack Enemy City", (4, 5), ("Goal 4:5",))],
+        operation_evals=[OperationEvalRow(observed_turn, 1, 2, "Attack Enemy City", 300, .67)],
+    )
+
+
+def test_a_fresh_attack_goal_is_critical_and_dated():
+    state = _attack_state(observed_turn=19, now=20)
+    by_id = {i.id: i for i in tactical.advise(state)}
+    fresh = by_id["tactical.ordered_attack.1"]
+    assert fresh.severity.name == "CRITICAL"
+    assert "Turn 19" in fresh.why
+    assert "tactical.stale_attack_goal.1" not in by_id
+    goal = tactical.snapshot(state)["attack_goals"][0]
+    assert goal["turn"] == 19 and goal["age"] == 1 and goal["fresh"] is True
+
+
+def test_an_old_attack_goal_is_not_reported_as_an_immediate_objective():
+    """An attack operation is re-emitted every turn the AI still holds it, so a row that
+    stopped appearing is a plan that stopped — but silence is not safety either."""
+    state = _attack_state(observed_turn=10, now=20)
+    by_id = {i.id: i for i in tactical.advise(state)}
+    assert "tactical.ordered_attack.1" not in by_id
+    stale = by_id["tactical.stale_attack_goal.1"]
+    assert stale.severity.name == "ADVISE"
+    assert "10 turns before turn 20" in stale.why
+    assert "not evidence the objective was dropped" in stale.why
+    assert "immediate" not in stale.recommendation.lower()
+    assert "10 turns old" in by_id["tactical.odds.1"].why
+    goal = tactical.snapshot(state)["attack_goals"][0]
+    assert goal["age"] == 10 and goal["fresh"] is False
+
+
+def test_known_city_area_tiles_carry_the_turn_they_were_observed_on():
+    state = _attack_state(observed_turn=14, now=20)
+    snap = tactical.snapshot(state)
+    assert snap["city_tile_turn"] == 14
+    assert snap["city_tiles"] == [{"x": 4, "y": 5, "turn": 14, "age": 6}]
+    assert snap["goal_fresh_turns"] == tactical.GOAL_FRESH_TURNS
+    assert tactical.city_tile_observations(state) == {(4, 5): 14}

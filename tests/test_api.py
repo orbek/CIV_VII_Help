@@ -54,7 +54,7 @@ def test_index_and_static(client):
     for tab in ("checklist", "threats", "victory", "economy"):
         assert f'data-tab="{tab}"' in page
     js = client.get("/static/app.js")
-    assert js.status_code == 200 and "EventSource" in js.text and "/api/insights" in js.text
+    assert js.status_code == 200 and "EventSource" in js.text and "/api/briefing?oracle=" in js.text
     assert client.get("/static/style.css").status_code == 200
     assert ">Strategy</button>" in page and "not victory score" in page
 
@@ -72,11 +72,11 @@ def _labels(body: str) -> list[str]:
 
 
 def test_threats_table_columns_are_split_by_provenance():
-    """The Oracle toggle gates oracle-derived table *columns*, not just cards, and that
-    gating lives only in app.js: /api/state ships the oracle fields either way, so
-    nothing else in the suite would notice `War score` or `Targeting` reappearing in
-    fair mode. Pin both column sets, and pin that the fair set reads none of the
-    AI-internal fields of RivalThreat."""
+    """The Oracle toggle gates oracle-derived table *columns*, not just cards. The server
+    now also drops those fields from the response (see
+    test_state_endpoint_drops_oracle_threat_fields_in_fair_mode), so this pins the
+    browser's half of a two-layer boundary: the fair column set must read none of the
+    AI-internal fields of RivalThreat even if a response ever carried them."""
     source = APP_JS.read_text(encoding="utf-8")
     fair, oracle = _array_body(source, "THREATS_FAIR_COLUMNS"), _array_body(source, "THREATS_ORACLE_COLUMNS")
 
@@ -132,9 +132,9 @@ def test_events_stream_delivers_and_drops_its_subscriber_on_disconnect(fixture_d
 
         task = asyncio.create_task(app(scope, receive, send))
         await until(lambda: store._subscribers, "the stream to subscribe")
-        store.publish({"type": "state_changed", "turn": 82})
+        store.publish({"type": "state_changed", "turn": 82, "revision": 7})
         await until(lambda: any(c.startswith("data:") for c in chunks), "the published event")
-        assert '{"type": "state_changed", "turn": 82}' in "".join(chunks)
+        assert '{"type": "state_changed", "turn": 82, "revision": 7}' in "".join(chunks)
 
         disconnect.set()
         await asyncio.wait_for(task, 2)
@@ -214,19 +214,21 @@ def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixt
                             (Explanation("threat.x", "Why."),), (PlanStep("threat.x", "Act."),))
 
     class StubWorker:
-        def schedule(self, state, insights):
+        def schedule(self, snapshot, oracle=True):
             pass
 
-        def result(self, turn):
-            return CommentaryResult("ready", turn, "", commentary)
+        def result(self, snapshot, oracle=True):
+            return CommentaryResult("ready", snapshot.analysis_turn, "", commentary)
 
         def close(self):
             pass
 
     with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
         assert c.get("/api/commentary").json()["commentary"]["model"] == "local:test"
+        # Fair mode is generated from a fair prompt, but a generation that still reports
+        # having read intercepts is withheld rather than trusted.
         hidden = c.get("/api/commentary?oracle=0").json()
-        assert hidden["status"] == "hidden" and "commentary" not in hidden
+        assert hidden["status"] == "hidden" and hidden["commentary"] is None
 
 
 def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
@@ -243,8 +245,99 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
     ):
         assert needle in page, needle
     js = client.get("/static/app.js").text
-    assert "/api/intel?oracle=" in js and "/api/state?oracle=" in js and "/api/tactical?oracle=" in js
-    assert "/api/commentary?oracle=" in js and "textContent" in js
+    # One request, one revision: the browser no longer assembles five independent
+    # responses, which is what let a superseded reply repaint hidden data.
+    assert "/api/briefing?oracle=" in js and "textContent" in js
+    assert "/api/state?oracle=" not in js and "/api/tactical?oracle=" not in js
     assert "commentary-sentence uncited" in js
     assert "Closest recorded rival positions" in js and "distance_to_city" in js
     assert "(r.military_share || 0) * r.cities.length" in js
+
+
+def test_briefing_serves_every_section_from_one_revision(client):
+    body = client.get("/api/briefing").json()
+    assert set(body) == {"status", "state", "insights", "hidden_insights", "intel",
+                         "tactical", "commentary"}
+    status = body["status"]
+    assert status["schema_version"] == 1 and status["revision"] >= 1
+    assert status["session"] and status["epoch"] == 1
+    assert status["analysis_turn"] == 81 and status["latest_turn"] == 82
+    assert status["in_progress"] is True and status["evidence_mode"] == "oracle"
+    assert body["state"]["complete_through_turn"] == status["analysis_turn"]
+    assert body["insights"][0]["id"] == "threat.at_war.4"
+    # Coverage is per capability, and names the ones this game cannot support.
+    coverage = {c["name"]: c for c in status["coverage"]}
+    assert coverage["empire"]["status"] == "ok" and coverage["empire"]["required"] is True
+    assert coverage["tactical"]["status"] == "unavailable"
+    assert coverage["tactical"]["required"] is False
+    assert client.get("/api/status").json()["revision"] == status["revision"]
+
+
+def test_briefing_in_fair_mode_omits_intercepted_evidence_rather_than_blanking_it(client):
+    oracle = client.get("/api/briefing?oracle=1").json()
+    fair = client.get("/api/briefing?oracle=0").json()
+    assert fair["status"]["evidence_mode"] == "fair"
+    assert any(i["provenance"] == "oracle" for i in oracle["insights"])
+    assert all(i["provenance"] == "fair" for i in fair["insights"])
+    assert fair["hidden_insights"] == len(oracle["insights"]) - len(fair["insights"])
+    assert fair["hidden_insights"] > 0
+    assert all(e["provenance"] == "fair" for e in fair["intel"])
+    assert fair["tactical"] == {"available": False, "reason": "oracle_off"}
+
+
+def test_fair_mode_strips_ai_internal_fields_from_the_response_itself(client):
+    """The browser also drops the Oracle columns, but fair mode must not depend on that:
+    with oracle=0 the AI-internal numbers are absent from the payload."""
+    oracle = client.get("/api/state?oracle=1").json()
+    fair = client.get("/api/state?oracle=0").json()
+    assert all(field in oracle["threats"][0] for field in ORACLE_THREAT_FIELDS)
+    for row in fair["threats"]:
+        assert not [f for f in ORACLE_THREAT_FIELDS if f in row]
+        assert "peace_since" in row      # a deal the player signed stays fair
+    # A rival's victory weighting is the AI's own, and is withheld the same way.
+    assert any(s["strategies"] for s in oracle["standings"])
+    assert all(s["strategies"] == [] for s in fair["standings"])
+
+
+def test_insights_endpoint_filters_by_mode_on_the_server(client):
+    everything = client.get("/api/insights?oracle=1").json()
+    fair = client.get("/api/insights?oracle=0").json()
+    assert any(i["provenance"] == "oracle" for i in everything)
+    assert fair and all(i["provenance"] == "fair" for i in fair)
+
+
+def test_briefing_is_503_before_the_first_rebuild(fixture_dir: Path):
+    app = create_app(fixture_dir)  # lifespan never entered -> nothing published
+    assert TestClient(app).get("/api/briefing").status_code == 503
+    assert TestClient(app).get("/api/status").status_code == 503
+
+
+def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir: Path):
+    from civ7_advisor.llm.models import CommentaryIdentity
+
+    identity = CommentaryIdentity(session="s", epoch=1, evidence_mode="oracle",
+                                  snapshot_revision=3, turn=81, insight_ids=("threat.x",))
+    ready = Commentary("local:test", "b" * 64, 81, False, "Opinion [threat.x].",
+                       (Explanation("threat.x", "Why."),), (PlanStep("threat.x", "Act."),),
+                       identity)
+
+    class StubWorker:
+        def schedule(self, snapshot, oracle=True):
+            pass
+
+        def result(self, snapshot, oracle=True):
+            return CommentaryResult("queued", snapshot.analysis_turn,
+                                    "Local commentary is queued behind another generation.",
+                                    previous=ready)
+
+        def close(self):
+            pass
+
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+        body = c.get("/api/commentary").json()
+        assert body["status"] == "queued" and body["commentary"] is None
+        # Earlier prose travels as dated history, with the identity that dates it.
+        assert body["previous"]["second_opinion"] == "Opinion [threat.x]."
+        assert body["previous"]["identity"]["snapshot_revision"] == 3
+        assert body["previous"]["identity"]["evidence_mode"] == "oracle"
+        assert c.get("/api/briefing").json()["commentary"]["status"] == "queued"

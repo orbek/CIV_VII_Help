@@ -278,8 +278,9 @@ def _unknowns(context: DecisionContext, target, options: tuple[str, ...] | None,
     if comparison.incomplete:
         out.append("Preview figures still missing: " + "; ".join(comparison.incomplete) + ".")
     if context.unobserved_settlements:
-        out.append(f"{context.unobserved_settlements} of your settlements have no logged "
-                   "queue; their production is unknown, not idle.")
+        count = context.unobserved_settlements
+        out.append(f"{count} of your settlements {'has' if count == 1 else 'have'} no logged "
+                   f"queue; {'its' if count == 1 else 'their'} production is unknown, not idle.")
     if context.age is not None:
         out.append(f"The Age was recorded as {context.age.value} on turn "
                    f"{context.age.observed_turn}; no log states the current Age, so nothing "

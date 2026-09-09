@@ -16,10 +16,14 @@
       <p class="hero-headline" id="headline"></p>
     </div>
     <p class="ranks" id="ranks"></p>
-    <p class="status-line" role="status" aria-live="polite">
+    <p class="status-line">
       <span class="conn conn-down" id="connection">connecting&hellip;</span>
       <span class="status-detail" id="updated"></span>
     </p>
+    <!-- The only live region on the page. "updated 40s ago" repaints on a timer and must
+         not be announced; a new analysis turn, a lost connection or a new critical alert
+         must be. -->
+    <p class="sr-only" id="announce" role="status" aria-live="polite"></p>
     <div class="files" id="files"></div>
     <p class="file-warn" id="wipe" hidden>Civ VII clears its logs when it starts — advice resumes once a game is loaded.</p>
   </div>
@@ -42,6 +46,24 @@
 </div>
 
 <main class="wrap">
+  <!-- The brief comes before the tabs so the highest-priority decision and its controls
+       are on screen without scrolling. Everything it groups stays reachable in the tabs
+       below; nothing is only in here. -->
+  <section class="brief" id="brief" aria-labelledby="brief-head">
+    <div class="brief-head-row">
+      <h2 class="section-head" id="brief-head">Before you end this turn</h2>
+      <p class="brief-count" id="brief-count"></p>
+    </div>
+    <!-- Every distinct critical alert lives here, expanded, however many there are. -->
+    <div class="brief-critical" id="brief-critical"></div>
+    <div id="brief-cards"></div>
+    <div class="brief-overflow" id="brief-overflow" hidden>
+      <button type="button" id="brief-more" aria-expanded="false" aria-controls="brief-rest"></button>
+      <div id="brief-rest" hidden></div>
+    </div>
+    <p class="brief-empty" id="brief-empty" hidden></p>
+  </section>
+
   <section class="tab active" id="checklist" role="tabpanel" aria-labelledby="tab-checklist" tabindex="0">
     <p class="turn-summary" id="insight-summary"></p>
     <div id="checklist-stream"></div>
@@ -89,6 +111,16 @@
     <div id="intel-feed"></div>
   </section>
 </main>
+<!-- The evidence drawer. A dialog so focus is trapped while it is open and returns to
+     the control that opened it when it closes. -->
+<dialog class="drawer" id="evidence-drawer" aria-labelledby="drawer-head">
+  <div class="drawer-head">
+    <h2 id="drawer-head">Evidence</h2>
+    <button type="button" id="drawer-close" aria-label="Close evidence">Close</button>
+  </div>
+  <div id="drawer-body"></div>
+</dialog>
+
 <script src="/static/briefing.js"></script>
 <script src="/static/app.js"></script>
 </body>

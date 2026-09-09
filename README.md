@@ -27,14 +27,83 @@ Then start the advisor in another terminal:
 Open http://127.0.0.1:8765 on your second screen and play. The page updates
 by itself about a second after the game finishes writing a turn.
 
+## Before you end this turn
+
+The top of the page answers four questions in order.
+
+**What needs attention?** The brief lists the highest-priority decisions, most
+severe first, grouped by subject so two warnings about one rival are one entry
+rather than two. Every distinct critical alert is shown expanded, however many
+there are; only lower-priority items collapse behind a count. Nothing is *only*
+in the brief — every original observation is still on its own tab.
+
+**What should I do, where, and why now?** Each decision names a settlement or
+frontier, the next action or inspection, and the timing that makes it worth
+deciding now. **Why this? · How to do it** opens compact steps beside the
+action.
+
+**How do I do it in the game?** The steps come from a small reviewed guide
+catalog packaged with the advisor (`civ7_advisor/knowledge/guides.json`) and
+each links the article it was written from. The steps say what to look for
+rather than naming buttons, because the game's UI changes between updates, and
+they never supply a figure — see [Guides and figures](#guides-and-figures).
+
+**What is this based on?** **Evidence** opens a drawer listing every
+observation the decision rests on: what it is in words, its value, the turn it
+came from, which log file, and what it does *not* establish. Advisor
+thresholds, computed comparisons, log rows, figures you supplied, and generated
+prose are labelled distinctly and never blended.
+
+**Acknowledge** records that you have seen a decision and drops it from the
+brief; **Pin for this session** keeps it in view. Both record your intent —
+neither does anything in the game. An acknowledged decision comes back if its
+evidence or severity changes.
+
+The header says whether the advisor is connected, when it last got an answer,
+which turn the advice was computed on, and which capabilities this game's logs
+do not support. "Readable but empty", "nothing recent enough" and "cannot be
+read" are reported as what they are, because none of them means the thing being
+measured is quiet.
+
+### Guides and figures
+
+No figure in a recommendation comes from a wiki or from this advisor's own
+guesses. The logs do not record what a building yields, what a settlement can
+build, what is unlocked, or what a placement would cost, and no packaged guide
+asserts a number that has been verified against an installed ruleset. See
+[docs/architecture/log-capability-matrix.md](docs/architecture/log-capability-matrix.md)
+for exactly what is and is not knowable.
+
+So a named building is never presented as an unconditional choice. Instead,
+**Refine this recommendation** asks for the few figures only the game can show
+you — which culture options a settlement offers, and each one's completion
+estimate, culture change, upkeep and local happiness cost. Enter what the
+game's own preview says and the advisor compares those options against the
+objective you state, shows the arithmetic and the opportunity cost, and names a
+choice. Those figures are recorded as *your report*, dated to the turn you read
+them, and are discarded if the game is reloaded or that settlement's queue
+changes. They never silently override a fresher log row.
+
+Guide links are audited by hand, never during play:
+
+    uv run python scripts/check_guides.py
+
+That checks link health only. An HTTP 200 is not a review, and a link-check
+date is not the game's version. The script never rewrites the catalog.
+
 The Economy tab also shows what each of your cities is building and, with
 Oracle on, what rivals are building.
 
 After each complete turn, the **This turn** tab also receives a cached local
 second opinion, explanations for the three highest-ranked insights, and a draft
 turn plan. Generation runs in the background; its model, turn, and prompt hash
-are displayed with the result. Because the v2 prompt includes intercepted
-tactical evidence, this commentary is hidden when Oracle is off.
+are displayed with the result. Generated prose is shown beside a decision only
+when it was written about that exact decision context — the same turn, the same
+evidence mode, the same recommendations and the same figures you had supplied.
+If you change any of those while a generation is running, the finished prose
+appears as dated history instead, never as an explanation of what is now on
+screen. Fair mode gets its own generation from a fair prompt rather than hiding
+every result that ever read an intercept.
 
 Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
 `--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, and `--no-llm`.
@@ -55,7 +124,10 @@ strategic focus weights — is **Oracle**, drawn over a faint diagonal
 hatch and badged "intercept". Untick **Oracle** in the header to see whether
 the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
-wasn't. The toggle hides Oracle table columns too, not just the cards.
+wasn't. The toggle hides Oracle table columns too, not just the cards — and with Oracle
+off the AI-internal fields are absent from the server's response, not merely
+blanked in the browser. Switching it off repaints immediately, so an in-flight
+response cannot put intercepted content back afterwards.
 
 The fifth tab, **Intel**, plots a compact, city-focused tactical intercept and lists gossip,
 diplomacy, fights and deals newest first. The map is deliberately limited to
@@ -112,6 +184,21 @@ exercised against genuine Civ VII output. Try the dashboard against the newer
 fixture without the game running:
 
     uv run civ7-advisor --logs-dir tests/fixtures/logs_v2 --no-archive
+
+The dashboard's own rules — which response may paint, how coverage is worded,
+how decisions group, when generated prose may be shown — are executed under
+`node` by `tests/test_web_briefing.py`, so they need no browser.
+
+A separate opt-in suite drives a real page for the things source assertions
+cannot establish: what fits on screen, what a keyboard can reach, whether a
+citation opens the right observation, and whether hidden data can come back.
+
+    uv sync --group browser
+    uv run playwright install chromium
+    uv run pytest tests/browser
+
+See [tests/browser/README.md](tests/browser/README.md). It is excluded from the
+default run so that stays offline and fast.
 
 ## Design
 

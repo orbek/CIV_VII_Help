@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -47,8 +48,27 @@ HIDDEN_MESSAGE = "Oracle off — this local commentary saw intercepted evidence.
 
 def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None,
                commentary_worker: CommentaryWorker | None = None) -> FastAPI:
-    store = Store(logs_dir, archive_root, commentary_worker=commentary_worker)
     context_store = ContextStore()
+
+    def identity_provider(captured: Snapshot) -> dict:
+        """The decision, context and catalog revisions that complete a generation's identity.
+
+        `decision_revision` fingerprints the recommendations themselves, so prose written
+        about a different preferred action cannot be shown as an explanation of this one —
+        which is exactly what happens when the player supplies a preview while a
+        generation is still running.
+        """
+        context_store.adopt(captured)
+        context = build_context(captured, context_store.context())
+        cards = tuple(card for card in (culture.decide(context),) if card is not None)
+        return {
+            "decision_revision": decision_fingerprint(cards),
+            "context_revision": context.context_revision,
+            "catalog_revision": context.catalog_revision,
+        }
+
+    store = Store(logs_dir, archive_root, commentary_worker=commentary_worker,
+                  identity_provider=identity_provider)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -87,7 +107,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
     def commentary_result(captured: Snapshot, oracle: bool) -> CommentaryResult:
         if store.commentary_worker is None:
             return CommentaryResult("disabled", captured.analysis_turn, DISABLED_MESSAGE)
-        result = store.commentary_worker.result(captured, oracle)
+        result = store.commentary_worker.result(captured, oracle, store.revisions(captured))
         # Fair mode is generated from a fair prompt, so this should never fire. It stays
         # as the last gate: if a generation ever reports having read intercepted evidence,
         # fair mode withholds it rather than trusting the layer above to have filtered.
@@ -221,6 +241,22 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
 
     app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
     return app
+
+
+def decision_fingerprint(cards) -> str:
+    """A stable digest of the decisions on screen.
+
+    Covers each card's id and severity, its preferred and alternative action ids, and the
+    evidence behind them — everything whose change would make an explanation of the old
+    recommendation misleading.
+    """
+    parts = []
+    for card in cards:
+        parts.append(f"{card.id}:{card.severity.name}")
+        for candidate in card.candidates:
+            parts.append(f"{candidate.id}:{candidate.applicability.value}")
+        parts.extend(sorted(card.evidence_ids))
+    return hashlib.sha256("|".join(parts).encode()).hexdigest()[:16] if parts else ""
 
 
 def _dependencies(captured: Snapshot, subject: str) -> dict[str, object]:

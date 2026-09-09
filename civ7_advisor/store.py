@@ -13,7 +13,7 @@ import threading
 import time
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Callable
 
 from civ7_advisor.advisors import Insight, run_all
 from civ7_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
@@ -153,7 +153,13 @@ def _coverage(state: GameState, analysis_turn: int) -> tuple[DomainCoverage, ...
 
 class Store:
     def __init__(self, logs_dir: Path, archive_root: Path | None = None,
-                 commentary_worker: CommentaryWorker | None = None) -> None:
+                 commentary_worker: CommentaryWorker | None = None,
+                 identity_provider: Callable[[Snapshot], dict] | None = None) -> None:
+        # `identity_provider` supplies the decision, context and catalog revisions that
+        # complete a generation's identity. It is a hook rather than an import so this
+        # module stays free of the decisions package, and so a store with no decision
+        # layer still works — the identity is then simply less specific.
+        self.identity_provider = identity_provider
         self.logs_dir = logs_dir
         self.archive_root = archive_root
         self.snapshot: Snapshot | None = None
@@ -192,8 +198,18 @@ class Store:
             self.snapshot = snapshot
         self._archive(raw, snapshot.session)
         if self.commentary_worker is not None:
-            self.commentary_worker.schedule(snapshot)
+            self.commentary_worker.schedule(snapshot, revisions=self.revisions(snapshot))
         return snapshot
+
+    def revisions(self, snapshot: Snapshot) -> dict:
+        """The decision/context/catalog revisions for this snapshot, if anything supplies them."""
+        if self.identity_provider is None:
+            return {}
+        try:
+            return self.identity_provider(snapshot)
+        except Exception:   # an optional identity must never break a rebuild
+            log.exception("decision identity provider failed; commentary identity will be partial")
+            return {}
 
     def _capture_locked(self, raw: RawLogs, state: GameState, insights: list[Insight],
                         key: str | None) -> Snapshot:

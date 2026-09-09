@@ -43,7 +43,11 @@ class CommentaryIdentity:
     snapshot_revision: int
     turn: int
     insight_ids: tuple[str, ...] = ()  # the insights this generation was given, in rank order
-    decision_revision: int = 0
+    # A fingerprint of the decisions on screen — their ids, their preferred actions and
+    # the evidence behind them — rather than a counter. A counter would only tell us
+    # something changed; this tells us whether *this* prose was written about *these*
+    # recommendations, which is what decides whether it may be shown as their explanation.
+    decision_revision: str = ""
     context_revision: int = 0
     catalog_revision: str = ""
 

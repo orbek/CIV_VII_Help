@@ -60,7 +60,8 @@ class CommentaryWorker:
 
     # ---- scheduling -------------------------------------------------------------
 
-    def schedule(self, snapshot: Snapshot, oracle: bool = True) -> None:
+    def schedule(self, snapshot: Snapshot, oracle: bool = True,
+                 revisions: dict | None = None) -> None:
         """Queue the generation for this snapshot in one evidence mode.
 
         The store calls this after each rebuild for the default (oracle) mode. Fair mode
@@ -68,7 +69,7 @@ class CommentaryWorker:
         never pays for a second generation — and one who does gets commentary rather
         than a permanently hidden panel.
         """
-        request = self._request(snapshot, oracle)
+        request = self._request(snapshot, oracle, revisions)
         if request is None:
             key = self._slot(snapshot, oracle)
             with self._lock:
@@ -82,7 +83,8 @@ class CommentaryWorker:
     def _slot(self, snapshot: Snapshot, oracle: bool) -> tuple[str, str, int]:
         return (snapshot.session, "oracle" if oracle else "fair", snapshot.analysis_turn)
 
-    def _request(self, snapshot: Snapshot, oracle: bool) -> _Request | None:
+    def _request(self, snapshot: Snapshot, oracle: bool,
+                 revisions: dict | None = None) -> _Request | None:
         """The request for this snapshot and mode, or None when there is nothing to narrate."""
         if snapshot.analysis_turn <= 0:
             return None
@@ -96,6 +98,9 @@ class CommentaryWorker:
             evidence_mode="oracle" if oracle else "fair",
             snapshot_revision=snapshot.revision, turn=snapshot.analysis_turn,
             insight_ids=tuple(insight_ids),
+            decision_revision=str((revisions or {}).get("decision_revision", "")),
+            context_revision=int((revisions or {}).get("context_revision", 0)),
+            catalog_revision=str((revisions or {}).get("catalog_revision", "")),
         )
         return _Request(identity, hashlib.sha256(prompt.encode()).hexdigest(), prompt,
                         saw_oracle, tuple(insight_ids[:EXPLAIN_TOP_N]))
@@ -192,12 +197,13 @@ class CommentaryWorker:
 
     # ---- reading ----------------------------------------------------------------
 
-    def result(self, snapshot: Snapshot | None, oracle: bool = True) -> CommentaryResult:
+    def result(self, snapshot: Snapshot | None, oracle: bool = True,
+               revisions: dict | None = None) -> CommentaryResult:
         """The commentary for this exact snapshot and evidence mode, scheduling it if needed."""
         if snapshot is None or snapshot.analysis_turn <= 0:
             turn = None if snapshot is None else snapshot.analysis_turn
             return CommentaryResult("idle", turn, "Commentary starts after a complete turn.")
-        request = self._request(snapshot, oracle)
+        request = self._request(snapshot, oracle, revisions)
         if request is None:
             return CommentaryResult("idle", snapshot.analysis_turn,
                                     "There is nothing to narrate for this turn.")
@@ -215,7 +221,8 @@ class CommentaryWorker:
             )
             return replace(held, previous=previous if stale_but_offerable else None)
 
-    def wait(self, snapshot: Snapshot, oracle: bool = True, timeout: float = 2.0) -> CommentaryResult:
+    def wait(self, snapshot: Snapshot, oracle: bool = True, timeout: float = 2.0,
+             revisions: dict | None = None) -> CommentaryResult:
         """Block until this snapshot's generation reaches a terminal state, or `timeout`.
 
         For tests and for the CLI smoke check. Scheduling comes first — a caller may not
@@ -223,9 +230,9 @@ class CommentaryWorker:
         on until the active generation hands over, so poll across that handover rather
         than reporting "generating" and giving up.
         """
-        request = self._request(snapshot, oracle)
+        request = self._request(snapshot, oracle, revisions)
         if request is None:
-            return self.result(snapshot, oracle)
+            return self.result(snapshot, oracle, revisions)
         deadline = time.monotonic() + timeout
         while True:
             with self._lock:
@@ -234,10 +241,10 @@ class CommentaryWorker:
                 held = self._results.get(request.key)
                 future = self._futures.get(request.key)
             if held is not None and held.status in ("ready", "error"):
-                return self.result(snapshot, oracle)
+                return self.result(snapshot, oracle, revisions)
             remaining = deadline - time.monotonic()
             if remaining <= 0:
-                return self.result(snapshot, oracle)
+                return self.result(snapshot, oracle, revisions)
             if future is not None:
                 try:
                     future.result(timeout=remaining)

@@ -214,10 +214,10 @@ def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixt
                             (Explanation("threat.x", "Why."),), (PlanStep("threat.x", "Act."),))
 
     class StubWorker:
-        def schedule(self, snapshot, oracle=True):
+        def schedule(self, snapshot, oracle=True, revisions=None):
             pass
 
-        def result(self, snapshot, oracle=True):
+        def result(self, snapshot, oracle=True, revisions=None):
             return CommentaryResult("ready", snapshot.analysis_turn, "", commentary)
 
         def close(self):
@@ -322,10 +322,10 @@ def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir
                        identity)
 
     class StubWorker:
-        def schedule(self, snapshot, oracle=True):
+        def schedule(self, snapshot, oracle=True, revisions=None):
             pass
 
-        def result(self, snapshot, oracle=True):
+        def result(self, snapshot, oracle=True, revisions=None):
             return CommentaryResult("queued", snapshot.analysis_turn,
                                     "Local commentary is queued behind another generation.",
                                     previous=ready)

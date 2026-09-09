@@ -1,7 +1,8 @@
 (() => {
   /* The response and coverage rules live in briefing.js so they can be tested by
      executing them rather than by grepping this file. */
-  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines } = window.Civ7Briefing;
+  const B = window.Civ7Briefing;
+  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines } = B;
   const $ = (sel) => document.querySelector(sel);
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -59,7 +60,18 @@
        `seen()`. `revision` is the server's monotonic snapshot revision, so a reply that
        overtook a newer one on the wire is dropped rather than rendered. */
     seq: 0, dataMode: null, revision: 0, session: null, controller: null,
-    connected: false, lastUpdate: null };
+    connected: false, lastUpdate: null,
+    /* Brief state. `acks` and `pins` record what the player has seen or wants kept in
+       view — intent, never a game action. `expanded` remembers which decisions are open
+       through a refresh so a turn update does not collapse what is being read. */
+    decisions: null, acks: {}, pins: {}, expanded: {}, briefOpen: false,
+    drawerOpener: null, refineStatus: {} };
+
+  try { state.acks = JSON.parse(localStorage.getItem("civ7.acks") || "{}"); } catch (_) { /* ignore */ }
+  try { state.pins = JSON.parse(localStorage.getItem("civ7.pins") || "{}"); } catch (_) { /* ignore */ }
+  const persist = (key, value) => {
+    try { localStorage.setItem(key, JSON.stringify(value)); } catch (_) { /* private mode */ }
+  };
 
   try { state.showOracle = localStorage.getItem("civ7.oracle") !== "off"; } catch (_) { /* private mode */ }
   $("#oracle").checked = state.showOracle;
@@ -131,6 +143,7 @@
     state.intel = body.intel;
     state.tactical = body.tactical;
     state.commentary = body.commentary;
+    state.decisions = body.decisions;
     state.connected = true;
     state.lastUpdate = Date.now();
     render();
@@ -264,6 +277,26 @@
     $("#updated").textContent = parts.join(" · ");
   }
 
+  /* Announce only what changed and matters: the analysis turn, the connection, and how
+     many critical alerts are outstanding. The freshness counter ticks every five
+     seconds and would otherwise talk over everything else. */
+  let announced = null;
+  function announce(criticalCount) {
+    const status = state.status;
+    const key = [state.connected, status && status.analysis_turn, criticalCount].join("|");
+    if (key === announced) return;
+    const first = announced === null;
+    announced = key;
+    if (first) return;                       // the initial paint is not news
+    const said = [];
+    if (!state.connected) said.push("Lost contact with the advisor; reconnecting.");
+    else if (status) said.push(`Turn ${status.analysis_turn} analysed.`);
+    if (criticalCount) {
+      said.push(`${criticalCount} critical alert${criticalCount === 1 ? "" : "s"}.`);
+    }
+    $("#announce").textContent = said.join(" ");
+  }
+
   /* Coverage, not a wall of file paths. A required domain failing is a real warning; an
      optional one that the game simply has not written disables its capability and says
      so once. "Empty but readable" and "no rows recent enough" are stated as what they
@@ -307,6 +340,7 @@
     renderRanks(d);
     renderStatus();
     renderCoverage();
+    renderBrief();
 
     const byAdvisor = (a) => ins.filter((i) => i.advisor === a);
     const actionable = ins.filter((i) => i.severity !== "INFO").length;
@@ -392,6 +426,543 @@
       feed.append(row);
     });
     $("#intel-feed").replaceChildren(feed, ...(seen() ? [] : [el("p", "oracle-off", INTEL_ORACLE_OFF)]));
+  }
+
+  /* ================= the decision brief ================= */
+
+  const APPLICABILITY_WORD = {
+    ready: "ready", conditional: "conditional", inspect: "go and look", blocked: "blocked",
+  };
+
+  const factsById = () => {
+    const map = new Map();
+    ((state.decisions && state.decisions.evidence) || []).forEach((f) => map.set(f.id, f));
+    return map;
+  };
+  const guidesById = () => {
+    const map = new Map();
+    ((state.decisions && state.decisions.guides) || []).forEach((g) => map.set(g.id, g));
+    return map;
+  };
+
+  function currentIdentity() {
+    const context = (state.decisions && state.decisions.context) || {};
+    const status = state.status || {};
+    return {
+      session: status.session, epoch: status.epoch, evidence_mode: status.evidence_mode,
+      snapshot_revision: status.revision, turn: status.analysis_turn,
+      decision_revision: context.decision_revision,
+      context_revision: context.context_revision,
+      catalog_revision: context.catalog_revision,
+    };
+  }
+
+  /* Generated prose may sit beside a decision only when it was written about exactly
+     this decision context. Anything else is history and belongs in the dated panel. */
+  function explanationFor(entry) {
+    const result = state.commentary;
+    if (!result || result.status !== "ready" || !result.commentary) return null;
+    const identity = result.commentary.identity;
+    const ids = entry.insights.map((i) => i.id);
+    if (!B.commentaryExplains(identity, currentIdentity(), ids)) return null;
+    const rows = (result.commentary.explain || []).filter((x) => ids.indexOf(x.insight_id) !== -1);
+    return rows.length ? rows : null;
+  }
+
+  function renderBrief() {
+    const cards = (state.decisions && state.decisions.cards) || [];
+    const entries = B.groupDecisions(visible(), cards);
+    const session = (state.status && state.status.session) || "";
+    const live = entries.filter((e) => state.pins[B.acknowledgementKey(session, e)]
+      || !B.isAcknowledged(state.acks, session, e));
+    const { critical, top, overflow } = B.splitBrief(live);
+
+    $("#brief-critical").replaceChildren(...critical.map((e) => decisionCard(e, session)));
+    $("#brief-cards").replaceChildren(...top.map((e) => decisionCard(e, session)));
+
+    const wrap = $("#brief-overflow"), rest = $("#brief-rest"), more = $("#brief-more");
+    wrap.hidden = overflow.length === 0;
+    if (overflow.length) {
+      more.textContent = state.briefOpen
+        ? `Hide ${overflow.length} lower-priority item${overflow.length === 1 ? "" : "s"}`
+        : `${overflow.length} more lower-priority item${overflow.length === 1 ? "" : "s"}`;
+      more.setAttribute("aria-expanded", state.briefOpen ? "true" : "false");
+      rest.hidden = !state.briefOpen;
+      rest.replaceChildren(...overflow.map((e) => decisionCard(e, session)));
+    } else {
+      rest.replaceChildren();
+    }
+
+    announce(critical.length);
+    const acknowledged = entries.length - live.length;
+    const parts = [];
+    if (critical.length) parts.push(`${critical.length} critical`);
+    parts.push(`${live.length} to weigh`);
+    if (acknowledged) parts.push(`${acknowledged} acknowledged`);
+    $("#brief-count").textContent = parts.join(" · ");
+    const empty = $("#brief-empty");
+    empty.hidden = live.length > 0;
+    empty.textContent = entries.length
+      ? "Everything here is acknowledged. It comes back if its evidence or severity changes."
+      : (state.insights.length || state.hiddenInsights
+        ? "Nothing above the noticing threshold this turn."
+        : "Nothing to report yet.");
+  }
+
+  $("#brief-more").addEventListener("click", () => {
+    state.briefOpen = !state.briefOpen;
+    render();
+    $("#brief-more").focus({ preventScroll: true });
+  });
+
+  function decisionCard(entry, session) {
+    const key = B.acknowledgementKey(session, entry);
+    const node = el("article", `decision sev-${entry.severity.toLowerCase()}`
+      + (B.isAcknowledged(state.acks, session, entry) ? " acknowledged" : ""));
+    node.dataset.decision = entry.id;
+
+    const head = el("div", "decision-head");
+    head.append(el("h3", "decision-subject", entry.subject),
+      el("span", "decision-severity", entry.severity));
+    node.append(head);
+
+    const card = entry.card;
+    const action = card && card.preferred;
+    if (action) {
+      const line = el("p", "decision-action");
+      line.append(document.createTextNode(action.title + " "),
+        el("span", "applicability", APPLICABILITY_WORD[action.applicability] || action.applicability));
+      node.append(line, el("p", "decision-why", action.why_now));
+    } else if (entry.insights.length) {
+      const worst = entry.insights.reduce((best, i) =>
+        B.SEVERITY_ORDER[i.severity] > B.SEVERITY_ORDER[best.severity] ? i : best, entry.insights[0]);
+      node.append(el("p", "decision-action", worst.recommendation),
+        el("p", "decision-why", worst.why));
+    }
+    if (card) {
+      node.append(el("p", "decision-reason", card.priority_reason));
+      if (card.observed_turns && card.observed_turns.length) {
+        const turns = card.observed_turns;
+        node.append(el("p", "decision-dates", turns.length === 1
+          ? `Evidence observed on turn ${turns[0]}.`
+          : `Evidence observed on turns ${turns[0]}–${turns[turns.length - 1]}.`));
+      }
+    }
+    if (entry.insights.length > 1) {
+      node.append(el("p", "decision-dates",
+        `${entry.insights.length} warnings about this subject are grouped here; each is `
+        + "listed in full on its own tab."));
+    }
+
+    node.append(controls(entry, key, node));
+    if (state.expanded[entry.id]) node.append(detail(entry));
+    return node;
+  }
+
+  function controls(entry, key, node) {
+    const row = el("div", "decision-controls");
+    const open = Boolean(state.expanded[entry.id]);
+
+    const detailButton = button(`Why this? · How to do it`, `detail:${entry.id}`, () => {
+      state.expanded[entry.id] = !open;
+      render();
+      focusKey(`detail:${entry.id}`);
+    });
+    detailButton.setAttribute("aria-expanded", open ? "true" : "false");
+    row.append(detailButton);
+
+    const evidenceIds = collectEvidence(entry);
+    if (evidenceIds.length) {
+      row.append(button(`Evidence (${evidenceIds.length})`, `evidence:${entry.id}`,
+        () => openDrawer(entry, `evidence:${entry.id}`)));
+    }
+    if (entry.card && entry.card.subject.indexOf(" in ") !== -1) {
+      row.append(button("Open economy", `goto:${entry.id}`, () => {
+        selectTab(tabs.find((b) => b.dataset.tab === "economy"));
+        focusKey(`goto:${entry.id}`);
+      }));
+    }
+
+    const session = (state.status && state.status.session) || "";
+    const acknowledged = B.isAcknowledged(state.acks, session, entry);
+    const ack = button(acknowledged ? "Acknowledged" : "Acknowledge", `ack:${entry.id}`, () => {
+      if (acknowledged) delete state.acks[key];
+      else state.acks[key] = B.fingerprint(entry);
+      persist("civ7.acks", state.acks);
+      render();
+    });
+    ack.setAttribute("aria-pressed", acknowledged ? "true" : "false");
+    ack.title = "Records that you have seen this. It is not an action in the game, and it "
+      + "comes back if the evidence or severity changes.";
+    row.append(ack);
+
+    const pinned = Boolean(state.pins[key]);
+    const pin = button(pinned ? "Pinned" : "Pin for this session", `pin:${entry.id}`, () => {
+      if (pinned) delete state.pins[key];
+      else state.pins[key] = true;
+      persist("civ7.pins", state.pins);
+      render();
+    });
+    pin.setAttribute("aria-pressed", pinned ? "true" : "false");
+    row.append(pin);
+    return row;
+  }
+
+  function button(label, focusKeyValue, onClick) {
+    const b = el("button", null, label);
+    b.type = "button";
+    b.dataset.focusKey = focusKeyValue;
+    b.addEventListener("click", onClick);
+    return b;
+  }
+
+  function focusKey(value) {
+    const node = document.querySelector(`[data-focus-key="${value}"]`);
+    if (node) node.focus({ preventScroll: true });
+  }
+
+  function collectEvidence(entry) {
+    const ids = [];
+    if (entry.card) {
+      (entry.card.evidence_ids || []).forEach((i) => ids.push(i));
+      (entry.card.preferred ? [entry.card.preferred] : [])
+        .concat(entry.card.alternatives || [])
+        .forEach((c) => (c.evidence_ids || []).forEach((i) => ids.push(i)));
+    }
+    const facts = factsById();
+    return Array.from(new Set(ids)).filter((i) => facts.has(i));
+  }
+
+  /* "Why this?" and "How to do it", inline beside the action rather than behind a long
+     scroll. Steps come from the reviewed guides the server resolved; no URL is ever
+     produced here or by the model. */
+  function detail(entry) {
+    const wrap = el("div", "decision-detail");
+    const card = entry.card;
+    const guides = guidesById();
+
+    if (card) {
+      (card.preferred ? [card.preferred] : []).concat(card.alternatives || [])
+        .forEach((candidate, index) => {
+          wrap.append(el("h4", null, index === 0 ? "How to do it" : `Alternative: ${candidate.title}`));
+          if (index > 0) wrap.append(el("p", "decision-why", candidate.why_now));
+          const steps = el("ol", "decision-steps");
+          (candidate.steps || []).forEach((step) => steps.append(el("li", null, step)));
+          wrap.append(steps);
+          (candidate.prerequisites || []).forEach((p) => {
+            wrap.append(el("p", `prereq prereq-${p.state}`,
+              p.state === "met" ? `Confirmed: ${p.name}.`
+                : p.state === "unmet" ? `Not met: ${p.name}.`
+                  : `Unknown, so not assumed: ${p.name}.`));
+          });
+          (candidate.trade_offs || []).forEach((t) => wrap.append(el("p", "decision-why", t)));
+          if ((candidate.unknowns || []).length) {
+            const list = el("ul", "decision-unknowns");
+            candidate.unknowns.forEach((u) => list.append(el("li", null, u)));
+            wrap.append(list);
+          }
+          wrap.append(guideLinks(candidate.guide_ids || [], guides));
+        });
+      if ((card.unknowns || []).length) {
+        wrap.append(el("h4", null, "What is not known"));
+        const list = el("ul", "decision-unknowns");
+        card.unknowns.forEach((u) => list.append(el("li", null, u)));
+        wrap.append(list);
+      }
+      if (card.id.indexOf("decision.culture.") === 0 && card.id !== "decision.culture.unobserved") {
+        wrap.append(refinePanel(card));
+      }
+    } else {
+      wrap.append(el("h4", null, "Why this?"));
+      entry.insights.forEach((insight) => {
+        const block = el("div", "commentary-item");
+        block.append(el("p", "insight-rec", insight.recommendation),
+          el("p", "insight-why", insight.why));
+        wrap.append(block);
+      });
+      wrap.append(el("p", "guide-note",
+        "No reviewed guide covers this family yet, so no steps are offered here. The "
+        + "observation above stands on its own."));
+    }
+
+    const explanation = explanationFor(entry);
+    if (explanation) {
+      const block = el("div", "generated");
+      block.append(el("p", "generated-label",
+        "Generated interpretation — written about this exact decision context"));
+      explanation.forEach((row) => block.append(el("p", null, row.text)));
+      wrap.append(block);
+    }
+    return wrap;
+  }
+
+  function guideLinks(ids, guides) {
+    const row = el("div");
+    const links = el("p", "guide-links");
+    const notes = [];
+    ids.forEach((id) => {
+      const guide = guides.get(id);
+      if (!guide) return;                       // the server resolves these; never invent one
+      const a = el("a", null, `Read: ${guide.title}`);
+      a.href = guide.url;
+      a.target = "_blank";
+      a.rel = "noopener noreferrer";            // the dashboard stays put
+      a.title = `${guide.publisher}, reviewed ${guide.reviewed_at}`;
+      links.append(a);
+      if (guide.supported_rulesets && guide.supported_rulesets.length) {
+        notes.push(`${guide.title}: describes ${guide.supported_rulesets.join(", ")}; `
+          + "the installed version is not recorded anywhere we can read.");
+      } else {
+        notes.push(`${guide.title}: reviewed ${guide.reviewed_at} for navigation only — `
+          + "no figure from it is used.");
+      }
+    });
+    if (links.childNodes.length) row.append(links);
+    notes.forEach((n) => row.append(el("p", "guide-note", n)));
+    return row;
+  }
+
+  /* ================= the evidence drawer ================= */
+
+  const drawer = $("#evidence-drawer");
+
+  function openDrawer(entry, opener) {
+    const facts = factsById();
+    const body = $("#drawer-body");
+    const nodes = [el("p", "fact-meta", `${entry.subject} — every observation this rests on, `
+      + "with the turn it came from.")];
+    collectEvidence(entry).forEach((id) => nodes.push(factNode(facts.get(id), facts)));
+    if (entry.card) {
+      if ((entry.card.unknowns || []).length) {
+        nodes.push(el("h3", "map-subhead", "Not known"));
+        const list = el("ul", "decision-unknowns");
+        entry.card.unknowns.forEach((u) => list.append(el("li", null, u)));
+        nodes.push(list);
+      }
+      nodes.push(el("h3", "map-subhead", "Why this one is first"),
+        el("p", "fact-note", entry.card.priority_reason));
+    }
+    const coverage = (state.status && state.status.coverage) || [];
+    const gaps = coverageLines(coverage);
+    if (gaps.length) {
+      nodes.push(el("h3", "map-subhead", "Source coverage"));
+      gaps.forEach((line) => nodes.push(el("p", "fact-meta", line.text)));
+    }
+    const explanation = explanationFor(entry);
+    if (explanation) {
+      nodes.push(el("h3", "map-subhead", "Generated interpretation"));
+      nodes.push(el("p", "fact-meta",
+        "Written by the local model about this decision context. It is an interpretation "
+        + "of the facts above, not one of them."));
+      explanation.forEach((row) => nodes.push(el("p", "fact-note", row.text)));
+    }
+    body.replaceChildren(...nodes);
+    state.drawerOpener = opener;
+    if (typeof drawer.showModal === "function") drawer.showModal();
+    else drawer.setAttribute("open", "open");
+  }
+
+  function factNode(fact, facts) {
+    const node = el("div", "fact");
+    const label = el("p", "fact-label");
+    label.append(document.createTextNode(fact.label + " "),
+      el("span", "fact-kind", fact.kind === "player_report" ? "you told us"
+        : fact.kind === "derived" ? "computed" : fact.kind === "rule" ? "advisor rule" : "log"));
+    if (fact.provenance === "oracle") label.append(document.createTextNode(" "), el("span", "tag", "intercept"));
+    node.append(label);
+    const value = fact.value === null || fact.value === undefined ? "—" : String(fact.value);
+    node.append(el("p", "fact-value", fact.unit ? `${value} ${fact.unit}` : value));
+    const meta = [];
+    if (fact.observed_turn !== null && fact.observed_turn !== undefined) {
+      meta.push(`observed turn ${fact.observed_turn}`
+        + (fact.age ? ` (${fact.age} turn${fact.age === 1 ? "" : "s"} ago)` : ""));
+    } else {
+      meta.push("no turn recorded");
+    }
+    if (fact.source_file) meta.push(`from ${fact.source_file}`);
+    if (fact.reported_at) meta.push(`entered ${fact.reported_at}`);
+    node.append(el("p", "fact-meta", meta.join(" · ")));
+    if (fact.note) node.append(el("p", "fact-note", fact.note));
+    if ((fact.contributing || []).length) {
+      const names = fact.contributing
+        .map((id) => (facts.get(id) || {}).label || null)
+        .filter(Boolean);
+      if (names.length) {
+        node.append(el("p", "fact-meta", `Computed from: ${names.join("; ")}.`));
+      }
+    }
+    return node;
+  }
+
+  function closeDrawer() {
+    if (typeof drawer.close === "function") drawer.close();
+    else drawer.removeAttribute("open");
+    if (state.drawerOpener) focusKey(state.drawerOpener);   // focus returns to the opener
+    state.drawerOpener = null;
+  }
+
+  $("#drawer-close").addEventListener("click", closeDrawer);
+  drawer.addEventListener("close", () => {
+    if (state.drawerOpener) { focusKey(state.drawerOpener); state.drawerOpener = null; }
+  });
+
+  /* ================= the refinement panel ================= */
+
+  const REFINE_METRICS = [
+    ["completion_turns", "Turns to complete", "turns"],
+    ["culture_delta", "Culture added", "culture per turn"],
+    ["gold_upkeep", "Gold upkeep", "gold per turn"],
+    ["happiness_cost", "Local happiness cost", "happiness per turn"],
+  ];
+
+  function refinePanel(card) {
+    const city = card.id.replace("decision.culture.", "");
+    const context = (state.decisions && state.decisions.context) || {};
+    const settlement = (context.settlements || []).find((s) => s.city === city);
+    const panel = el("details", "refine");
+    panel.open = Boolean(state.refineStatus[city]);
+    panel.append(el("summary", null, "Refine this recommendation"));
+    panel.append(el("p", "refine-note",
+      "Read these off the game's own preview for this settlement and enter them here. "
+      + "They are recorded as your report, dated to the turn you read them, and are "
+      + "discarded if this game is reloaded or this settlement's queue changes."));
+
+    const form = el("form");
+    form.dataset.focusKey = `refine:${city}`;
+    const options = el("label", null);
+    options.append(el("span", null, "Culture options this settlement offers (comma separated, blank if none)"));
+    const optionsInput = el("input");
+    optionsInput.type = "text";
+    optionsInput.name = "available_options";
+    optionsInput.placeholder = "BUILDING_MONUMENT, BUILDING_AMPHITHEATER";
+    options.append(optionsInput);
+    form.append(options);
+
+    const objective = el("label", null);
+    objective.append(el("span", null, "What are you optimising for?"));
+    const select = el("select");
+    select.name = "objective";
+    [["", "not stated"], ["soonest_culture", "the next culture increase soonest"],
+      ["largest_culture", "the largest eventual culture increase"]].forEach(([value, text]) => {
+      const option = el("option", null, text);
+      option.value = value;
+      select.append(option);
+    });
+    objective.append(select);
+    form.append(objective);
+
+    const grid = el("div", "refine-grid");
+    /* The catalog is the only source of which items we have reviewed guides for, so the
+       panel offers exactly those and never invents a build to ask about. */
+    const askable = Array.from(new Set(
+      ((state.decisions && state.decisions.guides) || [])
+        .filter((g) => g.id.indexOf("guide.building.") === 0)
+        .map((g) => g.id.replace("guide.building.", "BUILDING_").toUpperCase())
+    ));
+    const items = askable.length ? askable : ["BUILDING_MONUMENT", "BUILDING_AMPHITHEATER"];
+    items.forEach((item) => {
+      REFINE_METRICS.forEach(([metric, label, unit]) => {
+        const field = el("label", null);
+        field.append(el("span", null, `${itemName(item)} — ${label}`));
+        const input = el("input");
+        input.type = "number";
+        input.step = "any";
+        input.name = `preview.${item}.${metric}`;
+        input.dataset.unit = unit;
+        field.append(input);
+        grid.append(field);
+      });
+    });
+    form.append(grid);
+
+    const submit = el("button", null, "Record these figures");
+    submit.type = "submit";
+    submit.dataset.focusKey = `refine-submit:${city}`;
+    const clear = el("button", null, "Clear my figures");
+    clear.type = "button";
+    clear.dataset.focusKey = `refine-clear:${city}`;
+    const row = el("div", "decision-controls");
+    row.append(submit, clear);
+    form.append(row);
+
+    const status = el("p", "refine-status");
+    const held = state.refineStatus[city];
+    if (held) { status.textContent = held.text; if (held.conflict) status.classList.add("conflict"); }
+    form.append(status);
+
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      submitRefinement(city, settlement, form);
+    });
+    clear.addEventListener("click", () => clearRefinement(city));
+    panel.append(form);
+    return panel;
+  }
+
+  function refinementReports(city, settlement, form) {
+    const status = state.status || {};
+    const turn = settlement ? settlement.observed_turn : status.analysis_turn;
+    const now = new Date().toISOString();
+    const out = [];
+    const push = (label, value, unit) => out.push({
+      id: `report.${city}.${label}`, subject: city, label, value, unit,
+      observed_turn: turn, session: status.session, reported_at: now,
+      epoch: status.epoch,
+    });
+    const options = form.elements.available_options.value.trim();
+    if (options) push("available_options", options.split(/[,\s]+/).join(","), null);
+    const objective = form.elements.objective.value;
+    if (objective) push("objective", objective, null);
+    Array.from(form.querySelectorAll('input[type="number"]')).forEach((input) => {
+      if (input.value === "") return;           // missing stays missing, never zero
+      push(input.name, Number(input.value), input.dataset.unit);
+    });
+    return out;
+  }
+
+  async function submitRefinement(city, settlement, form) {
+    const reports = refinementReports(city, settlement, form);
+    if (!reports.length) {
+      state.refineStatus[city] = { text: "Nothing entered yet." };
+      render();
+      return;
+    }
+    const context = (state.decisions && state.decisions.context) || {};
+    let accepted = 0;
+    for (const report of reports) {
+      const response = await fetch("/api/context", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(Object.assign({}, report, {
+          base_revision: context.context_revision,
+          dependencies: settlement
+            ? { queue: `${settlement.item}@${settlement.observed_turn}` } : {},
+        })),
+      });
+      if (response.status === 409) {
+        const conflict = await response.json();
+        state.refineStatus[city] = { text: conflict.detail, conflict: true };
+        await refresh();
+        return;
+      }
+      if (!response.ok) {
+        state.refineStatus[city] = { text: "That could not be recorded.", conflict: true };
+        render();
+        return;
+      }
+      accepted += 1;
+    }
+    state.refineStatus[city] = { text: `Recorded ${accepted} figure${accepted === 1 ? "" : "s"}.` };
+    await refresh();
+  }
+
+  async function clearRefinement(city) {
+    const context = (state.decisions && state.decisions.context) || {};
+    const mine = (context.reports || []).filter((r) => r.subject === city);
+    for (const report of mine) {
+      await fetch(`/api/context/${encodeURIComponent(report.id)}`, { method: "DELETE" });
+    }
+    state.refineStatus[city] = { text: `Cleared ${mine.length} figure${mine.length === 1 ? "" : "s"}.` };
+    await refresh();
   }
 
   function renderTactical() {

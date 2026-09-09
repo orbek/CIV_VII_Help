@@ -246,9 +246,12 @@ def settlement_coverage_fact(ledger: EvidenceLedger, state: GameState) -> Eviden
         contributing=tuple(contributing),
         note=("Settlement count is unknown, so queue coverage cannot be judged."
               if unobserved is None else
-              f"{observed} of {total} settlements have a logged queue"
+              f"{observed} of {total} settlement{'' if total == 1 else 's'} "
+              f"{'has' if observed == 1 else 'have'} a logged queue"
               + ("." if not unobserved else
-                 f"; {unobserved} are unobserved. Their queues are unknown, not idle.")),
+                 f"; {unobserved} {'is' if unobserved == 1 else 'are'} unobserved. "
+                 f"{'Its queue is' if unobserved == 1 else 'Their queues are'} "
+                 "unknown, not idle.")),
     ))
 
 

@@ -13,6 +13,9 @@ dependencies = [
 civ7-advisor = "civ7_advisor.cli:main"
 
 [dependency-groups]
+browser = [
+    "pytest-playwright>=0.5",
+]
 dev = [
     "pytest>=8",
 ]
@@ -27,6 +30,11 @@ packages = ["civ7_advisor"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
+# The browser suite is opt-in: it needs Playwright and a downloaded browser, and it
+# starts a server. `uv run pytest` stays offline and fast; run the browser checks with
+#   uv sync --group browser && uv run playwright install chromium
+#   uv run pytest tests/browser -p playwright.pytest_plugin
+addopts = "--ignore=tests/browser"
 filterwarnings = [
     # Anything new must fail loudly rather than pile up in the summary.
     "error",
@@ -36,4 +44,7 @@ filterwarnings = [
     # starlette.exceptions.StarletteDeprecationWarning, a UserWarning subclass:
     'ignore:Using `httpx` with `starlette\.testclient` is deprecated:UserWarning:fastapi\.testclient',
     'ignore:The anyio\.abc\.BlockingPortal alias is deprecated:DeprecationWarning:starlette\.testclient',
+    # Playwright's driver shutdown abandons a coroutine. Only the browser suite can
+    # trigger it, and it says nothing about the code under test.
+    "ignore::pytest.PytestUnraisableExceptionWarning",
 ]

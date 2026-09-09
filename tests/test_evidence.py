@@ -113,8 +113,8 @@ def test_queue_coverage_says_how_many_settlements_were_not_observed(fixture_v2_s
     coverage = settlement_coverage_fact(ledger, fixture_v2_state)
     settlements = fixture_v2_state.at(0).settlements
     assert coverage.value == 1 and settlements == 6
-    assert "1 of 6 settlements have a logged queue" in coverage.note
-    assert "unobserved. Their queues are unknown, not idle." in coverage.note
+    assert "1 of 6 settlements has a logged queue" in coverage.note
+    assert "5 are unobserved. Their queues are unknown, not idle." in coverage.note
     assert len(ledger.resolve(coverage.contributing)) == 2
 
 

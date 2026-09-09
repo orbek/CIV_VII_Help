@@ -23,6 +23,17 @@ def test_worst_stat_is_warn_when_far_behind_and_others_are_info():
     assert "economy.behind.culture" not in got  # 30 / 20 is ahead
 
 
+def test_behind_returns_only_sub_threshold_stats_worst_first():
+    s = game_state(
+        turn=20, rivals={1: "A", 2: "B", 3: "C"},
+        human_stats={"food": 8.0, "science": 14.0, "culture": 30.0},
+        rival_stats={1: {"food": 20.0, "science": 20.0}, 2: {"food": 24.0}, 3: {"food": 40.0}},
+    )
+    got = economy.behind(s)  # food 8/24 = 0.33, science 14/20 = 0.70; culture/gold/production are level
+    assert [c.stat for c in got] == ["food", "science"]
+    assert all(c.ratio < economy.BEHIND_RATIO for c in got)
+
+
 def test_worst_stat_is_advise_when_moderately_behind():
     s = game_state(turn=20, human_stats={"gold": 14.0})  # 14 / 20 = 0.70
     assert ids(economy.advise(s))["economy.behind.gold"].severity is Severity.ADVISE

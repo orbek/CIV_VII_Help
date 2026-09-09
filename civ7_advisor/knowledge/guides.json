@@ -1,0 +1,254 @@
+{
+  "schema_version": 1,
+  "catalog_revision": "2026-09-08.3",
+  "note": "Reviewed guide references for Civilization VII. Instructions here are written independently and are deliberately version-independent: they tell the player where to look in game, never what a building yields. No entry supplies a numeric effect, because no numeric effect in this catalog has been verified against an installed ruleset. Any figure used in a recommendation must come from the player's own dated preview. Link health is audited by scripts/check_guides.py, which is an online maintenance command and is never run by the tests or at play time.",
+  "review_statuses": {
+    "navigation_reviewed": "The article was retrieved and read, and the inspection steps below were written from it. They describe where to look, not what any option is worth. Effects, prerequisites and unlocks are NOT established for any ruleset unless supported_rulesets says otherwise, and even then only the workflow is covered — never a figure.",
+    "link_only": "The URL is recorded but its content has not been reviewed for this catalog. Usable as a reference the player may read; never as the basis of an instruction.",
+    "unreachable": "Retrieval failed during review. Kept so the gap is visible; must not back any instruction."
+  },
+  "entries": [
+    {
+      "id": "guide.culture",
+      "game": "civ7",
+      "title": "Culture",
+      "publisher": "Civilization Wiki (Fandom)",
+      "url": "https://civilization.fandom.com/wiki/Culture_%28Civ7%29",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "mechanic",
+      "mechanic_keys": [
+        "culture"
+      ],
+      "item_keys": [],
+      "yields": [
+        "culture"
+      ],
+      "instructions": [
+        "Open the settlement you want to change and look at its production list.",
+        "Read the culture figure each available option shows in its own tooltip or preview, rather than assuming which options produce culture.",
+        "Compare those figures against what the option costs to complete and to maintain before committing."
+      ],
+      "prerequisites": [],
+      "supported_rulesets": [],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "The retrieved article's own Sources section was incomplete, so it is not sufficient on its own to enumerate which options produce culture in any given ruleset. It explains the yield; it does not establish an action catalogue.",
+      "attribution": "Summarised in our own words from the Civilization Wiki article; the article itself is CC-BY-SA. No wiki text is reproduced."
+    },
+    {
+      "id": "guide.building.monument",
+      "game": "civ7",
+      "title": "Monument",
+      "publisher": "Civilization Wiki (Fandom)",
+      "url": "https://civilization.fandom.com/wiki/Monument_%28Civ7%29",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "item",
+      "mechanic_keys": [
+        "culture"
+      ],
+      "item_keys": [
+        "BUILDING_MONUMENT"
+      ],
+      "yields": [
+        "culture"
+      ],
+      "instructions": [
+        "In the settlement's production list, check whether Monument is offered at all — if it is absent it is either already built here or not currently available to you.",
+        "Select it and place it on a legal tile, then read the preview the game shows for that placement: its completion estimate, its culture change and its maintenance.",
+        "Compare that preview against the alternative you are considering before confirming, and re-read it after placing in case the placement changed the figures."
+      ],
+      "prerequisites": [
+        "Availability in this settlement is unknown from the logs and must be read off the production list."
+      ],
+      "supported_rulesets": [],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "Numeric effects and unlock conditions in the article were NOT adopted: they must be checked against the installed ruleset first, and nothing here asserts the player has this unlocked. Name this building as a candidate only when its availability has been confirmed in game.",
+      "attribution": "Summarised in our own words from the Civilization Wiki article; the article itself is CC-BY-SA. No wiki text is reproduced."
+    },
+    {
+      "id": "guide.building.amphitheater",
+      "game": "civ7",
+      "title": "Amphitheater",
+      "publisher": "Civilization Wiki (Fandom)",
+      "url": "https://civilization.fandom.com/wiki/Amphitheater_%28Civ7%29",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "item",
+      "mechanic_keys": [
+        "culture"
+      ],
+      "item_keys": [
+        "BUILDING_AMPHITHEATER"
+      ],
+      "yields": [
+        "culture"
+      ],
+      "instructions": [
+        "In the settlement's production list, check whether Amphitheater is offered — its absence means it is built here already or not currently available.",
+        "Select it, choose a legal placement, and read the completion estimate, culture change and maintenance the preview shows for that placement.",
+        "Weigh a longer completion time against a larger eventual gain explicitly, using the figures on screen rather than remembered ones."
+      ],
+      "prerequisites": [
+        "Availability in this settlement is unknown from the logs and must be read off the production list."
+      ],
+      "supported_rulesets": [],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "The retrieved article mixes material about Age transitions with current rules, so no effect or prerequisite from it is treated as applicable. Verify separately before any figure from it is used.",
+      "attribution": "Summarised in our own words from the Civilization Wiki article; the article itself is CC-BY-SA. No wiki text is reproduced."
+    },
+    {
+      "id": "guide.specialists",
+      "game": "civ7",
+      "title": "Specialists",
+      "publisher": "Civilization Wiki (Fandom)",
+      "url": "https://civilization.fandom.com/wiki/Specialists_%28Civ7%29",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "mechanic",
+      "mechanic_keys": [
+        "culture",
+        "specialists"
+      ],
+      "item_keys": [],
+      "yields": [],
+      "instructions": [
+        "Open the settlement and find its specialist assignment view.",
+        "Before assigning anyone, read what the settlement's own display says the assignment costs it — food and happiness locally, not empire-wide.",
+        "Only assign if that local cost is shown and acceptable; an empire happiness total cannot tell you whether one settlement can support another specialist."
+      ],
+      "prerequisites": [
+        "Whether this settlement has a free specialist slot is unknown from the logs and must be read in game."
+      ],
+      "supported_rulesets": [],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "Different indexed revisions of this article disagreed, so no yield or maintenance formula from it was adopted. Use it to explain the option and its local trade-off only.",
+      "attribution": "Summarised in our own words from the Civilization Wiki article; the article itself is CC-BY-SA. No wiki text is reproduced."
+    },
+    {
+      "id": "guide.official.settlements",
+      "game": "civ7",
+      "title": "Developing your Settlements (production, placement and growth previews)",
+      "publisher": "2K (official game guide)",
+      "url": "https://civilization.2k.com/civ-vii/game-guide/gameplay/developing-settlements/",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "mechanic",
+      "mechanic_keys": [
+        "settlements",
+        "culture",
+        "science",
+        "gold",
+        "production",
+        "food",
+        "specialists",
+        "placement",
+        "defense"
+      ],
+      "item_keys": [],
+      "yields": [
+        "culture",
+        "science",
+        "gold",
+        "production",
+        "food"
+      ],
+      "instructions": [
+        "Open the settlement and its Production menu. Each option there shows its name, its build time, its base yields, and — where they apply — how many improvements in this settlement would benefit from a warehouse effect and the most adjacencies the building could currently reach.",
+        "Choose the option, then read the placement screen: hovering a legal tile updates the left panel with the change to this settlement's yields, any overbuilding effect, and any change to the tile itself. Yield losses such as maintenance are shown in these contexts too.",
+        "Open the expanded view in that left panel when you need the full before-and-after breakdown with the deltas and adjacencies itemised, and take your figures from there rather than from the production list.",
+        "Green yield numbers on tiles are data, not a recommendation from the game; the publisher says so explicitly.",
+        "For an improvement-or-specialist choice, use the Growth Event panel when the settlement grows: it lays out both options with the same previews, and urban tiles show their current and maximum specialist capacity."
+      ],
+      "prerequisites": [
+        "The Add Specialist option only appears once specialists have been unlocked; whether that has happened is unknown from the logs.",
+        "Which options a settlement is offered is unknown from the logs and must be read off the production list."
+      ],
+      "supported_rulesets": [
+        "update-1.2.5-or-later"
+      ],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "Retrieval succeeded on 2026-09-08, unlike the earlier planning pass, and this entry was promoted from unreachable to reviewed on the strength of that read. It is the publisher's own description of where the numbers live, so it is the source for the inspection workflow. It is version-scoped: the article describes Update 1.2.5 moving predicted yields out of the production menu and into the placement context, and notes the previous presentation remains available as an option. On an earlier install, or with that option turned on, the panels differ — which is why the steps say what to look for rather than naming buttons. It supplies no figure for any building; every number must come from the player's own dated preview.",
+      "attribution": "Summarised in our own words from the publisher's developer article; linked, not reproduced."
+    },
+    {
+      "id": "guide.official.victories",
+      "game": "civ7",
+      "title": "Victories (how each score is earned)",
+      "publisher": "2K (official dev diary)",
+      "url": "https://civilization.2k.com/civ-vii/game-guide/gameplay/victories/",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "mechanic",
+      "mechanic_keys": [
+        "victory",
+        "science",
+        "culture",
+        "gold"
+      ],
+      "item_keys": [],
+      "yields": [],
+      "instructions": [
+        "Open the victory or scores screen and read your own score for the category you care about beside the runner-up's, because the threshold to win is expressed as a multiple of second place rather than a fixed number.",
+        "Check which category your recent turns have actually been adding to: military score comes from taking and holding settlements and from settling distant lands, cultural from wonders, unique buildings and infrastructure and from celebrations, and economic from growing the economy, slotting resources and constructing gold buildings.",
+        "For a science win, look at your Innovation total and whether you have a launch pad, rather than at your science yield: Innovation comes from completing projects, slotting codices and pursuing tech masteries.",
+        "Remember that reaching a threshold starts a countdown you must hold; if it is interrupted it resumes when you meet the requirement again."
+      ],
+      "prerequisites": [
+        "Which projects, codices and masteries you have completed is unknown from the logs and must be read in game.",
+        "The multiple of second place that currently applies depends on the Age and on how far into it you are; read it on the screen rather than assuming it."
+      ],
+      "supported_rulesets": [
+        "test-of-time-or-later"
+      ],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "Retrieved and read on 2026-09-08. The publisher's own description of the reworked Victories system, which replaced Legacy Paths in the Test of Time update — so it does not describe an install from before that update. The specific threshold multiples and the Innovation total the article gives are deliberately NOT recorded here: they are version-dependent figures and this catalog carries none. This entry is why the advisor's output leaderboards are labelled proxies rather than victory score: yields are not what scores.",
+      "attribution": "Summarised in our own words from the publisher's dev diary; linked, not reproduced."
+    },
+    {
+      "id": "guide.official.naval_combat",
+      "game": "civ7",
+      "title": "Naval combat roles and ranges",
+      "publisher": "2K (official dev diary)",
+      "url": "https://civilization.2k.com/civ-vii/game-guide/gameplay/improved-naval-combat/",
+      "reviewed_url": null,
+      "section": null,
+      "kind": "mechanic",
+      "mechanic_keys": [
+        "defense",
+        "naval",
+        "combat"
+      ],
+      "item_keys": [],
+      "yields": [],
+      "instructions": [
+        "Select the exposed unit and read what the game says its attack range is: light and heavy naval units differ, and whether a heavy unit attacks at range depends on the Age.",
+        "Check whether the threatening unit could reach you this turn before deciding to hold position, since a ranged attacker does not have to close in.",
+        "Move a low-defence, high-strike unit out of the enemy's reach rather than trading with it, and keep faster scouting units ahead of slower ones."
+      ],
+      "prerequisites": [
+        "Which units you actually have, and their current ranges in your installed version, are unknown from the logs and must be read in game."
+      ],
+      "supported_rulesets": [
+        "update-1.3.0-or-later"
+      ],
+      "supported_ages": [],
+      "review_status": "navigation_reviewed",
+      "reviewed_at": "2026-09-08",
+      "notes": "Retrieved and read on 2026-09-08. Scoped to naval combat and to Update 1.3.0, which reintroduced ranged naval attacks and split light from heavy hulls; on an earlier install every naval unit fought as melee and these steps would mislead. No unit strength, range or roster from the article is recorded here. It backs the exposed-unit check only — nothing in the official guide describes inspecting a settlement's defences, so that case is served by the settlement production workflow instead.",
+      "attribution": "Summarised in our own words from the publisher's dev diary; linked, not reproduced."
+    }
+  ]
+}

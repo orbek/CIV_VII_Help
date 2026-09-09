@@ -6,6 +6,7 @@ from dataclasses import asdict
 from civ7_advisor.ingest.load import RawLogs
 
 from .models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from .names import NameResolver
 
 INDEPENDENT_KEY = "LOC_CIVILIZATION_INDEPENDENT_NAME"
 
@@ -13,6 +14,7 @@ LEADER_NAMES = {
     "LOC_LEADER_IBN_BATTUTA_NAME": "Ibn Battuta",
     "LOC_LEADER_HARRIET_TUBMAN_NAME": "Harriet Tubman",
     "LOC_LEADER_NAPOLEON_NAME": "Napoleon",
+    "LOC_LEADER_NAPOLEON_ALT_NAME": "Napoleon, Revolutionary",
     "LOC_LEADER_JOSE_RIZAL_NAME": "José Rizal",
     "LOC_LEADER_TRUNG_TRAC_NAME": "Trưng Trắc",
     "LOC_LEADER_CONFUCIUS_NAME": "Confucius",
@@ -45,6 +47,14 @@ def display_name(key: str) -> str:
     return core.replace("_", " ").title()
 
 
+def _identity_name(key: str) -> str:
+    return display_name(f"LOC_{key}_NAME")
+
+
+def _civilization_name(key: str) -> str:
+    return key.removeprefix("CIVILIZATION_").replace("_", " ").title()
+
+
 def build_state(raw: RawLogs) -> GameState:
     state = GameState(files=dict(raw.files))
     if not raw.stats:
@@ -73,18 +83,22 @@ def build_state(raw: RawLogs) -> GameState:
     # Players: 0 is human; a LOC_LEADER owner key or a happiness row marks a rival;
     # everyone else is an independent people.
     owner_keys = {r.player: r.owner_key for r in raw.victories}
+    identities = {r.player: r for r in raw.player_identities}
     happiness_players = {r.player for r in raw.happiness}
     last_seen: dict[int, int] = {}
     for s in raw.stats:
         last_seen[s.player] = max(last_seen.get(s.player, 0), s.turn)
     for pid, seen in sorted(last_seen.items()):
         key = owner_keys.get(pid)
+        identity = identities.get(pid)
+        identity_is_major = identity is not None and identity.level == "CIVILIZATION_LEVEL_FULL_CIV"
         has_leader_key = key is not None and key != INDEPENDENT_KEY
         if pid == GameState.HUMAN:
             kind, name = PlayerKind.HUMAN, "You"
-        elif has_leader_key or pid in happiness_players:
+        elif identity_is_major or has_leader_key or pid in happiness_players:
             kind = PlayerKind.RIVAL
-            name = display_name(key) if has_leader_key else f"Player {pid}"
+            name = (_identity_name(identity.leader) if identity_is_major and identity.leader
+                    else display_name(key) if has_leader_key else f"Player {pid}")
         else:
             kind, name = PlayerKind.INDEPENDENT, f"Independent {pid}"
         state.players[pid] = Player(
@@ -98,7 +112,32 @@ def build_state(raw: RawLogs) -> GameState:
             v.player, v.strategy, v.status, v.weight, since_turn=v.turn,
         )
 
+    state.identities = dict(identities)
     state.intents = list(raw.diplomacy)
     state.targets = list(raw.targets)
     state.events = list(raw.historian)
+    state.build_queues = list(raw.build_queue)
+    state.combats = list(raw.combat)
+    state.gossip = list(raw.gossip)
+    state.diplomacy_events = list(raw.diplomacy_summary)
+    state.deals = list(raw.deals)
+    state.unit_operations = list(raw.unit_operations)
+    state.tactical = list(raw.tactical)
+    state.operations = list(raw.operations)
+    state.combat_orders = list(raw.combat_orders)
+    state.operation_evals = list(raw.operation_evals)
+    state.unit_efficiency = list(raw.unit_efficiency)
+    state.mayhem = list(raw.mayhem)
+    state.commander_promotions = list(raw.commander_promotions)
+    for d in raw.deals:
+        if d.is_peace:
+            pair = d.parties()
+            state.peace_turns[pair] = max(state.peace_turns.get(pair, 0), d.turn)
+    state.names = NameResolver.build(
+        rival_names={p.id: p.name for p in state.players.values() if p.kind is PlayerKind.RIVAL},
+        human_city_keys=[q.city for q in raw.build_queue if q.player == GameState.HUMAN],
+        player_leaders={r.player: _identity_name(r.leader) for r in raw.player_identities if r.leader},
+        player_civilizations={r.player: _civilization_name(r.civilization)
+                              for r in raw.player_identities},
+    )
     return state

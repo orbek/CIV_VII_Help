@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 from civ7_advisor.advisors.base import Insight, Provenance, Severity
+from civ7_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow
+from civ7_advisor.ingest.production import BuildQueueRow
 from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
+from civ7_advisor.ingest.textlogs import DealItem
 from civ7_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from civ7_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
 
 
 def insight(
@@ -74,3 +78,47 @@ def city_target(
 
 def strategy(player: int, path: str, weight: int, status: str = "Following", since: int = 1) -> StrategyStatus:
     return StrategyStatus(player, path, status, weight, since)
+
+
+def build_queue_row(turn: int, player: int, city: str = "LOC_CITY_NAME_TEST1", item: str = "BUILDING_BRICKYARD",
+                    added: float = 10.0, current: float = 0.0, needed: float = 50.0) -> BuildQueueRow:
+    return BuildQueueRow(turn, player, city, added, item, current, needed, 0.0)
+
+
+def combat(turn: int, att_player: int, def_player: int, destroyed: str | None = None,
+           att_kind: str = "UNIT_WARRIOR", def_kind: str = "UNIT_SPEARMAN", x: int = 10, y: int = 10) -> CombatRow:
+    return CombatRow(turn, "Unit vs Unit", x, y, att_player, def_player, "Melee",
+                     Combatant(100, att_kind), Combatant(200, def_kind),
+                     20, 20, 0, 0, 30, 30, destroyed, 0, "(70)100", "(70)100")
+
+
+def gossip_row(turn: int, leader: str, civilization: str, type: str = "GOSSIP_UNIT_DESTROYED",
+               x: int = 10, y: int = 10, detail: str | None = None) -> GossipRow:
+    return GossipRow(turn, leader, civilization, x, y, type, detail)
+
+
+def diplo_event(turn: int, initiator: int, recipient: int, action: str = "Denounce",
+                details: str = "", mayhem: float | None = None,
+                visibility: str | None = None) -> DiplomacySummaryRow:
+    return DiplomacySummaryRow(turn, initiator, recipient, action, details, mayhem, visibility)
+
+
+def deal(turn: int, from_player: int, to_player: int, kind: str = "Peace") -> DealItem:
+    return DealItem(turn, 1, from_player, to_player, kind, 0, 1)
+
+
+def snapshot(
+    state: GameState, insights=None, session: str = "session-1", epoch: int = 1,
+    revision: int = 1, captured_at: float = 0.0,
+) -> Snapshot:
+    """A published snapshot around a hand-made state, for worker and serializer tests."""
+    from civ7_advisor.advisors import run_all
+
+    ranked = run_all(state) if insights is None else list(insights)
+    return Snapshot(
+        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        epoch_reason="first_load", game_key=None, revision=revision,
+        captured_at=captured_at, latest_turn=state.latest_turn,
+        analysis_turn=state.complete_through_turn, state=state, insights=tuple(ranked),
+        coverage=_coverage(state, state.complete_through_turn),
+    )

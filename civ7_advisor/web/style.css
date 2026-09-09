@@ -247,6 +247,7 @@ main { padding-bottom: 5rem; }
 }
 
 .empty { margin: 1.75rem 0; max-width: 60ch; color: var(--muted); }
+.turn-summary { margin: 1.75rem 0 0; font-size: 0.8125rem; color: var(--muted); }
 
 /* ---------- tables: hairlines only, figures right and tabular ---------- */
 
@@ -280,6 +281,54 @@ td.dim, .dim { color: var(--muted); }
 td.behind { color: var(--brass); }
 .you { color: var(--brass); }
 
+/* ---------- chronological intelligence feed ---------- */
+
+.intel-row {
+  display: grid;
+  grid-template-columns: 3.5rem 6.5rem 1fr auto;
+  gap: 0.75rem;
+  align-items: baseline;
+  padding: 0.45rem 0;
+  border-bottom: 1px solid var(--rule);
+}
+.intel-turn {
+  font-family: var(--figures);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+.intel-kind { color: var(--muted); }
+.intel-row.prov-oracle .intel-text { color: var(--vellum); }
+
+/* ---------- tactical intercept map ---------- */
+
+.map-note, .map-legend, .map-focus-note { margin: 0 0 0.75rem; font-size: 0.8125rem; color: var(--muted); }
+.map-stats { display: flex; flex-wrap: wrap; gap: 0.4rem 1.5rem; margin: 1rem 0 0.45rem; color: var(--muted); font-size: 0.8125rem; }
+.map-stat strong { color: var(--vellum); font: 0.8125rem var(--figures); }
+#tactical-map svg {
+  display: block; width: 100%; max-height: 30rem; min-height: 14rem;
+  background: #111926; border: 1px solid var(--rule);
+}
+.map-city { fill: rgba(200, 155, 60, 0.12); stroke: var(--muted); stroke-width: 1.5; }
+.map-human { fill: var(--brass); stroke: var(--ink); stroke-width: 2; }
+.map-enemy { fill: var(--oxide); stroke: var(--ink); stroke-width: 2; }
+.map-goal { fill: none; stroke: var(--oxide); stroke-width: 4; }
+.map-number { fill: var(--vellum); font: 10px var(--figures); text-anchor: middle; dominant-baseline: central; pointer-events: none; }
+.map-legend { margin-top: 0.65rem; }
+.map-subhead { margin: 1.65rem 0 0.5rem; font: 1rem var(--display); color: var(--muted); }
+
+/* ---------- local commentary: inert prose with visible evidence links ---------- */
+
+.commentary { margin-top: 2.5rem; padding-top: 0.25rem; border-top: 1px solid var(--rule); }
+.commentary .section-head { margin-top: 1.75rem; }
+.commentary-item { padding: 0.65rem 0; border-bottom: 1px solid var(--rule); }
+.commentary-item p { margin: 0.25rem 0; }
+.commentary-cite { font-family: var(--figures); font-size: 0.75rem; color: var(--brass); }
+.turn-plan { padding-left: 1.35rem; }
+.turn-plan li { margin: 0.6rem 0; padding-left: 0.35rem; }
+.uncited { color: var(--muted); }
+.commentary-sentence { white-space: pre-wrap; }
+.commentary-meta { margin-top: 1rem; font-family: var(--figures); font-size: 0.7rem; color: var(--muted); }
+
 /* ---------- the one moment of motion: a turn lands ---------- */
 
 @keyframes turn-lands {
@@ -301,4 +350,180 @@ td.behind { color: var(--brass); }
   .hero-headline { grid-column: 1; grid-row: 3; margin-top: 0.5rem; }
   .controls .wrap { align-items: flex-start; }
   .oracle { padding-bottom: 0.9rem; }
+  .intel-row { grid-template-columns: 3rem 1fr; }
+  .intel-kind { display: none; }
 }
+
+/* Status line: connection, freshness and analysis turn, stated separately. */
+.status-line { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
+  margin: .35rem 0 0; font-size: .82rem; }
+.conn { font-weight: 600; letter-spacing: .02em; }
+.conn-up { color: var(--ok, #4c9a5f); }
+.conn-down { color: var(--warn, #c98a2e); }
+.status-detail { color: var(--muted, #8b8578); }
+
+/* A missing optional log is not a fault; it reads quieter than a real warning. */
+.file-note { margin: .2rem 0; font-size: .82rem; color: var(--muted, #8b8578); }
+
+/* Older generated prose, kept only as dated history. */
+.commentary-dated { margin-top: 1rem; padding: .75rem .9rem; border-left: 3px solid var(--muted, #8b8578);
+  background: rgba(139, 133, 120, .08); }
+.commentary-dated-head { margin: 0; font-size: .9rem; }
+.commentary-dated-note { margin: .25rem 0 .5rem; font-size: .78rem; color: var(--muted, #8b8578); }
+.commentary-dated-text { margin: 0; font-size: .88rem; }
+
+/* What the tactical sketch does not know, stated next to it. */
+.map-coverage-note { margin: .35rem 0 .75rem; font-size: .78rem; color: var(--muted, #8b8578); }
+
+/* ---- the decision brief -------------------------------------------------------
+   Sits above the tabs. The masthead is deliberately tight so the first decision and
+   its controls are above the fold at 1200x842. */
+.masthead .turn-figure { font-size: clamp(2.2rem, 5vw, 3.4rem); margin: .1rem 0; }
+.brief { margin: .75rem 0 1.25rem; }
+.brief-head-row { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
+  justify-content: space-between; }
+.brief-count { margin: 0; font-size: .82rem; color: var(--muted, #8b8578); }
+.brief-empty { margin: .5rem 0; font-size: .9rem; color: var(--muted, #8b8578); }
+
+.decision { border: 1px solid rgba(139, 133, 120, .35); border-left-width: 4px;
+  border-radius: 4px; padding: .7rem .85rem; margin: .5rem 0; background: rgba(255, 255, 255, .03); }
+.decision.sev-critical { border-left-color: #c0392b; }
+.decision.sev-warn { border-left-color: #c98a2e; }
+.decision.sev-advise { border-left-color: #4c7a9a; }
+.decision.sev-info { border-left-color: #8b8578; }
+.decision.acknowledged { opacity: .62; }
+.decision-head { display: flex; flex-wrap: wrap; gap: .4rem .75rem; align-items: baseline;
+  justify-content: space-between; }
+.decision-subject { margin: 0; font-size: 1.02rem; }
+.decision-severity { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted, #8b8578); }
+.decision-action { margin: .3rem 0 .1rem; font-weight: 600; }
+.decision-why { margin: .2rem 0; font-size: .9rem; }
+.decision-reason { margin: .2rem 0; font-size: .82rem; color: var(--muted, #8b8578); }
+.decision-dates { margin: .2rem 0; font-size: .78rem; color: var(--muted, #8b8578); }
+.applicability { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  padding: .05rem .35rem; border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; }
+
+.decision-controls { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.decision-controls button { font: inherit; font-size: .82rem; padding: .25rem .6rem;
+  border: 1px solid rgba(139, 133, 120, .55); border-radius: 3px; background: transparent;
+  color: inherit; cursor: pointer; }
+.decision-controls button[aria-pressed="true"] { border-color: currentColor; font-weight: 600; }
+.decision-controls button:focus-visible, #brief-more:focus-visible,
+#drawer-close:focus-visible { outline: 2px solid #c98a2e; outline-offset: 2px; }
+
+.decision-detail { margin: .5rem 0 0; padding: .5rem 0 0; border-top: 1px dashed rgba(139, 133, 120, .35); }
+.decision-detail h4 { margin: .35rem 0 .2rem; font-size: .85rem; }
+.decision-steps { margin: .2rem 0 .2rem 1.1rem; padding: 0; font-size: .88rem; }
+.decision-steps li { margin: .15rem 0; }
+.guide-links { display: flex; flex-wrap: wrap; gap: .5rem; margin: .3rem 0; font-size: .85rem; }
+.guide-note { margin: .15rem 0; font-size: .76rem; color: var(--muted, #8b8578); }
+.prereq { margin: .2rem 0; font-size: .82rem; }
+.prereq-unknown { color: var(--warn, #c98a2e); }
+.decision-unknowns { margin: .2rem 0 .2rem 1.1rem; padding: 0; font-size: .82rem;
+  color: var(--muted, #8b8578); }
+.generated { border-left: 3px solid #4c7a9a; padding-left: .6rem; margin: .4rem 0;
+  font-size: .88rem; }
+.generated-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted, #8b8578); }
+
+#brief-more { font: inherit; font-size: .85rem; padding: .3rem .7rem; background: transparent;
+  color: inherit; border: 1px solid rgba(139, 133, 120, .55); border-radius: 3px; cursor: pointer; }
+
+/* ---- evidence drawer ---------------------------------------------------------- */
+.drawer { width: min(46rem, 94vw); max-height: 86vh; overflow: auto; border: 1px solid
+  rgba(139, 133, 120, .5); border-radius: 5px; padding: 1rem 1.1rem; color: inherit;
+  background: #12100d; }
+.drawer::backdrop { background: rgba(0, 0, 0, .55); }
+.drawer-head { display: flex; align-items: baseline; justify-content: space-between; gap: 1rem; }
+.drawer-head h2 { margin: 0; font-size: 1.05rem; }
+#drawer-close { font: inherit; font-size: .85rem; padding: .25rem .7rem; background: transparent;
+  color: inherit; border: 1px solid rgba(139, 133, 120, .55); border-radius: 3px; cursor: pointer; }
+.fact { border-top: 1px solid rgba(139, 133, 120, .25); padding: .5rem 0; }
+.fact-label { margin: 0; font-weight: 600; font-size: .92rem; }
+.fact-value { margin: .15rem 0; font-size: .9rem; }
+.fact-meta { margin: .15rem 0; font-size: .78rem; color: var(--muted, #8b8578); }
+.fact-note { margin: .15rem 0; font-size: .82rem; }
+.fact-kind { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
+  border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; padding: .02rem .3rem; }
+
+/* ---- refinement panel --------------------------------------------------------- */
+.refine { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed rgba(139, 133, 120, .35); }
+.refine summary { cursor: pointer; font-size: .88rem; font-weight: 600; }
+.refine-note { margin: .3rem 0; font-size: .8rem; color: var(--muted, #8b8578); }
+.refine-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: .4rem .6rem; margin: .4rem 0; }
+.refine-grid label { display: flex; flex-direction: column; font-size: .78rem; gap: .15rem; }
+.refine-grid input, .refine-grid select { font: inherit; font-size: .85rem; padding: .2rem .3rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .55);
+  border-radius: 3px; }
+.refine-status { margin: .3rem 0 0; font-size: .8rem; }
+.refine-status.conflict { color: var(--warn, #c98a2e); }
+
+@media (max-width: 480px) {
+  .decision-controls { gap: .3rem; }
+  .decision-controls button { padding: .35rem .55rem; }   /* keep the target tappable */
+  .refine-grid { grid-template-columns: 1fr; }
+}
+
+/* ---- tactical view picker and contact table ----------------------------------- */
+.view-picker { display: flex; flex-wrap: wrap; gap: .4rem; margin: .5rem 0 .75rem; }
+.view-picker button { display: flex; flex-direction: column; gap: .1rem; text-align: left;
+  font: inherit; padding: .3rem .6rem; background: transparent; color: inherit; cursor: pointer;
+  border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; }
+.view-picker button.active { border-color: currentColor; background: rgba(201, 138, 46, .12); }
+.view-picker button:focus-visible { outline: 2px solid #c98a2e; outline-offset: 2px; }
+.view-label { font-size: .88rem; font-weight: 600; }
+.view-detail { font-size: .74rem; color: var(--muted, #8b8578); }
+
+.contact-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center;
+  margin: .4rem 0; font-size: .82rem; }
+.contact-controls input { font: inherit; font-size: .84rem; padding: .2rem .4rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .5);
+  border-radius: 3px; }
+.contact-controls button { font: inherit; font-size: .82rem; padding: .2rem .6rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .5);
+  border-radius: 3px; cursor: pointer; }
+.contact-controls button[disabled] { opacity: .45; cursor: default; }
+.contact-controls button:focus-visible, .contact-controls input:focus-visible {
+  outline: 2px solid #c98a2e; outline-offset: 2px; }
+.contact-count { color: var(--muted, #8b8578); }
+
+tbody tr[role="button"] { cursor: pointer; }
+tbody tr[role="button"]:focus-visible { outline: 2px solid #c98a2e; outline-offset: -2px; }
+tbody tr.selected { background: rgba(201, 138, 46, .16); }
+.map-selected { stroke: #c98a2e; }
+.contact-detail { margin: .5rem 0; padding: .5rem .7rem; border-left: 3px solid #c98a2e;
+  background: rgba(201, 138, 46, .08); }
+.contact-detail h4 { margin: 0 0 .2rem; font-size: .92rem; }
+
+/* ---- since last turn, questions, association ---------------------------------- */
+.changes { margin: .5rem 0; padding: .5rem .7rem; border: 1px solid rgba(139, 133, 120, .3);
+  border-radius: 4px; }
+.changes summary { cursor: pointer; font-size: .88rem; font-weight: 600; }
+.changes h4 { margin: .5rem 0 .15rem; font-size: .82rem; }
+.association { margin: .5rem 0; padding: .5rem .7rem; font-size: .84rem;
+  border-left: 3px solid var(--warn, #c98a2e); background: rgba(201, 138, 46, .08);
+  display: flex; flex-wrap: wrap; gap: .4rem; align-items: center; }
+.association button { font: inherit; font-size: .82rem; padding: .2rem .6rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .55);
+  border-radius: 3px; cursor: pointer; }
+
+.questions { margin-top: .5rem; padding-top: .5rem;
+  border-top: 1px dashed rgba(139, 133, 120, .35); }
+.questions h4 { margin: 0 0 .3rem; font-size: .85rem; }
+.challenge { display: flex; flex-wrap: wrap; gap: .4rem; align-items: flex-end;
+  margin: .45rem 0 .2rem; }
+.challenge label { display: flex; flex-direction: column; gap: .15rem; flex: 1 1 16rem;
+  font-size: .78rem; }
+.challenge input { font: inherit; font-size: .85rem; padding: .25rem .35rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .55);
+  border-radius: 3px; }
+.challenge button { font: inherit; font-size: .82rem; padding: .3rem .7rem;
+  background: transparent; color: inherit; border: 1px solid rgba(139, 133, 120, .55);
+  border-radius: 3px; cursor: pointer; }
+.challenge input:focus-visible, .challenge button:focus-visible {
+  outline: 2px solid #c98a2e; outline-offset: 2px; }
+.answer { margin: .45rem 0 0; padding: .5rem .7rem; border-left: 3px solid #4c7a9a;
+  background: rgba(76, 122, 154, .08); font-size: .88rem; }
+.answer p { margin: .2rem 0; }

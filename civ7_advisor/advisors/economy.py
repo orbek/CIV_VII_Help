@@ -14,16 +14,16 @@ CELEBRATION_NEAR = 0.9  # happiness total / threshold at/above which a celebrati
 
 # PlayerTurn attribute -> (label, the Civ VII lever to pull)
 YIELDS: dict[str, tuple[str, str]] = {
-    "science": ("science", "Build science buildings (Library, then Academy) and work tiles with science "
-                           "adjacency; a Research Collaboration with a friendly leader helps too."),
-    "culture": ("culture", "Build culture buildings (Monument, Amphitheater), pick a wonder you can "
-                           "finish, and use Cultural Exchange with a friendly leader."),
-    "gold": ("gold", "Add trade routes to distant partners, build gold buildings (Market, then Bank), "
-                     "and trim unit maintenance."),
-    "production": ("production", "Work mines and quarries, build production buildings (Brickyard, "
-                                 "Saw Pit), and specialise a town for production."),
-    "food": ("food", "Grow towns on farmland and fishing tiles, use a Farming Town specialisation, "
-                     "and build Granaries."),
+    "science": ("science", "Use the detailed city preview to compare science base yields, placement, "
+                           "adjacency, specialists, and maintenance before choosing the next build."),
+    "culture": ("culture", "Use the detailed city preview to compare culture from buildings, wonders, "
+                           "adjacency, specialists, and the opportunity cost of overbuilding."),
+    "gold": ("gold", "Inspect the yield and maintenance breakdown, then choose the route, building, "
+                     "improvement, or specialist with the best current net-gold gain."),
+    "production": ("production", "Compare production improvements, buildings, adjacency, and town "
+                                 "specializations in the current settlement preview."),
+    "food": ("food", "Compare food improvements and specialists in the growth preview; choose the option "
+                     "whose before-and-after yields support this settlement's role."),
 }
 
 
@@ -56,6 +56,11 @@ def comparison(state: GameState) -> list[YieldComparison]:
     return out
 
 
+def behind(state: GameState) -> list[YieldComparison]:
+    """Every yield the human trails the rival median on by more than BEHIND_RATIO, worst first."""
+    return sorted((c for c in comparison(state) if c.ratio < BEHIND_RATIO), key=lambda c: c.ratio)
+
+
 def advise(state: GameState) -> list[Insight]:
     t = state.complete_through_turn
     human = state.at(state.HUMAN, t)
@@ -64,8 +69,7 @@ def advise(state: GameState) -> list[Insight]:
     out: list[Insight] = []
     common = dict(advisor="economy", turn=t)
 
-    behind = sorted((c for c in comparison(state) if c.ratio < BEHIND_RATIO), key=lambda c: c.ratio)
-    for index, c in enumerate(behind):
+    for index, c in enumerate(behind(state)):
         if index == 0:
             severity = Severity.WARN if c.ratio < FAR_BEHIND_RATIO else Severity.ADVISE
         else:
@@ -84,8 +88,8 @@ def advise(state: GameState) -> list[Insight]:
         out.append(Insight(
             id="economy.settlement_slack", severity=Severity.ADVISE, provenance=Provenance.FAIR,
             title="You have room to expand",
-            recommendation="Queue a Settler and found a town on food or resource tiles; every settlement "
-                           "is more yields and more legacy progress.",
+            recommendation="Consider a Settler only if you have a strong site and can absorb its happiness "
+                           "and economic costs; cap room alone does not make expansion optimal.",
             why=f"Turn {t}: {slack} of {human.settlement_cap} settlement slots unused "
                 f"({human.settlements} settlements).",
             subject_player=state.HUMAN, **common,
@@ -94,8 +98,8 @@ def advise(state: GameState) -> list[Insight]:
         out.append(Insight(
             id="economy.over_cap", severity=Severity.WARN, provenance=Provenance.FAIR,
             title="You are over your settlement cap",
-            recommendation="Raise the cap (civics, wonders, leader attributes) or stop settling; each "
-                           "settlement over the cap costs happiness everywhere.",
+            recommendation="Stop settling and inspect the current happiness breakdown; raise the cap if an "
+                           "available civic, attribute, or effect explicitly does so.",
             why=f"Turn {t}: {human.settlements_over_cap} settlement(s) over a cap of {human.settlement_cap}.",
             subject_player=state.HUMAN, **common,
         ))
@@ -103,8 +107,8 @@ def advise(state: GameState) -> list[Insight]:
         out.append(Insight(
             id="economy.negative_gold", severity=Severity.WARN, provenance=Provenance.FAIR,
             title="You are losing gold every turn",
-            recommendation="Disband idle units, delay buildings with maintenance, and add a trade route "
-                           "or a gold building.",
+            recommendation="Inspect the gold and maintenance breakdown, then cut the least valuable upkeep "
+                           "or choose the available option with the best verified net-gold gain.",
             why=f"Turn {t}: gold yield {human.gold:.1f} minus maintenance {human.total_maintenance} "
                 f"= {human.net_gold:+.1f} per turn (balance {human.gold_balance:.0f}).",
             subject_player=state.HUMAN, **common,
@@ -115,8 +119,8 @@ def advise(state: GameState) -> list[Insight]:
         out.append(Insight(
             id="economy.celebration", severity=Severity.INFO, provenance=Provenance.FAIR,
             title="A celebration is imminent",
-            recommendation="Line up what you want boosted (production, culture, gold) so the celebration "
-                           "bonus lands on something that matters.",
+            recommendation="Review the celebration choices when it triggers and pick the effect that best "
+                           "supports your current plan.",
             why=f"Turn {t}: happiness {human.happiness_total} of {human.happiness_threshold} ({progress:.0%}).",
             subject_player=state.HUMAN, **common,
         ))

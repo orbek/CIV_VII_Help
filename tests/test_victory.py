@@ -62,7 +62,7 @@ def test_committed_leader_adds_an_oracle_insight_and_leaves_the_fair_one_alone()
     assert both.severity is Severity.WARN and both.provenance is Provenance.ORACLE
     assert both.subject_player == 1 and both.title != lead.title
     assert both.why == ("A's AI is following its CULTURAL strategy at weight 100 "
-                        "(committed threshold 75), last changed on turn 14.")  # strategy weight only
+                        "(focus threshold 75), last changed on turn 14.")  # strategy weight only
 
 
 def test_uncommitted_leader_gets_no_oracle_companion():

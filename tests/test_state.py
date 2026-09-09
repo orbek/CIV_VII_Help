@@ -73,7 +73,8 @@ def test_raw_rows_are_carried_through(fixture_state):
     assert len(fixture_state.intents) == 2422
     assert len(fixture_state.targets) == 47025
     assert len(fixture_state.events) == 190
-    assert set(fixture_state.files) and all(f.ok for f in fixture_state.files.values())
+    from tests.test_ingest_load import V1_FILES
+    assert all(fixture_state.files[name].ok for name in V1_FILES)
 
 
 def test_empty_logs_give_empty_state():
@@ -85,3 +86,53 @@ def test_empty_logs_give_empty_state():
 def test_display_name_fallback():
     assert display_name("LOC_LEADER_CONFUCIUS_NAME") == "Confucius"
     assert display_name("LOC_LEADER_SOME_NEW_LEADER_NAME") == "Some New Leader"
+
+
+def test_new_rows_are_carried_and_peace_is_folded():
+    from civ7_advisor.ingest.load import RawLogs
+    from civ7_advisor.ingest.readers import StatsRow
+    from tests.factories import build_queue_row, combat, deal, diplo_event, gossip_row
+
+    def stats(turn, player):
+        return StatsRow(turn, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+
+    raw = RawLogs(
+        stats=[stats(1, 0), stats(1, 4), stats(2, 0), stats(2, 4), stats(3, 0)],
+        build_queue=[build_queue_row(2, 0, city="LOC_CITY_NAME_MAURYA1")],
+        combat=[combat(2, 0, 4, destroyed="Attacker")],
+        gossip=[gossip_row(2, "Alexander", "Maurya")],
+        diplomacy_summary=[diplo_event(2, 0, 4)],
+        deals=[deal(1, 4, 0, "Peace"), deal(2, 4, 0, "Peace"), deal(2, 1, 7, "Peace"), deal(2, 4, 0, "Open Borders")],
+    )
+    s = build_state(raw)
+    assert len(s.build_queues) == 1 and len(s.combats) == 1 and len(s.gossip) == 1
+    assert len(s.diplomacy_events) == 1 and len(s.deals) == 4
+    assert s.peace_turns == {frozenset({0, 4}): 2, frozenset({1, 7}): 2}
+    assert s.peace_between(0, 4) == 2 and s.peace_between(4, 0) == 2 and s.peace_between(0, 7) is None
+    assert s.names is not None and s.names.player_for("Alexander", "Maurya") == 0
+
+
+def test_empty_state_has_empty_collections_and_no_resolver():
+    s = build_state(RawLogs())
+    assert s.build_queues == [] and s.combats == [] and s.deals == [] and s.peace_turns == {}
+    assert s.names is None and s.peace_between(0, 1) is None
+
+
+def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
+    from civ7_advisor.ingest.textlogs import PlayerIdentityRow
+
+    raw = RawLogs(
+        stats=[
+            StatsRow(1, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+            for player in (0, 1)
+        ],
+        player_identities=[
+            PlayerIdentityRow(0, 0, "CIVILIZATION_AMERICA", "LEADER_BENJAMIN_FRANKLIN",
+                              "CIVILIZATION_LEVEL_FULL_CIV", "Human"),
+            PlayerIdentityRow(0, 1, "CIVILIZATION_PERSIA", "LEADER_XERXES",
+                              "CIVILIZATION_LEVEL_FULL_CIV", "AI"),
+        ],
+    )
+    state = build_state(raw)
+    assert state.players[1].kind is PlayerKind.RIVAL and state.players[1].name == "Xerxes"
+    assert state.names is not None and state.names.player_for("Benjamin Franklin") == 0

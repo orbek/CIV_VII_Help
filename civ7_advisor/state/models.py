@@ -5,8 +5,17 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar
 
+from civ7_advisor.ingest.events import CombatRow, DiplomacySummaryRow, GossipRow
 from civ7_advisor.ingest.load import FileStatus
+from civ7_advisor.ingest.production import BuildQueueRow
 from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
+from civ7_advisor.ingest.textlogs import DealItem, PlayerIdentityRow
+from civ7_advisor.ingest.tactical import (
+    CombatOrderRow, CommanderPromotionRow, MayhemRow, OperationEvalRow, OperationRow,
+    TacticalRow, UnitEfficiencyRow, UnitOperationRow,
+)
+
+from .names import NameResolver
 
 # Row types advisors need, re-exported under domain names.
 DiplomaticIntent = DiplomacyRow
@@ -14,8 +23,9 @@ Target = TargetRow
 HistorianEvent = HistorianRow
 
 __all__ = [
-    "DiplomaticIntent", "FileStatus", "GameState", "HistorianEvent", "IntentKind",
-    "Player", "PlayerKind", "PlayerTurn", "StrategyStatus", "Target",
+    "BuildQueueRow", "CombatRow", "DealItem", "DiplomacySummaryRow", "DiplomaticIntent",
+    "FileStatus", "GameState", "GossipRow", "HistorianEvent", "IntentKind",
+    "Player", "PlayerIdentityRow", "PlayerKind", "PlayerTurn", "StrategyStatus", "Target",
 ]
 
 
@@ -115,6 +125,25 @@ class GameState:
     targets: list[Target] = field(default_factory=list)
     events: list[HistorianEvent] = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
+    build_queues: list[BuildQueueRow] = field(default_factory=list)
+    combats: list[CombatRow] = field(default_factory=list)
+    gossip: list[GossipRow] = field(default_factory=list)
+    diplomacy_events: list[DiplomacySummaryRow] = field(default_factory=list)
+    deals: list[DealItem] = field(default_factory=list)
+    unit_operations: list[UnitOperationRow] = field(default_factory=list)
+    tactical: list[TacticalRow] = field(default_factory=list)
+    operations: list[OperationRow] = field(default_factory=list)
+    combat_orders: list[CombatOrderRow] = field(default_factory=list)
+    operation_evals: list[OperationEvalRow] = field(default_factory=list)
+    unit_efficiency: list[UnitEfficiencyRow] = field(default_factory=list)
+    mayhem: list[MayhemRow] = field(default_factory=list)
+    commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
+    peace_turns: dict[frozenset[int], int] = field(default_factory=dict)  # pair -> latest Peace deal turn
+    # Civilization and leader per player, as the engine recorded them when the save
+    # loaded. Carried explicitly rather than left inside the name resolver: a unique
+    # ability depends on exact identity, and a city-name prefix is not an identity.
+    identities: dict[int, PlayerIdentityRow] = field(default_factory=dict)
+    names: NameResolver | None = None
 
     HUMAN: ClassVar[int] = 0
 
@@ -152,3 +181,7 @@ class GameState:
                 if value is not None:
                     out.append(float(value))
         return out
+
+    def peace_between(self, a: int, b: int) -> int | None:
+        """Turn of the most recent Peace deal between two players, if any."""
+        return self.peace_turns.get(frozenset({a, b}))

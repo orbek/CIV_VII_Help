@@ -3,11 +3,11 @@ from __future__ import annotations
 
 from .base import Insight
 
-ADVISOR_ORDER = {"threat": 0, "victory": 1, "economy": 2}
+ADVISOR_ORDER = {"threat": 0, "tactical": 1, "victory": 2, "economy": 3, "production": 4}
 
 
 def rank(insights: list[Insight]) -> list[Insight]:
-    """Most severe first, then most recent, then threat > victory > economy, then id.
+    """Most severe first, then most recent, then threat > victory > economy > production, then id.
     Duplicate ids keep the first (i.e. most severe) occurrence."""
     ordered = sorted(
         insights,

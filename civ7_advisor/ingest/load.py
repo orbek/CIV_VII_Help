@@ -23,6 +23,27 @@ from .readers import (
     read_treasury,
     read_victories,
 )
+from .events import CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
+from .production import BuildQueueRow, read_build_queue
+from .textlogs import DealItem, PlayerIdentityRow, read_deals, read_player_identities
+from .tactical import (
+    CombatOrderRow,
+    CommanderPromotionRow,
+    MayhemRow,
+    OperationEvalRow,
+    OperationRow,
+    TacticalRow,
+    UnitEfficiencyRow,
+    UnitOperationRow,
+    read_combat_planning,
+    read_commander_promotions,
+    read_mayhem,
+    read_operation_evals,
+    read_operations,
+    read_tactical,
+    read_unit_efficiency,
+    read_unit_operations,
+)
 
 log = logging.getLogger(__name__)
 
@@ -45,6 +66,20 @@ class RawLogs:
     diplomacy: list[DiplomacyRow] = field(default_factory=list)
     targets: list[TargetRow] = field(default_factory=list)
     historian: list[HistorianRow] = field(default_factory=list)
+    build_queue: list[BuildQueueRow] = field(default_factory=list)
+    combat: list[CombatRow] = field(default_factory=list)
+    gossip: list[GossipRow] = field(default_factory=list)
+    diplomacy_summary: list[DiplomacySummaryRow] = field(default_factory=list)
+    deals: list[DealItem] = field(default_factory=list)
+    unit_operations: list[UnitOperationRow] = field(default_factory=list)
+    tactical: list[TacticalRow] = field(default_factory=list)
+    operations: list[OperationRow] = field(default_factory=list)
+    combat_orders: list[CombatOrderRow] = field(default_factory=list)
+    operation_evals: list[OperationEvalRow] = field(default_factory=list)
+    unit_efficiency: list[UnitEfficiencyRow] = field(default_factory=list)
+    mayhem: list[MayhemRow] = field(default_factory=list)
+    commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
+    player_identities: list[PlayerIdentityRow] = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
@@ -57,12 +92,26 @@ READERS: list[tuple[str, str, Callable[[Path], list]]] = [
     ("AI_DiplomaticActions.csv", "diplomacy", read_diplomacy),
     ("AI_Targets.csv", "targets", read_targets),
     ("Historian.csv", "historian", read_historian),
+    ("CityBuildQueue.csv", "build_queue", read_build_queue),
+    ("CombatLog.csv", "combat", read_combat_log),
+    ("Game_Gossip.csv", "gossip", read_gossip),
+    ("DiplomacySummary.csv", "diplomacy_summary", read_diplomacy_summary),
+    ("DiplomacyDeals.log", "deals", read_deals),
+    ("UnitOperations.log", "unit_operations", read_unit_operations),
+    ("AI_Tactical.csv", "tactical", read_tactical),
+    ("AI_Operation.csv", "operations", read_operations),
+    ("AI_CombatPlanning.csv", "combat_orders", read_combat_planning),
+    ("AI_Operation_Eval.csv", "operation_evals", read_operation_evals),
+    ("AI_UnitEfficiency.csv", "unit_efficiency", read_unit_efficiency),
+    ("AI_MayhemTracker.csv", "mayhem", read_mayhem),
+    ("AI_Commander_Promotions.csv", "commander_promotions", read_commander_promotions),
+    ("GameCore.log", "player_identities", read_player_identities),
 ]
 LOG_FILES = [name for name, _, _ in READERS]
 
 
 def load_logs(logs_dir: Path) -> RawLogs:
-    """Read all seven logs. A file that fails to parse is dropped for this load
+    """Read every log in READERS. A file that fails to parse is dropped for this load
     (its FileStatus says why) while every other file still contributes."""
     raw = RawLogs()
     for name, attr, reader in READERS:

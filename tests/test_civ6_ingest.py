@@ -120,6 +120,28 @@ def test_unit_operations_still_raises_on_an_unrecognised_short_row(tmp_path):
         read_unit_operations_civ6(tmp_path, path)
 
 
+def test_unit_operations_reads_only_the_latest_game(tmp_path):
+    """Civ VI never truncates UnitOperations.log; it accumulates across every
+    game ever played. Without segmenting to the latest game, a second match
+    would read the first match's rows as its own."""
+    from civ_advisor.games.civ6.readers import read_unit_operations_civ6
+
+    path = tmp_path / "UnitOperations.log"
+    path.write_text(
+        "Game Turn, Mode, Player, Unit, Operation\n"
+        "001, Adding, 0, UNIT_WARRIOR (1), UNITOPERATION_MOVE_TO (2)\n"
+        "Unit operation handler a92585ad, is disabled\n"
+        "002, Adding, 0, UNIT_WARRIOR (1), UNITOPERATION_MOVE_TO (2)\n"
+        "001, Adding, 0, UNIT_SETTLER (2), UNITOPERATION_FOUND_CITY (14)\n"
+        "002, Adding, 0, UNIT_SETTLER (2), UNITOPERATION_MOVE_TO (19)\n"
+        "003, Adding, 0, UNIT_SETTLER (2), UNITOPERATION_MOVE_TO (19)\n"
+    )
+    rows = read_unit_operations_civ6(tmp_path, path)
+    assert len(rows) == 3
+    assert [r.turn for r in rows] == [1, 2, 3]
+    assert all(r.unit_id == 2 for r in rows)  # only the second game's unit, not the first's
+
+
 def test_build_queue_attributes_cities_via_the_sibling_file(civ6_dir):
     """City_BuildQueue has no Player column; ownership comes from
     AI_CityBuild. Rome is the human's city in this capture."""

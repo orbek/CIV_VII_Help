@@ -36,6 +36,7 @@ from typing import Sequence
 from .base import (
     BuildingFacts, RulesetFigure, RulesetIdentity, RulesetMention, RulesetOutOfScope,
 )
+from .identity import identify, stamp
 
 DATABASE_NAME = "DebugGameplay.sqlite"
 DEFAULT_DATABASE = (Path.home() / "Library" / "Application Support"
@@ -78,21 +79,6 @@ def _yield_label(yield_type: str) -> str:
     return yield_type.removeprefix("YIELD_").replace("_", " ").lower()
 
 
-def _identify_placeholder(path: Path) -> RulesetIdentity:
-    """Stands in for Task 4's `identify()`, which produces the real content digest.
-
-    Removed once Task 4 lands `civ_advisor.ruleset.identity`; until then every ruleset
-    reports the same all-zero digest, which is wrong but harmless -- nothing here compares
-    digests across instances yet.
-    """
-    stat = path.stat()
-    return RulesetIdentity(path=path, size=stat.st_size, mtime_ns=stat.st_mtime_ns,
-                           digest="0" * 64)
-
-
-identify = _identify_placeholder
-
-
 @dataclass
 class Civ6Ruleset:
     """One open, read-only view of one ruleset database.
@@ -104,6 +90,10 @@ class Civ6Ruleset:
     _identity: RulesetIdentity
     _connection: sqlite3.Connection
     _countable: frozenset[str] = frozenset()
+    # The stamp identity was last derived from. Checked cheaply on every lookup so a file
+    # rewritten under a long-lived provider (a mod toggled without restarting) is caught
+    # rather than served from a cache keyed on nothing but this instance's lifetime.
+    _stamp: tuple[int, int] = (0, 0)
     _cache: dict[tuple[str, str], object] = field(default_factory=dict, repr=False)
 
     @property
@@ -119,6 +109,20 @@ class Civ6Ruleset:
 
     def close(self) -> None:
         self._connection.close()
+
+    def _refresh_if_changed(self) -> None:
+        """Re-derive identity and drop every cached figure if the file has moved.
+
+        `stamp()` is the cheap check run on every lookup; the 18 MB digest in
+        `identify()` only runs when it disagrees. A cache keyed on nothing but the
+        provider's lifetime would keep serving a cost from before a mod was enabled --
+        this is what makes the cache keyed on the file's own identity instead.
+        """
+        current = stamp(self._identity.path)
+        if current != self._stamp:
+            self._identity = identify(self._identity.path)
+            self._stamp = current
+            self._cache.clear()
 
     # -- the query seam ------------------------------------------------------------
 
@@ -163,6 +167,7 @@ class Civ6Ruleset:
     # -- lookups -------------------------------------------------------------------
 
     def building(self, building_type: str) -> BuildingFacts | None:
+        self._refresh_if_changed()
         cached = self._cache.get(("building", building_type))
         if cached is not None:
             return cached  # type: ignore[return-value]
@@ -262,5 +267,7 @@ class Civ6Ruleset:
         connection.execute("PRAGMA query_only = 1")
         present = {row[0] for row in
                    connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        return cls(_identity=identify(path), _connection=connection,
-                   _countable=frozenset(COUNTABLE_COLUMNS) & present)
+        identity = identify(path)
+        return cls(_identity=identity, _connection=connection,
+                   _countable=frozenset(COUNTABLE_COLUMNS) & present,
+                   _stamp=(identity.size, identity.mtime_ns))

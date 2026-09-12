@@ -175,3 +175,35 @@ def test_settlements_is_none_when_towns_is_none():
                     gold_balance=10.0, science=1.0, culture=1.0, gold=2.0,
                     production=3.0, food=4.0)
     assert pt.settlements is None
+
+
+def test_civ7_city_state_identities_still_classify_as_independent(tmp_path):
+    """Civ VII's own GameCore.log does log non-FULL_CIV levels for its
+    city-states -- this guards the level-based classification branch in
+    build_state, which sits ahead of the owner-key/happiness path: a Civ VII
+    city-state must still land INDEPENDENT and out of rivals(), not be
+    disturbed by a branch introduced for Civ VI."""
+    from civ_advisor.ingest.load import load_logs
+
+    (tmp_path / "GameCore.log").write_text(
+        "[2026-09-07 17:13:59]\tPlayer 0: Civilization - CIVILIZATION_AMERICA (1)  "
+        "Leader - LEADER_BENJAMIN_FRANKLIN (2), - Level - CIVILIZATION_LEVEL_FULL_CIV, "
+        "SlotStatus - Human\n"
+        "[2026-09-07 17:13:59]\tPlayer 8: Civilization - CIVILIZATION_PLACEHOLDER_CITYSTATE "
+        "(861373409)  Leader - (null) (-1), - Level - CIVILIZATION_LEVEL_CITY_STATE, "
+        "SlotStatus - AI\n"
+    )
+    (tmp_path / "Player_Stats.csv").write_text(
+        "Game Turn, Player, Cities, Towns, Settlement Cap, Settlements Over Cap, Urban Pop, "
+        "Rural Pop, Techs, Land Units, Naval Units, TILES: Owned, Improved, BALANCE: Gold, "
+        "YIELDS: Science, Culture, Gold, Production, Food, Happiness, Diplomacy, "
+        "BY TYPE: Buildings\n"
+        "1, 0, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0\n"
+        "1, 8, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0\n"
+    )
+    from civ_advisor.games.civ7 import CIV7
+
+    raw = load_logs(tmp_path, profile=CIV7)
+    state = build_state(raw)
+    assert state.players[8].kind is PlayerKind.INDEPENDENT
+    assert 8 not in [p.id for p in state.rivals()]

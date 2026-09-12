@@ -10,10 +10,13 @@ from .names import NameResolver
 
 INDEPENDENT_KEY = "LOC_CIVILIZATION_INDEPENDENT_NAME"
 
-# Levels a PlayerIdentityRow can carry (spec §5). Civ VII's own identities never
-# set `level` to anything but FULL_CIV, so this only takes effect for a game (Civ
-# VI) whose GameCore.log distinguishes majors from city-states, Free Cities and
-# the barbarian slot.
+# Levels a PlayerIdentityRow can carry (spec §5). Civ VII's GameCore.log does
+# log non-FULL_CIV levels too (its city-states carry CIVILIZATION_LEVEL_CITY_STATE,
+# and it has a CIVILIZATION_LEVEL_NONE slot) -- this is not Civ-VI-only data. The
+# level-based branch below is safe to sit ahead of Civ VII's pre-existing
+# owner-key/happiness classification because it agrees with that path on every
+# Civ VII identity it can see: a Civ VII city-state has no LOC_LEADER owner key
+# and no happiness row either, so both paths already called it INDEPENDENT.
 LEVEL_INDEPENDENT = {"CIVILIZATION_LEVEL_CITY_STATE", "CIVILIZATION_LEVEL_FREE_CITIES"}
 LEVEL_TRIBE = "CIVILIZATION_LEVEL_TRIBE"
 
@@ -88,11 +91,12 @@ def build_state(raw: RawLogs) -> GameState:
         state.turns.setdefault(s.turn, {})[s.player] = PlayerTurn(**asdict(s), **extra)
 
     # Players: 0 is human; a LOC_LEADER owner key or a happiness row marks a rival;
-    # everyone else is an independent people. Where a game's identities carry a
-    # `level` (Civ VI does; Civ VII's is always FULL_CIV), that level classifies
-    # city-states, Free Cities and the barbarian slot directly rather than
-    # falling through Civ VII's owner-key/happiness heuristics, which Civ VI's
-    # logs cannot supply at all.
+    # everyone else is an independent people. A `level` on the identity classifies
+    # city-states, Free Cities and the barbarian slot directly, ahead of Civ VII's
+    # owner-key/happiness heuristics -- safe because it agrees with that path
+    # wherever Civ VII's own logs have a level to offer (see the comment on
+    # LEVEL_INDEPENDENT above), and load-bearing for Civ VI, whose logs cannot
+    # supply an owner key or a happiness row at all.
     owner_keys = {r.player: r.owner_key for r in raw.victories}
     identities = {r.player: r for r in raw.player_identities}
     happiness_players = {r.player for r in raw.happiness}

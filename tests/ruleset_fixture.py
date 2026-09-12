@@ -57,6 +57,50 @@ ROWS = {
 }
 
 
+SCHEMA += """
+CREATE TABLE Districts (
+    DistrictType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER,
+    PrereqTech TEXT, PrereqCivic TEXT);
+CREATE TABLE Technologies (
+    TechnologyType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, EraType TEXT);
+CREATE TABLE TechnologyPrereqs (
+    Technology TEXT NOT NULL, PrereqTech TEXT NOT NULL,
+    PRIMARY KEY (Technology, PrereqTech));
+CREATE TABLE Civics (
+    CivicType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, EraType TEXT);
+CREATE TABLE CivicPrereqs (
+    Civic TEXT NOT NULL, PrereqCivic TEXT NOT NULL, PRIMARY KEY (Civic, PrereqCivic));
+CREATE TABLE Boosts (
+    BoostID INTEGER NOT NULL PRIMARY KEY, TechnologyType TEXT, CivicType TEXT,
+    Boost INTEGER, BoostClass TEXT, Unit1Type TEXT, BuildingType TEXT,
+    DistrictType TEXT, NumItems INTEGER);
+CREATE TABLE Units (
+    UnitType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, Maintenance INTEGER,
+    Combat INTEGER, RangedCombat INTEGER, PrereqTech TEXT, PrereqCivic TEXT,
+    StrategicResource TEXT);
+CREATE TABLE UnitUpgrades (
+    Unit TEXT NOT NULL PRIMARY KEY, UpgradeUnit TEXT NOT NULL);
+"""
+
+ROWS.update({
+    "Districts": [("DISTRICT_CAMPUS", "LOC_DISTRICT_CAMPUS_NAME", 54, "TECH_WRITING", "")],
+    "Technologies": [("TECH_WRITING", "LOC_TECH_WRITING_NAME", 50, "ERA_ANCIENT"),
+                     ("TECH_POTTERY", "LOC_TECH_POTTERY_NAME", 25, "ERA_ANCIENT")],
+    "TechnologyPrereqs": [("TECH_WRITING", "TECH_POTTERY")],
+    "Civics": [("CIVIC_CODE_OF_LAWS", "LOC_CIVIC_CODE_OF_LAWS_NAME", 20, "ERA_ANCIENT"),
+               ("CIVIC_STATE_WORKFORCE", "LOC_X", 70, "ERA_ANCIENT")],
+    "CivicPrereqs": [("CIVIC_STATE_WORKFORCE", "CIVIC_CODE_OF_LAWS")],
+    "Boosts": [(53, "TECH_WRITING", None, 40, "BOOST_TRIGGER_MEET_CIV",
+                "UNIT_SCOUT", None, None, None),
+               (4, None, "CIVIC_STATE_WORKFORCE", 40,
+                "BOOST_TRIGGER_HAVE_X_UNIQUE_SPECIALTY_DISTRICTS", None, None, None, 1)],
+    "Units": [("UNIT_WARRIOR", "LOC_UNIT_WARRIOR_NAME", 40, 0, 20, 0, "", "", ""),
+              ("UNIT_SWORDSMAN", "LOC_UNIT_SWORDSMAN_NAME", 90, 2, 36, 0,
+               "TECH_IRON_WORKING", "", "RESOURCE_IRON")],
+    "UnitUpgrades": [("UNIT_WARRIOR", "UNIT_SWORDSMAN")],
+})
+
+
 def make_ruleset(tmp_path: Path, name: str = "DebugGameplay.sqlite",
                  rows: dict[str, list[tuple]] | None = None,
                  schema: str | None = None) -> Path:

@@ -10,7 +10,16 @@ what triggers it, while its magnitude is defined by the game's compiled logic an
 row anywhere. `READABLE_COLUMNS` is the allowlist of plain indexed columns; `_select` is
 the only place a statement is built, and it refuses anything outside it. `BuildingModifiers`
 is reachable only through `_count`, which returns a row count and never a value, so the
-most an effect can become is a `RulesetMention`.
+most an effect can become is a `RulesetCount` (how many) alongside a `RulesetMention`
+(what that means in words) -- never a `RulesetFigure`.
+
+Also read here, all plain indexed rows per the research report: districts,
+technologies and civics (with their eureka/inspiration `Boosts`), and units. Deliberately
+not read, each for a reason in the research report: district adjacency yields (the join
+from a district to its adjacency ids was not verified), government slot counts (the
+correct join was not found), policy effects (the same `Modifiers` indirection this
+module excludes everywhere else), the gold cost of a unit upgrade (computed at runtime,
+stored in no row), and per-unit strategic resource quantity (a table not explored).
 
 Two different kinds of "cannot answer" are told apart on purpose:
 
@@ -35,8 +44,9 @@ from pathlib import Path
 from typing import Sequence
 
 from .base import (
-    BuildingFacts, NullRuleset, RulesetFigure, RulesetIdentity, RulesetMention,
-    RulesetOutOfScope, RulesetProvider,
+    BoostFacts, BuildingFacts, CivicFacts, DistrictFacts, NullRuleset, RulesetCount,
+    RulesetFigure, RulesetIdentity, RulesetMention, RulesetOutOfScope, RulesetProvider,
+    TechnologyFacts, UnitFacts,
 )
 from .identity import identify, stamp
 
@@ -53,6 +63,19 @@ READABLE_COLUMNS: dict[str, frozenset[str]] = {
     "Buildings": frozenset({"BuildingType", "Cost", "Maintenance", "PrereqDistrict",
                             "PrereqTech", "PrereqCivic"}),
     "Building_YieldChanges": frozenset({"BuildingType", "YieldType", "YieldChange"}),
+    "Districts": frozenset({"DistrictType", "Cost", "PrereqTech", "PrereqCivic"}),
+    "Technologies": frozenset({"TechnologyType", "Cost", "EraType"}),
+    "TechnologyPrereqs": frozenset({"Technology", "PrereqTech"}),
+    "Civics": frozenset({"CivicType", "Cost", "EraType"}),
+    "CivicPrereqs": frozenset({"Civic", "PrereqCivic"}),
+    # `Boost` is the percentage and `BoostClass` names the trigger. `TriggerDescription`
+    # is deliberately absent: it is a LOC_* key that only DebugLocalization.sqlite can
+    # resolve, and spec §12 defers that.
+    "Boosts": frozenset({"BoostID", "TechnologyType", "CivicType", "Boost", "BoostClass",
+                         "Unit1Type", "BuildingType", "DistrictType", "NumItems"}),
+    "Units": frozenset({"UnitType", "Cost", "Maintenance", "Combat", "RangedCombat",
+                        "PrereqTech", "PrereqCivic", "StrategicResource"}),
+    "UnitUpgrades": frozenset({"Unit", "UpgradeUnit"}),
 }
 
 READABLE_TABLES = frozenset(READABLE_COLUMNS)
@@ -79,6 +102,21 @@ def _title(type_key: str) -> str:
 
 def _yield_label(yield_type: str) -> str:
     return yield_type.removeprefix("YIELD_").replace("_", " ").lower()
+
+
+# Which of the ~10 nullable trigger-object columns on `Boosts` is populated is what says
+# what kind of trigger a boost has; there is no single "trigger value" column.
+BOOST_OBJECT_COLUMNS = ("Unit1Type", "BuildingType", "DistrictType", "NumItems")
+
+
+def _absent(value) -> bool:
+    """Whether a column value says nothing.
+
+    An empty prerequisite means "none" and a zero combat strength means "cannot fight".
+    Both are absence. Turning either into a figure would put "0" in front of a player as
+    though the ruleset had asserted it.
+    """
+    return value is None or value == "" or value == 0
 
 
 @dataclass
@@ -195,19 +233,22 @@ class Civ6Ruleset:
     # answer", the same as any other degraded case.
     _MAX_READ_ATTEMPTS = 3
 
-    def building(self, building_type: str) -> BuildingFacts | None:
-        """A building's figures, verified to have all come from one state of the file.
+    def _read_verified(self, kind: str, key: str, reader) -> object | None:
+        """Run one lookup's `reader`, verify the whole read came from one state of the
+        file, and cache a stable result. Shared by every lookup (`building`, `district`,
+        `technology`, `civic`, `unit`) so the closed check, the retry loop and the cache
+        are one implementation rather than five that could drift apart.
 
         `identify()` reads raw bytes outside SQLite's own consistency guarantees, while
-        the rows below are read through the connection. In the default rollback-journal
-        mode SQLite writes pages into the main file during a transaction and only makes
-        that atomic at commit, so an external write landing mid-transaction could in
+        `reader` reads through the connection. In the default rollback-journal mode
+        SQLite writes pages into the main file during a transaction and only makes that
+        atomic at commit, so an external write landing mid-transaction could in
         principle leave the raw digest and the row read describing two different states
         of the file -- a figure whose citation does not match the bytes it came from,
         which is worse than no figure. Read-verify-reread closes that window: the
-        digest is captured before the rows are read and re-derived after, and a
-        mismatch discards everything read and retries against the file's new state
-        rather than serving a figure assembled from a moving target.
+        digest is captured before `reader` runs and re-derived after, and a mismatch
+        discards everything just read and retries against the file's new state rather
+        than serving a figure assembled from a moving target.
 
         Returns `None` immediately, touching neither the connection nor the file, if
         this provider has been closed out from under its caller -- see the class
@@ -216,30 +257,49 @@ class Civ6Ruleset:
         if self._closed:
             return None
         self._refresh_if_changed()
-        cached = self._cache.get(("building", building_type))
+        cached = self._cache.get((kind, key))
         if cached is not None:
-            return cached  # type: ignore[return-value]
+            return cached
 
         for _ in range(self._MAX_READ_ATTEMPTS):
             before = self._identity
-            facts = self._read_building(building_type)
+            result = reader()
             after = identify(self._identity.path)
             if after.digest == before.digest:
-                if facts is not None:
-                    self._cache[("building", building_type)] = facts
+                if result is not None:
+                    self._cache[(kind, key)] = result
                 self._identity = after
-                return facts
-            # The file moved while these rows were being read. Every figure just built
-            # cites `before`, which no longer describes the file -- discard all of it
-            # and retry against the state `after` actually observed.
+                return result
+            # The file moved while this was being read. Every figure just built cites
+            # `before`, which no longer describes the file -- discard all of it and
+            # retry against the state `after` actually observed.
             self._identity = after
             self._cache.clear()
         return None
 
+    def _figure_maker(self, table: str, subject: str, row_key: tuple[str, ...],
+                      row: sqlite3.Row):
+        """One row's figures, each naming that row. Shared so every lookup cannot drift
+        into slightly different ideas of what counts as absent."""
+
+        def make(column: str, label: str, unit: str | None) -> RulesetFigure | None:
+            value = row[column]
+            if _absent(value):
+                return None
+            return RulesetFigure(subject=subject, label=label, value=value, unit=unit,
+                                 table=table, column=column, row_key=row_key,
+                                 identity=self._identity)
+
+        return make
+
+    def building(self, building_type: str) -> BuildingFacts | None:
+        return self._read_verified(
+            "building", building_type, lambda: self._read_building(building_type))
+
     def _read_building(self, building_type: str) -> BuildingFacts | None:
         """One attempt at reading a building's figures, against whatever state of the
         file is current when it runs. Never itself decides whether that state held
-        still; `building()` is what verifies that and retries."""
+        still; `_read_verified` is what verifies that and retries."""
         try:
             rows = self._select("Buildings",
                                 ("Cost", "Maintenance", "PrereqDistrict", "PrereqTech",
@@ -253,17 +313,7 @@ class Civ6Ruleset:
         if not rows:
             return None
         row, name = rows[0], _title(building_type)
-
-        def figure(column: str, label: str, unit: str | None) -> RulesetFigure | None:
-            value = row[column]
-            # An empty prerequisite column means "none", and a missing one means the row
-            # does not say. Both are absence: neither may become the number 0 or the
-            # string "" in front of a player.
-            if value is None or value == "":
-                return None
-            return RulesetFigure(subject=building_type, label=label, value=value, unit=unit,
-                                 table="Buildings", column=column,
-                                 row_key=(building_type,), identity=self._identity)
+        make = self._figure_maker("Buildings", building_type, (building_type,), row)
 
         try:
             yield_rows = self._select("Building_YieldChanges",
@@ -281,44 +331,207 @@ class Civ6Ruleset:
                 row_key=(building_type, y["YieldType"]), identity=self._identity)
             for y in yield_rows)
 
+        mentions, counts = self._effect_facts(building_type, bool(yields))
         return BuildingFacts(
             building=building_type,
-            cost=figure("Cost", f"{name} production cost", "production"),
-            maintenance=figure("Maintenance", f"{name} maintenance", "gold per turn"),
-            prereq_district=figure("PrereqDistrict", f"{name} requires district", None),
-            prereq_tech=figure("PrereqTech", f"{name} requires technology", None),
-            prereq_civic=figure("PrereqCivic", f"{name} requires civic", None),
-            yields=yields,
-            mentions=self._effect_mentions(building_type, bool(yields)),
+            cost=make("Cost", f"{name} production cost", "production"),
+            maintenance=make("Maintenance", f"{name} maintenance", "gold per turn"),
+            prereq_district=make("PrereqDistrict", f"{name} requires district", None),
+            prereq_tech=make("PrereqTech", f"{name} requires technology", None),
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            yields=yields, mentions=mentions, counts=counts,
         )
 
-    def _effect_mentions(self, building_type: str, has_yields: bool) -> tuple[RulesetMention, ...]:
-        """What a building does beyond its flat yields, said without a number.
+    def _effect_facts(self, building_type: str,
+                      has_yields: bool) -> tuple[tuple[RulesetMention, ...],
+                                                 tuple[RulesetCount, ...]]:
+        """What a building does beyond its flat yields: a count of modifier-chain rows,
+        never their magnitude, plus a sentence putting that count in words.
 
         Only some building types have any `Building_YieldChanges` row, so an empty yield
         list is not evidence that a building does nothing — some express their whole
         effect through a modifier. Counting is what stops "no rows, therefore no yield"
-        from becoming a claim.
+        from becoming a claim. The count itself is a `RulesetCount`, not a
+        `RulesetFigure`: it has no `value`/`unit` field to carry a number a reader could
+        mistake for a yield, so it cannot reach a player looking like one.
         """
         if "BuildingModifiers" not in self._countable:
-            return ()
+            return (), ()
         try:
-            count = self._count("BuildingModifiers", {"BuildingType": building_type})
+            n = self._count("BuildingModifiers", {"BuildingType": building_type})
         except sqlite3.OperationalError:
-            return ()
-        if not count:
-            return ()
-        return (RulesetMention(
+            return (), ()
+        if not n:
+            return (), ()
+        count = RulesetCount(
             subject=building_type,
-            label=(f"{_title(building_type)} has {count} conditional effect"
-                   f"{'' if count == 1 else 's'} beyond its flat yields"),
+            label=f"{_title(building_type)} modifier-based effects beyond its flat yields",
+            count=n, table="BuildingModifiers", column="COUNT(*)",
+            row_key=(building_type,), identity=self._identity)
+        mention = RulesetMention(
+            subject=building_type,
+            label=(f"{_title(building_type)} has {n} conditional effect"
+                   f"{'' if n == 1 else 's'} beyond its flat yields"),
             detail=("The ruleset records what each one applies to and what triggers it, in "
                     "a modifier chain whose magnitude is defined by the game's own code and "
                     "by no row in this file."
                     + ("" if has_yields else
                        " The absence of a flat yield is therefore not evidence that this "
                        "building yields nothing.")),
-        ),)
+        )
+        return (mention,), (count,)
+
+    def district(self, district_type: str) -> DistrictFacts | None:
+        return self._read_verified(
+            "district", district_type, lambda: self._read_district(district_type))
+
+    def _read_district(self, district_type: str) -> DistrictFacts | None:
+        try:
+            rows = self._select("Districts", ("Cost", "PrereqTech", "PrereqCivic"),
+                                {"DistrictType": district_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        row, name = rows[0], _title(district_type)
+        make = self._figure_maker("Districts", district_type, (district_type,), row)
+        return DistrictFacts(
+            district=district_type,
+            cost=make("Cost", f"{name} district production cost", "production"),
+            prereq_tech=make("PrereqTech", f"{name} district requires technology", None),
+            prereq_civic=make("PrereqCivic", f"{name} district requires civic", None))
+
+    def _boosts(self, column: str, subject: str) -> tuple[BoostFacts, ...]:
+        """Every eureka or inspiration attached to one technology or civic."""
+        try:
+            rows = self._select("Boosts",
+                                ("BoostID", "Boost", "BoostClass") + BOOST_OBJECT_COLUMNS,
+                                {column: subject})
+        except sqlite3.OperationalError:
+            return ()
+        out = []
+        for row in rows:
+            key = (str(row["BoostID"]),)
+            make = self._figure_maker("Boosts", subject, key, row)
+            percent = make("Boost", f"{_title(subject)} boost", "% of the cost")
+            trigger = make("BoostClass", f"{_title(subject)} boost trigger", None)
+            if percent is None or trigger is None:
+                continue
+            objects = tuple(f for f in (make(c, f"{_title(subject)} boost {c}", None)
+                                        for c in BOOST_OBJECT_COLUMNS) if f is not None)
+            out.append(BoostFacts(percent=percent, trigger=trigger, objects=objects))
+        return tuple(out)
+
+    def technology(self, technology_type: str) -> TechnologyFacts | None:
+        return self._read_verified(
+            "technology", technology_type,
+            lambda: self._read_technology(technology_type))
+
+    def _read_technology(self, technology_type: str) -> TechnologyFacts | None:
+        try:
+            rows = self._select("Technologies", ("Cost", "EraType"),
+                                {"TechnologyType": technology_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(technology_type)
+        make = self._figure_maker("Technologies", technology_type, (technology_type,),
+                                  rows[0])
+        try:
+            prereq_rows = self._select("TechnologyPrereqs", ("PrereqTech",),
+                                       {"Technology": technology_type})
+        except sqlite3.OperationalError:
+            prereq_rows = ()
+        prereqs = tuple(
+            RulesetFigure(subject=technology_type, label=f"{name} requires technology",
+                          value=r["PrereqTech"], unit=None, table="TechnologyPrereqs",
+                          column="PrereqTech",
+                          row_key=(technology_type, r["PrereqTech"]),
+                          identity=self._identity)
+            for r in prereq_rows)
+        return TechnologyFacts(
+            technology=technology_type,
+            cost=make("Cost", f"{name} research cost", "science"),
+            era=make("EraType", f"{name} era", None),
+            prereqs=prereqs, boosts=self._boosts("TechnologyType", technology_type))
+
+    def civic(self, civic_type: str) -> CivicFacts | None:
+        return self._read_verified(
+            "civic", civic_type, lambda: self._read_civic(civic_type))
+
+    def _read_civic(self, civic_type: str) -> CivicFacts | None:
+        try:
+            rows = self._select("Civics", ("Cost", "EraType"), {"CivicType": civic_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(civic_type)
+        make = self._figure_maker("Civics", civic_type, (civic_type,), rows[0])
+        try:
+            prereq_rows = self._select("CivicPrereqs", ("PrereqCivic",),
+                                       {"Civic": civic_type})
+        except sqlite3.OperationalError:
+            prereq_rows = ()
+        prereqs = tuple(
+            RulesetFigure(subject=civic_type, label=f"{name} requires civic",
+                          value=r["PrereqCivic"], unit=None, table="CivicPrereqs",
+                          column="PrereqCivic",
+                          row_key=(civic_type, r["PrereqCivic"]),
+                          identity=self._identity)
+            for r in prereq_rows)
+        return CivicFacts(
+            civic=civic_type,
+            cost=make("Cost", f"{name} culture cost", "culture"),
+            era=make("EraType", f"{name} era", None),
+            prereqs=prereqs, boosts=self._boosts("CivicType", civic_type))
+
+    def unit(self, unit_type: str) -> UnitFacts | None:
+        return self._read_verified("unit", unit_type, lambda: self._read_unit(unit_type))
+
+    def _read_unit(self, unit_type: str) -> UnitFacts | None:
+        try:
+            rows = self._select("Units",
+                                ("Cost", "Maintenance", "Combat", "RangedCombat",
+                                 "PrereqTech", "PrereqCivic", "StrategicResource"),
+                                {"UnitType": unit_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(unit_type)
+        make = self._figure_maker("Units", unit_type, (unit_type,), rows[0])
+
+        try:
+            upgrade_rows = self._select("UnitUpgrades", ("UpgradeUnit",),
+                                        {"Unit": unit_type})
+        except sqlite3.OperationalError:
+            upgrade_rows = ()
+        upgrades_to = None
+        mentions: tuple[RulesetMention, ...] = ()
+        if upgrade_rows:
+            upgrades_to = RulesetFigure(
+                subject=unit_type, label=f"{name} upgrades to",
+                value=upgrade_rows[0]["UpgradeUnit"], unit=None, table="UnitUpgrades",
+                column="UpgradeUnit", row_key=(unit_type,), identity=self._identity)
+            mentions = (RulesetMention(
+                subject=unit_type, label=f"{name}'s upgrade has a gold cost",
+                detail=("The ruleset states what it upgrades into and stores no row for "
+                        "what that costs; the game computes it at the moment you "
+                        "upgrade.")),)
+
+        return UnitFacts(
+            unit=unit_type,
+            cost=make("Cost", f"{name} production cost", "production"),
+            maintenance=make("Maintenance", f"{name} maintenance", "gold per turn"),
+            combat=make("Combat", f"{name} combat strength", "combat strength"),
+            ranged_combat=make("RangedCombat", f"{name} ranged strength",
+                               "combat strength"),
+            prereq_tech=make("PrereqTech", f"{name} requires technology", None),
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            strategic_resource=make("StrategicResource", f"{name} requires resource", None),
+            upgrades_to=upgrades_to, mentions=mentions)
 
     # -- construction --------------------------------------------------------------
 

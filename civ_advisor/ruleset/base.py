@@ -158,6 +158,101 @@ class BuildingFacts:
         return tuple(f for f in named if f is not None) + self.yields
 
 
+@dataclass(frozen=True)
+class DistrictFacts:
+    """Every in-scope figure about one district, each carrying its own row."""
+
+    district: str
+    cost: RulesetFigure | None = None
+    prereq_tech: RulesetFigure | None = None
+    prereq_civic: RulesetFigure | None = None
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.cost, self.prereq_tech, self.prereq_civic)
+                     if f is not None)
+
+
+@dataclass(frozen=True)
+class BoostFacts:
+    """One eureka or inspiration: how much, and what triggers it.
+
+    The trigger is the `BoostClass` type key and the populated trigger-object columns.
+    Which of the ~10 nullable object columns is populated is what says what kind of
+    trigger it is, so the populated ones are carried as figures naming their own column
+    and the empty ones are simply absent.
+    """
+
+    percent: RulesetFigure
+    trigger: RulesetFigure
+    objects: tuple[RulesetFigure, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return (self.percent, self.trigger) + self.objects
+
+
+@dataclass(frozen=True)
+class TechnologyFacts:
+    """Every in-scope figure about one technology, each carrying its own row."""
+
+    technology: str
+    cost: RulesetFigure | None = None
+    era: RulesetFigure | None = None
+    prereqs: tuple[RulesetFigure, ...] = ()
+    boosts: tuple[BoostFacts, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        named = tuple(f for f in (self.cost, self.era) if f is not None)
+        return named + self.prereqs + tuple(f for b in self.boosts for f in b.figures)
+
+
+@dataclass(frozen=True)
+class CivicFacts:
+    """Every in-scope figure about one civic, each carrying its own row."""
+
+    civic: str
+    cost: RulesetFigure | None = None
+    era: RulesetFigure | None = None
+    prereqs: tuple[RulesetFigure, ...] = ()
+    boosts: tuple[BoostFacts, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        named = tuple(f for f in (self.cost, self.era) if f is not None)
+        return named + self.prereqs + tuple(f for b in self.boosts for f in b.figures)
+
+
+@dataclass(frozen=True)
+class UnitFacts:
+    """Every in-scope figure about one unit, each carrying its own row.
+
+    The gold cost of an upgrade is computed at runtime from a formula and stored in no
+    row, so it stays a `RulesetMention` rather than a figure: the upgrade target being
+    stateable makes the cost the obvious next question, and the honest answer is that
+    this file does not have it.
+    """
+
+    unit: str
+    cost: RulesetFigure | None = None
+    maintenance: RulesetFigure | None = None
+    combat: RulesetFigure | None = None
+    ranged_combat: RulesetFigure | None = None
+    prereq_tech: RulesetFigure | None = None
+    prereq_civic: RulesetFigure | None = None
+    strategic_resource: RulesetFigure | None = None
+    upgrades_to: RulesetFigure | None = None
+    mentions: tuple[RulesetMention, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.cost, self.maintenance, self.combat,
+                                 self.ranged_combat, self.prereq_tech, self.prereq_civic,
+                                 self.strategic_resource, self.upgrades_to)
+                     if f is not None)
+
+
 @runtime_checkable
 class RulesetProvider(Protocol):
     """What the advisor may ask an installed ruleset.
@@ -175,6 +270,14 @@ class RulesetProvider(Protocol):
     def identity(self) -> RulesetIdentity | None: ...
 
     def building(self, building_type: str) -> BuildingFacts | None: ...
+
+    def district(self, district_type: str) -> DistrictFacts | None: ...
+
+    def technology(self, technology_type: str) -> TechnologyFacts | None: ...
+
+    def civic(self, civic_type: str) -> CivicFacts | None: ...
+
+    def unit(self, unit_type: str) -> UnitFacts | None: ...
 
 
 @dataclass(frozen=True)
@@ -203,10 +306,24 @@ class NullRuleset:
     def building(self, building_type: str) -> BuildingFacts | None:
         return None
 
+    def district(self, district_type: str) -> DistrictFacts | None:
+        return None
+
+    def technology(self, technology_type: str) -> TechnologyFacts | None:
+        return None
+
+    def civic(self, civic_type: str) -> CivicFacts | None:
+        return None
+
+    def unit(self, unit_type: str) -> UnitFacts | None:
+        return None
+
 
 NO_RULESET = NullRuleset("This game ships no queryable ruleset, so every figure in a "
                          "recommendation comes from your own preview.")
 
 
-__all__ = ["NO_RULESET", "BuildingFacts", "NullRuleset", "RulesetCount", "RulesetFigure",
-           "RulesetIdentity", "RulesetMention", "RulesetOutOfScope", "RulesetProvider"]
+__all__ = ["NO_RULESET", "BoostFacts", "BuildingFacts", "CivicFacts", "DistrictFacts",
+           "NullRuleset", "RulesetCount", "RulesetFigure", "RulesetIdentity",
+           "RulesetMention", "RulesetOutOfScope", "RulesetProvider", "TechnologyFacts",
+           "UnitFacts"]

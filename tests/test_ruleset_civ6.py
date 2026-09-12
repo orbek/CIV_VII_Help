@@ -133,3 +133,80 @@ def test_the_placeholder_identity_names_the_real_file(ruleset):
     identity = ruleset.identity()
     assert identity.path.name == "DebugGameplay.sqlite"
     assert identity.size > 0
+
+
+def test_a_district_states_its_cost_and_prerequisite(ruleset):
+    facts = ruleset.district("DISTRICT_CAMPUS")
+
+    assert facts.cost.value == 54 and facts.cost.unit == "production"
+    assert facts.prereq_tech.value == "TECH_WRITING"
+    assert facts.prereq_civic is None
+
+
+def test_a_technology_states_its_cost_prereqs_and_eureka(ruleset):
+    """Boosts are a purpose-built table, not a modifier chain: the percentage is a row
+    value and the trigger is named by a column."""
+    facts = ruleset.technology("TECH_WRITING")
+
+    assert (facts.cost.value, facts.cost.unit) == (50, "science")
+    assert [p.value for p in facts.prereqs] == ["TECH_POTTERY"]
+    boost = facts.boosts[0]
+    assert (boost.percent.value, boost.percent.unit) == (40, "% of the cost")
+    assert boost.trigger.value == "BOOST_TRIGGER_MEET_CIV"
+    assert [(o.column, o.value) for o in boost.objects] == [("Unit1Type", "UNIT_SCOUT")]
+
+
+def test_a_civic_states_its_cost_and_inspiration(ruleset):
+    facts = ruleset.civic("CIVIC_STATE_WORKFORCE")
+
+    assert (facts.cost.value, facts.cost.unit) == (70, "culture")
+    assert [p.value for p in facts.prereqs] == ["CIVIC_CODE_OF_LAWS"]
+    assert [(o.column, o.value) for o in facts.boosts[0].objects] == [("NumItems", 1)]
+
+
+def test_a_unit_states_its_cost_strength_and_upgrade_target(ruleset):
+    facts = ruleset.unit("UNIT_WARRIOR")
+
+    assert (facts.cost.value, facts.cost.unit) == (40, "production")
+    assert (facts.combat.value, facts.combat.unit) == (20, "combat strength")
+    assert facts.ranged_combat is None            # 0 means no ranged attack, not "0 strength"
+    assert facts.maintenance is None              # 0 gold is no maintenance
+    assert facts.upgrades_to.value == "UNIT_SWORDSMAN"
+    assert facts.strategic_resource is None
+
+
+def test_the_gold_cost_of_an_upgrade_is_a_mention_and_never_a_number(ruleset):
+    """The upgrade target is a row; the gold it costs is computed at runtime and stored
+    nowhere. Stating the first without disclaiming the second is how a guess starts."""
+    facts = ruleset.unit("UNIT_WARRIOR")
+
+    assert facts.mentions
+    assert all("gold" in m.as_unknown().lower() for m in facts.mentions)
+    assert not any(f.column == "UpgradeCost" for f in facts.figures)
+
+
+def test_the_boosts_table_may_not_be_read_for_anything_else(ruleset):
+    with pytest.raises(RulesetOutOfScope, match="TriggerDescription"):
+        ruleset._select("Boosts", ("TriggerDescription",), {})
+
+
+def test_a_real_modifier_count_from_the_schema_cannot_reach_the_player_as_a_figure(ruleset):
+    """The acceptance test set when RulesetCount was built: a modifier count must not
+    be able to reach the player looking like a yield, without deliberately
+    circumventing the type -- proved here against a real count Task 6 actually
+    produces from the fixture's schema, not only a constructed one."""
+    facts = ruleset.building("BUILDING_GREAT_LIBRARY")
+
+    assert facts.counts, "the Great Library fixture must produce a real count"
+    count = facts.counts[0]
+    assert count.count == 1
+    assert count.table == "BuildingModifiers"
+    # Structurally incapable of being read as a magnitude: no value/unit field exists
+    # to check, and it is provably absent from the figures a renderer would show.
+    assert not hasattr(count, "value") and not hasattr(count, "unit")
+    assert count not in facts.figures
+    assert all(f.table != "BuildingModifiers" for f in facts.figures)
+    # What a reader would actually take from it: a description naming a count of
+    # effects and disclaiming their magnitude, not a number that reads like a yield.
+    assert "1 modifier-based effect" in count.describe()
+    assert "does not state their magnitude" in count.describe()

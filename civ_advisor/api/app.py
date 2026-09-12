@@ -23,7 +23,7 @@ from civ_advisor.decisions.context import (
     build_context,
 )
 from civ_advisor.decisions.models import PlayerReport
-from civ_advisor.ingest.load import LOG_FILES
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.poller import snapshot as poll_snapshot
 from civ_advisor.ingest.poller import watch
 from civ_advisor.llm import questions
@@ -82,7 +82,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
-        initial = poll_snapshot(logs_dir, LOG_FILES)
+        initial = poll_snapshot(logs_dir, CIV7.log_files)
         await asyncio.to_thread(store.rebuild)
 
         def on_change() -> None:  # runs in a worker thread
@@ -93,7 +93,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
                 "session": captured.session, "epoch": captured.epoch,
             })
 
-        task = asyncio.create_task(watch(logs_dir, LOG_FILES, on_change, poll_interval, initial))
+        task = asyncio.create_task(watch(logs_dir, CIV7.log_files, on_change, poll_interval, initial))
         try:
             yield
         finally:

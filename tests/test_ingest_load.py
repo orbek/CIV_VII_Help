@@ -3,7 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from civ_advisor.ingest.load import LOG_FILES, load_logs
+from civ_advisor.games.civ7 import CIV7
+from civ_advisor.ingest.load import load_logs
 
 # The seven logs v1 shipped with; the v1 fixture has exactly these, so every newer log is
 # legitimately "file not found" there.
@@ -13,10 +14,10 @@ V1_FILES = ["Player_Stats.csv", "Player_Treasury.csv", "Player_Happiness.csv", "
 
 def test_load_logs_fixture_all_ok(fixture_dir: Path):
     raw = load_logs(fixture_dir)
-    assert set(raw.files) == set(LOG_FILES)
+    assert set(raw.files) == set(CIV7.log_files)
     assert all(raw.files[name].ok for name in V1_FILES)
-    assert set(V1_FILES) <= set(LOG_FILES)
-    for name in set(LOG_FILES) - set(V1_FILES):
+    assert set(V1_FILES) <= set(CIV7.log_files)
+    for name in set(CIV7.log_files) - set(V1_FILES):
         assert raw.files[name].error == "file not found", name
     assert raw.files["Player_Stats.csv"].rows == 2523
     assert raw.files["Player_Stats.csv"].latest_turn == 82
@@ -94,3 +95,21 @@ def test_new_logs_are_wired_to_their_rawlogs_attribute(tmp_path: Path, fixture_d
     raw = load_logs(tmp_path)
     assert raw.files[name].ok is True and raw.files[name].rows == 1
     assert len(getattr(raw, attr)) == 1
+
+
+def test_load_logs_reads_only_the_files_the_profile_declares(tmp_path, fixture_dir):
+    """A profile that declares one file must not read, or report on, the other
+    twenty sitting next to it. This is what lets Civ VI declare a different set."""
+    from civ_advisor.games.base import GameProfile, LogReader
+    from civ_advisor.ingest.readers import read_player_stats
+
+    only_stats = GameProfile(
+        id="civ7-statsonly", display_name="Stats Only", default_logs_dir=tmp_path,
+        readers=(LogReader("Player_Stats.csv", "stats", read_player_stats),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    raw = load_logs(fixture_dir, profile=only_stats)
+
+    assert list(raw.files) == ["Player_Stats.csv"]
+    assert raw.stats
+    assert raw.combat == []

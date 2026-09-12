@@ -37,7 +37,7 @@ def test_publish_reaches_subscribers_and_unsubscribe_stops_it():
 
 def test_store_archives_under_game_and_session_and_starts_a_new_session_after_a_wipe(tmp_path, fixture_dir):
     import shutil
-    from civ_advisor.ingest.load import LOG_FILES
+    from civ_advisor.games.civ7 import CIV7
     logs = tmp_path / "logs"
     shutil.copytree(fixture_dir, logs)
     root = tmp_path / "archive"
@@ -47,7 +47,7 @@ def test_store_archives_under_game_and_session_and_starts_a_new_session_after_a_
     assert len(games) == 1
     sessions = sorted(games[0].iterdir())
     assert len(sessions) == 1 and (sessions[0] / "Player_Stats.csv").is_file()
-    for name in LOG_FILES:                       # the game relaunches: every log vanishes
+    for name in CIV7.log_files:                       # the game relaunches: every log vanishes
         (logs / name).unlink(missing_ok=True)
     store.rebuild()
     shutil.copytree(fixture_dir, logs, dirs_exist_ok=True)  # ... and a save is loaded again
@@ -152,11 +152,11 @@ def test_a_log_wipe_and_reload_start_a_new_epoch(tmp_path, fixture_dir):
     """Civ VII empties Logs/ on launch. Whatever appears afterwards is a different
     sitting, so acknowledgements must not silently carry across it."""
     import shutil
-    from civ_advisor.ingest.load import LOG_FILES
+    from civ_advisor.games.civ7 import CIV7
     logs = _copy_logs(tmp_path, fixture_dir)
     store = Store(logs)
     first = store.rebuild()
-    for name in LOG_FILES:
+    for name in CIV7.log_files:
         (logs / name).unlink(missing_ok=True)
     wiped = store.rebuild()
     assert wiped.epoch == first.epoch     # an empty read alone is not yet a new game

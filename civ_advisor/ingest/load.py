@@ -4,28 +4,15 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+
+from civ_advisor.games.base import GameProfile
+from civ_advisor.games.civ7 import CIV7
 
 from .csvfile import LogFormatError
-from .readers import (
-    DiplomacyRow,
-    HappinessRow,
-    HistorianRow,
-    StatsRow,
-    TargetRow,
-    TreasuryRow,
-    VictoryRow,
-    read_diplomacy,
-    read_happiness,
-    read_historian,
-    read_player_stats,
-    read_targets,
-    read_treasury,
-    read_victories,
-)
-from .events import CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
-from .production import BuildQueueRow, read_build_queue
-from .textlogs import DealItem, PlayerIdentityRow, read_deals, read_player_identities
+from .readers import DiplomacyRow, HappinessRow, HistorianRow, StatsRow, TargetRow, TreasuryRow, VictoryRow
+from .events import CombatRow, DiplomacySummaryRow, GossipRow
+from .production import BuildQueueRow
+from .textlogs import DealItem, PlayerIdentityRow
 from .tactical import (
     CombatOrderRow,
     CommanderPromotionRow,
@@ -35,14 +22,6 @@ from .tactical import (
     TacticalRow,
     UnitEfficiencyRow,
     UnitOperationRow,
-    read_combat_planning,
-    read_commander_promotions,
-    read_mayhem,
-    read_operation_evals,
-    read_operations,
-    read_tactical,
-    read_unit_efficiency,
-    read_unit_operations,
 )
 
 log = logging.getLogger(__name__)
@@ -83,51 +62,28 @@ class RawLogs:
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
-# (file name, RawLogs attribute, reader)
-READERS: list[tuple[str, str, Callable[[Path], list]]] = [
-    ("Player_Stats.csv", "stats", read_player_stats),
-    ("Player_Treasury.csv", "treasury", read_treasury),
-    ("Player_Happiness.csv", "happiness", read_happiness),
-    ("AI_Victories.csv", "victories", read_victories),
-    ("AI_DiplomaticActions.csv", "diplomacy", read_diplomacy),
-    ("AI_Targets.csv", "targets", read_targets),
-    ("Historian.csv", "historian", read_historian),
-    ("CityBuildQueue.csv", "build_queue", read_build_queue),
-    ("CombatLog.csv", "combat", read_combat_log),
-    ("Game_Gossip.csv", "gossip", read_gossip),
-    ("DiplomacySummary.csv", "diplomacy_summary", read_diplomacy_summary),
-    ("DiplomacyDeals.log", "deals", read_deals),
-    ("UnitOperations.log", "unit_operations", read_unit_operations),
-    ("AI_Tactical.csv", "tactical", read_tactical),
-    ("AI_Operation.csv", "operations", read_operations),
-    ("AI_CombatPlanning.csv", "combat_orders", read_combat_planning),
-    ("AI_Operation_Eval.csv", "operation_evals", read_operation_evals),
-    ("AI_UnitEfficiency.csv", "unit_efficiency", read_unit_efficiency),
-    ("AI_MayhemTracker.csv", "mayhem", read_mayhem),
-    ("AI_Commander_Promotions.csv", "commander_promotions", read_commander_promotions),
-    ("GameCore.log", "player_identities", read_player_identities),
-]
-LOG_FILES = [name for name, _, _ in READERS]
+def load_logs(logs_dir: Path, profile: GameProfile = CIV7) -> RawLogs:
+    """Read every log `profile` declares. A file that fails to parse is dropped for
+    this load (its FileStatus says why) while every other file still contributes.
 
-
-def load_logs(logs_dir: Path) -> RawLogs:
-    """Read every log in READERS. A file that fails to parse is dropped for this load
-    (its FileStatus says why) while every other file still contributes."""
+    A file the profile does not declare is not read and not reported: absent by
+    design is not the same as missing, and only the profile knows which is which.
+    """
     raw = RawLogs()
-    for name, attr, reader in READERS:
-        path = logs_dir / name
+    for reader in profile.readers:
+        path = logs_dir / reader.filename
         try:
-            rows = reader(path)
+            rows = reader.read(path)
         except OSError as exc:
             error = "file not found" if isinstance(exc, FileNotFoundError) else str(exc)
-            raw.files[name] = FileStatus(name, False, 0, None, error)
+            raw.files[reader.filename] = FileStatus(reader.filename, False, 0, None, error)
             continue
         except (LogFormatError, ValueError, IndexError) as exc:
-            log.warning("%s: dropping file for this rebuild: %s", name, exc)
-            raw.files[name] = FileStatus(name, False, 0, None, str(exc))
+            log.warning("%s: dropping file for this rebuild: %s", reader.filename, exc)
+            raw.files[reader.filename] = FileStatus(reader.filename, False, 0, None, str(exc))
             continue
-        setattr(raw, attr, rows)
-        raw.files[name] = FileStatus(
-            name, True, len(rows), max((r.turn for r in rows), default=None)
+        setattr(raw, reader.attr, rows)
+        raw.files[reader.filename] = FileStatus(
+            reader.filename, True, len(rows), max((r.turn for r in rows), default=None)
         )
     return raw

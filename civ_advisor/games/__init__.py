@@ -8,6 +8,6 @@ __all__ = [
     "GameProfile", "LogReader", "UnknownGame", "get_profile", "profile_ids", "register",
 ]
 
-# Task 3 appends the line that imports and registers civ7 here, at the bottom:
-# each game package imports .base, so importing one from the top of this module
-# would be circular.
+# Imported for the side effect of registering. Must come last: each game package
+# imports .base, so importing one from the top of this module would be circular.
+from . import civ7  # noqa: E402,F401

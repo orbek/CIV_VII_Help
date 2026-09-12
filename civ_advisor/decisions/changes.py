@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from civ_advisor.advisors.base import Severity, visible
+from civ_advisor.advisors.base import Provenance, Severity
 from civ_advisor.store import Snapshot
 
 from .models import DecisionCard
@@ -67,6 +67,11 @@ class Signal:
     # the only thing that licenses calling a signal resolved.
     satisfied: bool = False
     catalog_dependent: bool = False    # its wording or ranking came from the guide catalog
+    # Recorded regardless of which mode the request that captured this turn was in: the
+    # history is the advisor's own memory and must not vary with how a player happened to
+    # be looking at it. Oracle-ness is filtered out of what is SERVED, at `compare()`'s
+    # output, never out of what is recorded here.
+    provenance: Provenance = Provenance.FAIR
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,10 @@ class Change:
     severity: int
     previous_turn: int | None = None
     observed_turn: int | None = None
+    # The signal's own provenance, carried onto the Change so a response can filter
+    # Oracle-derived rows out at serialization without ever having filtered the history
+    # they were computed from.
+    provenance: Provenance = Provenance.FAIR
 
 
 @dataclass
@@ -155,21 +164,26 @@ class History:
 
 def signals_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
                  comparisons: dict | None = None,
-                 on_pace: float = 1.0, oracle: bool = True) -> dict[str, Signal]:
+                 on_pace: float = 1.0) -> dict[str, Signal]:
     """Everything trackable in one snapshot, including what is now satisfied.
 
     Satisfied signals matter as much as the warnings: a yield that has climbed back to the
     field is the positive observation that lets last turn's warning be called resolved
-    rather than merely gone. Insights are filtered by ``oracle`` first: a fair-mode
-    caller must never have an Oracle-only insight's id, title, or severity turn up in a
-    "since last turn" row, even indirectly through history.
+    rather than merely gone.
+
+    Recorded complete, with no oracle filter at all: every insight becomes a signal
+    regardless of provenance, tagged with that provenance so a caller can filter what is
+    SERVED later. Filtering here would make the recorded history depend on which mode
+    happened to be active when a turn was captured -- a player toggling Oracle on would
+    then be told a signal was "newly observed" when it had been there all along.
     """
     out: dict[str, Signal] = {}
-    for insight in visible(snapshot.insights, oracle):
+    for insight in snapshot.insights:
         out[insight.id] = Signal(
             id=insight.id, label=insight.title, severity=int(insight.severity),
             observed_turn=insight.turn,
             domains=ADVISOR_DOMAINS.get(insight.advisor, ("empire",)),
+            provenance=insight.provenance,
         )
     for card in cards:
         domains = DECISION_DOMAINS.get(card.family, YIELD_DOMAINS)
@@ -197,14 +211,19 @@ def signals_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
 
 
 def entry_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
-               catalog_revision: str, comparisons: dict | None = None,
-               oracle: bool = True) -> HistoryEntry:
+               catalog_revision: str, comparisons: dict | None = None) -> HistoryEntry:
+    """The complete recorded memory of one turn -- never filtered by oracle.
+
+    Deliberately takes no `oracle` argument: what the advisor remembers about a turn
+    must not depend on which mode the request that captured it happened to be in.
+    Filtering for a response is `compare()`'s output's job, not this function's.
+    """
     return HistoryEntry(
         session=snapshot.session, epoch=snapshot.epoch, turn=snapshot.analysis_turn,
         revision=snapshot.revision, captured_at=snapshot.captured_at,
         catalog_revision=catalog_revision,
         coverage={c.name: c.status for c in snapshot.coverage},
-        signals=signals_from(snapshot, cards, comparisons, oracle=oracle),
+        signals=signals_from(snapshot, cards, comparisons),
     )
 
 
@@ -229,53 +248,61 @@ def compare(previous: HistoryEntry | None, current: HistoryEntry) -> tuple[Chang
                     signal_id, signal.label, NOT_COMPARABLE,
                     f"First seen this turn, but {moved} changed since last turn, so this "
                     "may have been there and unreadable rather than new.",
-                    signal.severity, previous.turn, signal.observed_turn))
+                    signal.severity, previous.turn, signal.observed_turn,
+                    provenance=signal.provenance))
             elif not signal.satisfied:
                 changes.append(Change(
                     signal_id, signal.label, NEW, "Not present last turn.",
-                    signal.severity, previous.turn, signal.observed_turn))
+                    signal.severity, previous.turn, signal.observed_turn,
+                    provenance=signal.provenance))
             continue
         if moved:
             changes.append(Change(
                 signal_id, signal.label, NOT_COMPARABLE,
                 f"{moved} changed since last turn, so then and now are not comparable.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
             continue
         if signal.catalog_dependent and previous.catalog_revision != current.catalog_revision:
             changes.append(Change(
                 signal_id, signal.label, NOT_COMPARABLE,
                 "The reviewed guide catalog changed between these turns, so this "
                 "decision's wording and ranking are not comparable.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
             continue
         if signal.satisfied and not before.satisfied:
             changes.append(Change(
                 signal_id, signal.label, RESOLVED,
                 _resolution_detail(before, signal), signal.severity,
-                previous.turn, signal.observed_turn))
+                previous.turn, signal.observed_turn, provenance=signal.provenance))
         elif signal.severity > before.severity:
             changes.append(Change(
                 signal_id, signal.label, WORSENING,
                 f"Severity rose from {Severity(before.severity).name} to "
                 f"{Severity(signal.severity).name}.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
         elif signal.severity < before.severity:
             changes.append(Change(
                 signal_id, signal.label, IMPROVING,
                 f"Severity fell from {Severity(before.severity).name} to "
                 f"{Severity(signal.severity).name}.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
         elif signal.value is not None and before.value is not None \
                 and abs(signal.value - before.value) > 0.005:
             direction = IMPROVING if signal.value > before.value else WORSENING
             changes.append(Change(
                 signal_id, signal.label, direction,
                 f"Went from {before.value:.0%} to {signal.value:.0%} of the field.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
         else:
             changes.append(Change(
                 signal_id, signal.label, UNCHANGED, "No change observed.",
-                signal.severity, previous.turn, signal.observed_turn))
+                signal.severity, previous.turn, signal.observed_turn,
+                provenance=signal.provenance))
 
     for signal_id, before in sorted(previous.signals.items()):
         if signal_id in current.signals or before.satisfied:
@@ -288,13 +315,13 @@ def compare(previous: HistoryEntry | None, current: HistoryEntry) -> tuple[Chang
                 signal_id, before.label, NO_LONGER_OBSERVED,
                 f"Gone from this turn's advice, but {moved} changed, so this is a lost "
                 "source rather than an observed change.",
-                before.severity, previous.turn, None))
+                before.severity, previous.turn, None, provenance=before.provenance))
         else:
             changes.append(Change(
                 signal_id, before.label, NO_LONGER_OBSERVED,
                 "Not in this turn's advice. Nothing observed says the situation "
                 "resolved — only that it is no longer being reported.",
-                before.severity, previous.turn, None))
+                before.severity, previous.turn, None, provenance=before.provenance))
     return tuple(changes)
 
 

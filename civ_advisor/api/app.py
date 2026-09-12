@@ -320,12 +320,15 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         return _changes(captured, oracle, context, cards)
 
     def _changes(captured: Snapshot, oracle: bool, context, cards) -> dict:
+        # Recorded complete regardless of `oracle`: the history is the advisor's own
+        # memory of the turn and must not depend on which mode the request that
+        # captured it happened to be in. Only the served rows are filtered, below.
         entry = change_tracking.entry_from(
-            captured, cards, context.catalog_revision, context.comparisons, oracle=oracle)
+            captured, cards, context.catalog_revision, context.comparisons)
         previous = history.previous(entry)
         history.record(entry)
-        return changes_to_dict(entry, previous, history,
-                               change_tracking.compare(previous, entry),
+        changes = visible(change_tracking.compare(previous, entry), oracle)
+        return changes_to_dict(entry, previous, history, changes,
                                record.of_kind("acknowledged"))
 
     @app.get("/api/briefing")

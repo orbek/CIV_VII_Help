@@ -229,3 +229,30 @@ def test_store_watches_and_reads_only_the_profile_s_files(fixture_dir, tmp_path)
     snapshot = Store(fixture_dir, profile=only_stats).rebuild()
 
     assert list(snapshot.state.files) == ["Player_Stats.csv"]
+
+
+def test_coverage_is_profile_aware_for_civ6(civ6_dir):
+    """DOMAINS names reader ATTRIBUTES, not literal filenames, so a domain reads
+    correctly no matter which game's filename backs it -- and a domain this game's
+    profile cannot back at all reports not_applicable, not unavailable."""
+    from civ_advisor.games.registry import get_profile
+
+    snapshot = Store(civ6_dir, profile=get_profile("civ6")).rebuild()
+    by_name = {c.name: c for c in snapshot.coverage}
+
+    # Civ VI's build queue file is named differently from Civ VII's; the domain must
+    # resolve to Civ VI's own file, not report itself unavailable for lacking Civ VII's.
+    assert by_name["production"].status == "ok"
+    assert by_name["production"].files == ("City_BuildQueue.csv",)
+
+    # Civ VI declares a reader for only one of the three diplomacy-domain attributes
+    # (diplomacy_summary); the other two (diplomacy intent, deals) have no reader at
+    # all for this profile. The domain must not report "ok" on the strength of the
+    # one attribute it happens to have.
+    assert by_name["diplomacy"].status == "partial"
+
+    # A domain with no backing reader at all for this profile (e.g. happiness: Civ VI
+    # has no Player_Happiness.csv-equivalent) is not_applicable, not unavailable --
+    # the concept does not exist for this game, it did not merely fail to read.
+    assert by_name["happiness"].status == "not_applicable"
+    assert by_name["strategy"].status == "not_applicable"

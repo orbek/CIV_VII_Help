@@ -40,23 +40,28 @@ SCHEMA_VERSION = 1
 # `turn_scoped` marks a domain whose rows are dated by game turn, and so can meaningfully
 # be behind the analysis turn. Identity is written once when a save loads, so measuring
 # its age against the turn counter would report a 99-turn lag on a perfectly current file.
+#
+# The last element names RawLogs/reader ATTRIBUTES, not filenames: two games can feed the
+# same attribute from differently-named files (Civ VII's build queue is CityBuildQueue.csv,
+# Civ VI's is City_BuildQueue.csv), and only the profile's own reader table knows which file
+# backs an attribute for THIS game. Resolving through the attribute, in `_coverage`, is what
+# lets a domain be reported correctly regardless of which profile built the state.
 DOMAINS: tuple[tuple[str, str, bool, bool, tuple[str, ...]], ...] = (
-    ("empire", "Empire yields and standings", True, True, ("Player_Stats.csv",)),
-    ("treasury", "Treasury and maintenance", False, True, ("Player_Treasury.csv",)),
-    ("happiness", "Happiness and celebrations", False, True, ("Player_Happiness.csv",)),
-    ("strategy", "Rival victory strategies", False, True, ("AI_Victories.csv",)),
+    ("empire", "Empire yields and standings", True, True, ("stats",)),
+    ("treasury", "Treasury and maintenance", False, True, ("treasury",)),
+    ("happiness", "Happiness and celebrations", False, True, ("happiness",)),
+    ("strategy", "Rival victory strategies", False, True, ("victories",)),
     ("diplomacy", "Rival diplomatic intent", False, True,
-     ("AI_DiplomaticActions.csv", "DiplomacySummary.csv", "DiplomacyDeals.log")),
-    ("targets", "Rival target plots", False, True, ("AI_Targets.csv",)),
-    ("history", "Age and historian events", False, True, ("Historian.csv",)),
-    ("production", "Settlement build queues", False, True, ("CityBuildQueue.csv",)),
-    ("combat", "Combat results", False, True, ("CombatLog.csv",)),
-    ("gossip", "Observed world events", False, True, ("Game_Gossip.csv",)),
+     ("diplomacy", "diplomacy_summary", "deals")),
+    ("targets", "Rival target plots", False, True, ("targets",)),
+    ("history", "Age and historian events", False, True, ("historian",)),
+    ("production", "Settlement build queues", False, True, ("build_queue",)),
+    ("combat", "Combat results", False, True, ("combat",)),
+    ("gossip", "Observed world events", False, True, ("gossip",)),
     ("tactical", "Tactical unit positions and plans", False, True,
-     ("UnitOperations.log", "AI_Tactical.csv", "AI_Operation.csv", "AI_CombatPlanning.csv",
-      "AI_Operation_Eval.csv", "AI_UnitEfficiency.csv", "AI_MayhemTracker.csv",
-      "AI_Commander_Promotions.csv")),
-    ("identity", "Leader and civilization identity", False, False, ("GameCore.log",)),
+     ("unit_operations", "tactical", "operations", "combat_orders",
+      "operation_evals", "unit_efficiency", "mayhem", "commander_promotions")),
+    ("identity", "Leader and civilization identity", False, False, ("player_identities",)),
 )
 
 # Why the advisor decided it is looking at a different game than before. Anything other
@@ -71,12 +76,19 @@ TURN_WENT_BACKWARDS = "turn_went_backwards"
 class DomainCoverage:
     """How well one capability's log files covered the turn we analyzed.
 
-    `status` separates the three failures the player needs told apart:
-      unavailable — nothing in this domain is readable (missing or malformed);
-      partial     — some files are readable and some are not;
-      empty       — readable, but the game has written no rows yet;
-      stale       — rows exist, but none of them reach the analysis turn;
-      ok          — rows reach the analysis turn, or the domain is not turn-scoped.
+    `status` separates the failures the player needs told apart:
+      not_applicable — this game's profile declares no reader that could ever produce
+                       this domain's data at all; the concept does not exist for this
+                       game, distinct from it existing but failing to read;
+      unavailable    — a reader for this domain IS declared, but nothing came of it
+                       (missing or malformed);
+      partial        — some of what the domain needs is readable, but not all of it —
+                       either a declared file failed to read, or (for a domain built
+                       from several attributes) this game's profile has no reader at
+                       all for one of them;
+      empty          — readable, but the game has written no rows yet;
+      stale          — rows exist, but none of them reach the analysis turn;
+      ok             — rows reach the analysis turn, or the domain is not turn-scoped.
 
     "stale" is a statement about coverage, not a fault: episodic logs such as commander
     promotions legitimately have nothing to say on most turns, which is why
@@ -122,9 +134,25 @@ class Snapshot:
         return next((c for c in self.coverage if c.name == name), None)
 
 
-def _coverage(state: GameState, analysis_turn: int) -> tuple[DomainCoverage, ...]:
+def _coverage(state: GameState, analysis_turn: int, profile: GameProfile = CIV7) -> tuple[DomainCoverage, ...]:
+    # attr -> filename, for whichever readers THIS profile actually declares. A domain's
+    # attrs are resolved through this map rather than checked against a literal filename,
+    # so the same domain definition means the right thing for every game.
+    attr_to_file = {r.attr: r.filename for r in profile.readers}
     out = []
-    for name, label, required, turn_scoped, names in DOMAINS:
+    for name, label, required, turn_scoped, attrs in DOMAINS:
+        backed = [attr_to_file[a] for a in attrs if a in attr_to_file]
+        unbacked = [a for a in attrs if a not in attr_to_file]
+        if not backed:
+            # No reader this profile declares could ever produce any of this domain's
+            # data: the concept does not exist for this game, not merely unreadable.
+            out.append(DomainCoverage(
+                name=name, label=label, required=required, turn_scoped=turn_scoped,
+                status="not_applicable", files=(), missing=(), rows=0,
+                latest_turn=None, lag=None, errors=(),
+            ))
+            continue
+        names = tuple(backed)
         statuses = [state.files[n] for n in names if n in state.files]
         readable = [f for f in statuses if f.ok]
         missing = tuple(f.name for f in statuses if not f.ok)
@@ -134,7 +162,10 @@ def _coverage(state: GameState, analysis_turn: int) -> tuple[DomainCoverage, ...
         latest = max(turns) if turns else None
         if not readable:
             status = "unavailable"
-        elif missing:
+        elif missing or unbacked:
+            # `unbacked`: this domain is built from several attributes and at least one
+            # of them has no reader at all for this profile. A domain must not report
+            # itself whole when this game cannot supply part of what it claims to cover.
             status = "partial"
         elif not rows:
             status = "empty"
@@ -243,7 +274,7 @@ class Store:
             game_key=self._observed_key, revision=self._revision, captured_at=time.time(),
             latest_turn=state.latest_turn, analysis_turn=state.complete_through_turn,
             state=state, insights=tuple(insights),
-            coverage=_coverage(state, state.complete_through_turn),
+            coverage=_coverage(state, state.complete_through_turn, self.profile),
         )
 
     def _session_reason_locked(self, raw: RawLogs, key: str | None) -> str | None:

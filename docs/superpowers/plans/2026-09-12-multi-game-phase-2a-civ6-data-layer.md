@@ -74,8 +74,7 @@ If that path is gone, the source logs persist at
   - `StatsRow` fields `towns`, `settlement_cap`, `settlements_over_cap`,
     `urban_pop`, `rural_pop`, `happiness`, `diplomacy` become `| None`;
     new optional fields `civics`, `faith_balance`, `faith`, `corps`,
-    `armies`, and `civilization: str | None` — Civ VI keys its stats rows by
-    civilization string, and Task 6 uses this to resolve them to player ids.
+    `armies`.
   - `StrategyStatus.weight` becomes `int | None`.
 
 - [ ] **Step 1: Write the failing tests**
@@ -172,12 +171,14 @@ In `civ_advisor/ingest/readers.py`, change `StatsRow` so that `towns`,
 `happiness` and `diplomacy` are typed `| None` with default `None`, and add
 `civics: int | None = None`, `faith_balance: float | None = None`,
 `faith: float | None = None`, `corps: int | None = None`,
-`armies: int | None = None`, `civilization: str | None = None`.
+`armies: int | None = None`.
 
-`civilization` goes on `StatsRow` and NOT on `PlayerTurn`: it exists only to
-carry Civ VI's row key from the reader to `build_state`, which resolves it to
-a player id and drops it. Once resolved, a player's civilization lives in
-`GameState.identities`, which both games already populate.
+**Do not add a `civilization` field.** An earlier draft of this plan carried
+Civ VI's row key on `StatsRow` for `build_state` to resolve. That breaks the
+pre-existing `tests/test_state.py::test_player_turn_covers_every_stats_field`,
+which asserts every `StatsRow` field is also a `PlayerTurn` field — a real
+guard against a stats field being silently dropped before it reaches the
+state. Task 4's reader resolves player ids itself instead (see there).
 
 Every field with a default must follow the
 fields without one — reorder so the required Civ VII/VI-common fields
@@ -694,12 +695,16 @@ every field Civ VI cannot supply as None. See spec §3.2.
 """
 from __future__ import annotations
 
+import logging
 import re
 from pathlib import Path
+
+log = logging.getLogger(__name__)
 
 from civ_advisor.ingest.csvfile import LogFormatError, latest_game_segment, read_table
 from civ_advisor.ingest.readers import StatsRow
 from civ_advisor.ingest.tactical import UnitOperationRow, _unit
+from civ_advisor.ingest.textlogs import read_player_identities
 
 from .columns import (
     PLAYER_STATS_CIV_COLUMN,
@@ -708,12 +713,32 @@ from .columns import (
     PLAYER_STATS_INT_COLUMNS,
 )
 
-# Player_Stats keys rows by civilization; the player id is resolved later from
-# GameCore identities (spec §5). Until then rows carry this sentinel.
-UNRESOLVED_PLAYER = -1
+IDENTITY_FILE = "GameCore.log"
+
+
+def _player_by_civilization(logs_dir: Path) -> dict[str, int]:
+    """civilization string -> player id, from GameCore.log (spec §5).
+
+    A civilization fielded by two players maps to NEITHER: its rows cannot be
+    attributed, and guessing one would misfile every observation about that
+    rival. Missing or unreadable file returns {}, so rows go unattributed
+    rather than wrongly attributed.
+    """
+    path = logs_dir / IDENTITY_FILE
+    if not path.is_file():
+        return {}
+    try:
+        identities = read_player_identities(path)
+    except (LogFormatError, ValueError, IndexError, OSError):
+        return {}
+    counts: dict[str, int] = {}
+    for row in identities:
+        counts[row.civilization] = counts.get(row.civilization, 0) + 1
+    return {r.civilization: r.player for r in identities if counts[r.civilization] == 1}
 
 
 def read_player_stats_civ6(logs_dir: Path, path: Path) -> list[StatsRow]:
+    players = _player_by_civilization(logs_dir)
     table = read_table(path)
     out: list[StatsRow] = []
     for row in latest_game_segment(table.rows, turn_col=0):
@@ -725,13 +750,16 @@ def read_player_stats_civ6(logs_dir: Path, path: Path) -> list[StatsRow]:
             )
         values: dict = {name: int(row[i]) for name, i in PLAYER_STATS_INT_COLUMNS.items()}
         values |= {name: float(row[i]) for name, i in PLAYER_STATS_FLOAT_COLUMNS.items()}
+        player = players.get(row[PLAYER_STATS_CIV_COLUMN])
+        if player is None:
+            # Unattributable: cannot be filed under a player at all. Dropped
+            # rather than filed under player 0, which would put a rival's
+            # figures on the player's own dashboard.
+            log.warning("%s: no player for civilization %r; dropping its rows",
+                        path.name, row[PLAYER_STATS_CIV_COLUMN])
+            continue
         # Every Civ VII-only field is left at its None default, not zeroed.
-        # `civilization` carries the row key; build_state resolves it to an id.
-        out.append(StatsRow(
-            player=UNRESOLVED_PLAYER,
-            civilization=row[PLAYER_STATS_CIV_COLUMN],
-            **values,
-        ))
+        out.append(StatsRow(player=player, **values))
     return out
 
 
@@ -1018,7 +1046,7 @@ def _state(civ6_dir):
     return build_state(load_logs(civ6_dir, profile=CIV6), profile=CIV6)
 
 
-def test_stats_rows_are_resolved_to_real_player_ids(civ6_dir):
+def test_stats_rows_arrive_under_real_player_ids(civ6_dir):
     state = _state(civ6_dir)
     human = state.at(0, turn=53)
     assert human is not None
@@ -1065,15 +1093,9 @@ In `civ_advisor/state/build.py`:
 
 - Change the signature to `build_state(raw: RawLogs, profile: GameProfile | None = None) -> GameState`.
   The default keeps Civ VII's ~10 existing call sites working; do not remove it.
-- Before the per-turn stats loop, build `civ_by_player = {r.player: r.civilization for r in raw.player_identities}`
-  and invert it to `player_by_civ`. If a civilization maps to more than one
-  player, exclude it from the inverted map entirely — those rows stay
-  unresolved rather than being attributed to an arbitrary one of them
-  (spec §5).
-- When a `StatsRow` carries the Civ VI sentinel (`player == -1`), resolve it
-  through `player_by_civ[row.civilization]`. That field is declared in Task 1
-  and populated in Task 4. A row whose civilization does not resolve is
-  DROPPED with a logged warning, never attributed to player 0.
+- **No id resolution is needed here.** Task 4's reader already emits real
+  player ids, so `build_state` receives Civ VI stats rows in exactly the shape
+  it receives Civ VII's. This task's work is classification only.
 - Classify players from `PlayerIdentityRow.level` when identities exist:
   `CIVILIZATION_LEVEL_FULL_CIV` with `slot_status == "Human"` is
   `PlayerKind.HUMAN`, other `FULL_CIV` are `RIVAL`, `CITY_STATE` and

@@ -616,8 +616,8 @@ this step only keeps the module importable.
 uv run pytest -q 2>&1 | tail -3
 ```
 
-Expected: the Task 1 Step 1 pass count, **plus 10** — 5 from Task 2 plus 5
-more in `test_games.py`, and 1 in `test_ingest_load.py`. Zero failures.
+Expected: the Task 1 Step 1 pass count (486), **plus 10** — 5 from Task 2,
+4 more in `test_games.py`, and 1 in `test_ingest_load.py`. Zero failures.
 
 - [ ] **Step 7: Commit**
 

@@ -7,14 +7,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from civ_advisor.ingest import aiscores
 from civ_advisor.state.models import GameState, PlayerKind
 
 from . import diplomacy_language
 from .base import Provenance, humanize
 
-# Tie-break within one turn: what was done to you first, what was agreed next, then talk and rumour.
-KIND_ORDER = {"combat": 0, "deal": 1, "diplomacy": 2, "gossip": 3}
+# Tie-break within one turn: what was done to you first, what was agreed next, then talk and
+# rumour, then an AI's private deliberation last -- it sorts behind everything that actually
+# happened.
+KIND_ORDER = {"combat": 0, "deal": 1, "diplomacy": 2, "gossip": 3, "ai_score": 4}
 SYMMETRIC_ACTIONS = frozenset({"Met"})  # the log writes these once from each side; show one
+TOP_SCORED = 3   # how many items a "scored these highest" event names
 
 
 @dataclass(frozen=True)
@@ -110,6 +114,78 @@ def _relevant(state: GameState, *players: int) -> bool:
     return len(kinds) == len(players) and any(k in (PlayerKind.HUMAN, PlayerKind.RIVAL) for k in kinds)
 
 
+def _ai_score_events(state: GameState) -> list[IntelEvent]:
+    """What each rival's AI was weighing, turn by turn (Civ VI only).
+
+    ORACLE without exception: these are the AI's private deliberations, and no part
+    of them is visible to a player in game.
+
+    WHAT THESE EVENTS MAY NOT SAY. A score is a priority within one turn's
+    deliberation over one player's currently-available options. It carries no
+    victory-condition label, it is not comparable across turns or players, and the
+    items it names (Writing, Archery) serve every path in the game. So an event says
+    what was scored and what the AI marked as its goal -- never what the rival is
+    pursuing, going for, or winning by. See the phase-3 plan's "victory-path
+    question"; `GameState.strategies` stays empty for Civ VI and nothing here writes
+    to it.
+
+    Each (rival, turn) yields at most one event per family: with seventeen techs
+    scored per player per turn, one event per row would bury the feed.
+    """
+    rivals = {p.id for p in state.rivals()}
+    out: list[IntelEvent] = []
+
+    by_turn: dict[tuple[int, int], list] = {}
+    goals: dict[tuple[int, int], object] = {}
+    for row in state.tech_scores:
+        if row.player not in rivals:
+            continue
+        by_turn.setdefault((row.turn, row.player), []).append(row)
+        if row.boost == aiscores.GOAL:
+            goals[(row.turn, row.player)] = row
+
+    for (turn, player), rows in sorted(by_turn.items()):
+        weighed = len(rows)
+        goal = goals.get((turn, player))
+        if goal is not None:
+            out.append(IntelEvent(
+                turn, "ai_score", Provenance.ORACLE,
+                f"{_name(state, player)}'s AI set {humanize(goal.tech)} as its research goal "
+                f"(scored {goal.score:.1f} of {weighed} techs it weighed)",
+                (player,), None, None, "AI_Research.csv",
+                raw=f"{goal.tech} score {goal.score} boost {goal.boost}",
+                event_type="ai_score.research_goal"))
+            continue
+        top = sorted(rows, key=lambda r: -r.score)[:TOP_SCORED]
+        out.append(IntelEvent(
+            turn, "ai_score", Provenance.ORACLE,
+            f"{_name(state, player)}'s AI scored these techs highest: "
+            + ", ".join(f"{humanize(r.tech)} ({r.score:.1f})" for r in top)
+            + f", of {weighed} weighed",
+            (player,), None, None, "AI_Research.csv",
+            raw=" | ".join(f"{r.tech} {r.score}" for r in top),
+            event_type="ai_score.tech"))
+
+    policies: dict[tuple[int, int, str], list] = {}
+    for row in state.policy_scores:
+        if row.player not in rivals:
+            continue
+        policies.setdefault((row.turn, row.player, row.action), []).append(row)
+
+    for (turn, player, action), rows in sorted(policies.items()):
+        family = "civics" if action == "Civic" else "policy cards"
+        top = sorted(rows, key=lambda r: -r.score)[:TOP_SCORED]
+        out.append(IntelEvent(
+            turn, "ai_score", Provenance.ORACLE,
+            f"{_name(state, player)}'s AI scored these {family} highest: "
+            + ", ".join(f"{humanize(r.policy)} ({r.score:.1f})" for r in top)
+            + f", of {len(rows)} weighed",
+            (player,), None, None, "AI_GovtPolicies.csv",
+            raw=" | ".join(f"{r.policy} {r.score}" for r in top),
+            event_type="ai_score.civic" if action == "Civic" else "ai_score.policy"))
+    return out
+
+
 def feed(state: GameState) -> list[IntelEvent]:
     events: list[IntelEvent] = []
     for g in state.gossip:
@@ -190,4 +266,6 @@ def feed(state: GameState) -> list[IntelEvent]:
             (d.from_player, d.to_player), None, None, "DiplomacyDeals.log",
             raw=f"item {d.item_id} type {d.kind} amount {d.amount} duration {d.duration}",
             event_type=f"deal.{d.kind.lower().replace(' ', '_')}"))
+
+    events.extend(_ai_score_events(state))
     return sorted(events, key=lambda e: (-e.turn, KIND_ORDER[e.kind], e.text))

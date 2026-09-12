@@ -50,7 +50,8 @@ def visible(items: Iterable[T], oracle: bool) -> list[T]:
     return [i for i in items if oracle or i.provenance is Provenance.FAIR]
 
 
-_DOMAIN_PREFIXES = ("GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_", "WONDER_")
+_DOMAIN_PREFIXES = ("GOSSIP_", "DISTRICT_", "UNIT_", "BUILDING_", "IMPROVEMENT_",
+                    "WONDER_", "TECH_", "CIVIC_", "POLICY_")
 
 
 def humanize(key: str) -> str:

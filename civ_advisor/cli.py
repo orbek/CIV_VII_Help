@@ -26,7 +26,7 @@ def main(argv: list[str] | None = None) -> int:
         return _archive_command(argv[1:])
 
     parser = argparse.ArgumentParser(
-        prog="civ7-advisor",
+        prog="civ-advisor",
         description="Second-screen turn advisor for Civilization VII. Reads the game's own log "
                     "files; never writes to them. Archives them under ~/.civ7-advisor because the "
                     "game deletes its logs on launch.",
@@ -94,7 +94,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _archive_command(argv: list[str]) -> int:
-    parser = argparse.ArgumentParser(prog="civ7-advisor archive")
+    parser = argparse.ArgumentParser(prog="civ-advisor archive")
     parser.add_argument("action", choices=["list"])
     parser.add_argument("--archive-dir", type=Path, default=DEFAULT_ARCHIVE_ROOT)
     args = parser.parse_args(argv)

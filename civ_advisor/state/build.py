@@ -3,12 +3,20 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
+from civ_advisor.games.base import GameProfile
 from civ_advisor.ingest.load import RawLogs
 
 from .models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
 from .names import NameResolver
 
 INDEPENDENT_KEY = "LOC_CIVILIZATION_INDEPENDENT_NAME"
+
+# Levels a PlayerIdentityRow can carry (spec §5). Civ VII's own identities never
+# set `level` to anything but FULL_CIV, so this only takes effect for a game (Civ
+# VI) whose GameCore.log distinguishes majors from city-states, Free Cities and
+# the barbarian slot.
+LEVEL_INDEPENDENT = {"CIVILIZATION_LEVEL_CITY_STATE", "CIVILIZATION_LEVEL_FREE_CITIES"}
+LEVEL_TRIBE = "CIVILIZATION_LEVEL_TRIBE"
 
 LEADER_NAMES = {
     "LOC_LEADER_IBN_BATTUTA_NAME": "Ibn Battuta",
@@ -55,7 +63,7 @@ def _civilization_name(key: str) -> str:
     return key.removeprefix("CIVILIZATION_").replace("_", " ").title()
 
 
-def build_state(raw: RawLogs) -> GameState:
+def build_state(raw: RawLogs, profile: GameProfile | None = None) -> GameState:
     state = GameState(files=dict(raw.files))
     if not raw.stats:
         return state
@@ -81,7 +89,11 @@ def build_state(raw: RawLogs) -> GameState:
         state.turns.setdefault(s.turn, {})[s.player] = PlayerTurn(**asdict(s), **extra)
 
     # Players: 0 is human; a LOC_LEADER owner key or a happiness row marks a rival;
-    # everyone else is an independent people.
+    # everyone else is an independent people. Where a game's identities carry a
+    # `level` (Civ VI does; Civ VII's is always FULL_CIV), that level classifies
+    # city-states, Free Cities and the barbarian slot directly rather than
+    # falling through Civ VII's owner-key/happiness heuristics, which Civ VI's
+    # logs cannot supply at all.
     owner_keys = {r.player: r.owner_key for r in raw.victories}
     identities = {r.player: r for r in raw.player_identities}
     happiness_players = {r.player for r in raw.happiness}
@@ -89,12 +101,19 @@ def build_state(raw: RawLogs) -> GameState:
     for s in raw.stats:
         last_seen[s.player] = max(last_seen.get(s.player, 0), s.turn)
     for pid, seen in sorted(last_seen.items()):
-        key = owner_keys.get(pid)
         identity = identities.get(pid)
+        if identity is not None and identity.level == LEVEL_TRIBE:
+            # The barbarian slot is not a player at all, regardless of what any
+            # other log (even a future one) reports about it.
+            continue
+        key = owner_keys.get(pid)
         identity_is_major = identity is not None and identity.level == "CIVILIZATION_LEVEL_FULL_CIV"
+        identity_is_independent = identity is not None and identity.level in LEVEL_INDEPENDENT
         has_leader_key = key is not None and key != INDEPENDENT_KEY
         if pid == GameState.HUMAN:
             kind, name = PlayerKind.HUMAN, "You"
+        elif identity_is_independent:
+            kind, name = PlayerKind.INDEPENDENT, f"Independent {pid}"
         elif identity_is_major or has_leader_key or pid in happiness_players:
             kind = PlayerKind.RIVAL
             name = (_identity_name(identity.leader) if identity_is_major and identity.leader

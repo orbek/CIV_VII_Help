@@ -180,6 +180,37 @@ def test_a_partial_domain_with_both_causes_reports_both():
     assert "does not log 1 part of this" in text
 
 
+def _game(mode, pinned=None, candidates=()):
+    return {"mode": mode, "pinned": pinned, "detection": {"candidates": list(candidates)}}
+
+
+def test_a_pinned_game_whose_directory_is_absent_says_so():
+    game = _game("pinned", "civ6", [{"id": "civ6", "present": False, "age": None}])
+    gap = run_js(f"return B.pinnedGameGap({json.dumps(game)});")
+    assert gap == "its logs folder was not found — install or launch the game"
+
+
+def test_a_pinned_game_that_is_installed_but_unplayed_says_so_differently():
+    """The two gap messages must never collapse into each other: "not found" is the
+    remedy for an absent directory (install/launch), not for one that exists but has
+    nothing written in it yet (play a turn) -- conflating them would send a player who
+    already has the game installed off to reinstall it."""
+    game = _game("pinned", "civ6", [{"id": "civ6", "present": True, "age": None}])
+    gap = run_js(f"return B.pinnedGameGap({json.dumps(game)});")
+    assert gap == "no log has been written for it yet — play a turn"
+    assert "not found" not in gap
+
+
+def test_a_pinned_game_with_no_gap_is_null():
+    game = _game("pinned", "civ7", [{"id": "civ7", "present": True, "age": 12.3}])
+    assert run_js(f"return B.pinnedGameGap({json.dumps(game)});") is None
+
+
+def test_auto_mode_has_no_pinned_gap():
+    game = _game("auto", None, [{"id": "civ6", "present": False, "age": None}])
+    assert run_js(f"return B.pinnedGameGap({json.dumps(game)});") is None
+
+
 # ---- the decision brief ----------------------------------------------------------
 
 INSIGHTS = """

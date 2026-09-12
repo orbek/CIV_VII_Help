@@ -107,6 +107,24 @@
     return lines;
   }
 
+  /* A pin is HONOURED even when its logs directory does not exist or has never been
+     written to (spec 8.1: an empty, correctly-labelled dashboard beats a silent
+     fallback to the other game) -- but those two situations look identical on screen
+     and have opposite remedies, so the header must name which one it is. Read off the
+     matching detection candidate: `present` is whether the directory itself exists;
+     `age` is null only when nothing the game declares has ever been written there.
+     Returns null for auto mode, an unpinned game, or a pinned game with no gap at all. */
+  function pinnedGameGap(game) {
+    if (!game || game.mode !== "pinned") return null;
+    const candidate = (game.detection.candidates || []).find(function (c) {
+      return c.id === game.pinned;
+    });
+    if (!candidate) return null;
+    if (!candidate.present) return "its logs folder was not found — install or launch the game";
+    if (candidate.age === null) return "no log has been written for it yet — play a turn";
+    return null;
+  }
+
   /* ---- the decision brief ------------------------------------------------------
 
      Grouping overlapping warnings by subject, without losing any of them. Two rival
@@ -225,6 +243,7 @@
 
   const api = {
     acceptResponse: acceptResponse, seen: seen, ago: ago, coverageLines: coverageLines,
+    pinnedGameGap: pinnedGameGap,
     groupDecisions: groupDecisions, splitBrief: splitBrief, maxSeverity: maxSeverity,
     fingerprint: fingerprint, acknowledgementKey: acknowledgementKey,
     isAcknowledged: isAcknowledged, commentaryExplains: commentaryExplains,

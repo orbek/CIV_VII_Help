@@ -2,7 +2,7 @@
   /* The response and coverage rules live in briefing.js so they can be tested by
      executing them rather than by grepping this file. */
   const B = window.Civ7Briefing;
-  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines } = B;
+  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines, pinnedGameGap } = B;
   const $ = (sel) => document.querySelector(sel);
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -338,20 +338,10 @@
     ambiguous: () => "two games wrote at the same moment — detection cannot tell",
   };
 
-  /* A pin is HONOURED even when its logs directory does not exist or has never been
-     written to (spec 8.1: an empty, correctly-labelled dashboard beats a silent
-     fallback to the other game) -- but those two situations look identical on screen
-     and have opposite remedies, so the header must name which one it is. Read off the
-     matching detection candidate: `present` is whether the directory itself exists;
-     `age` is null only when nothing the game declares has ever been written there. */
-  function pinnedGameGap(game) {
-    if (game.mode !== "pinned") return null;
-    const candidate = (game.detection.candidates || []).find((c) => c.id === game.pinned);
-    if (!candidate) return null;
-    if (!candidate.present) return "its logs folder was not found — install or launch the game";
-    if (candidate.age === null) return "no log has been written for it yet — play a turn";
-    return null;
-  }
+  // `pinnedGameGap` (whether the pinned game's own directory is absent or just unplayed)
+  // lives in briefing.js, imported above: it is pure logic over the `game` object with no
+  // DOM, so it belongs where node can execute and assert it directly (tests/test_web_briefing.py),
+  // the same reason `coverageLines` lives there rather than inline here.
 
   function renderGame() {
     const game = state.game;

@@ -59,6 +59,11 @@ class RawLogs:
     mayhem: list[MayhemRow] = field(default_factory=list)
     commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
     player_identities: list[PlayerIdentityRow] = field(default_factory=list)
+    # Civ VI's build-queue reader joins AI_CityBuild.csv privately for ownership and
+    # never sets this; it exists only so that file gets a declared reader of its own,
+    # and therefore its own FileStatus below -- a joined-only file must not go
+    # unreported just because nothing consumes rows from it directly (spec §3.2).
+    city_ownership: list = field(default_factory=list)
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 

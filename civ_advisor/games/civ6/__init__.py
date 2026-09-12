@@ -16,7 +16,10 @@ from civ_advisor.ingest.textlogs import read_player_identities
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
-from .readers import read_build_queue_civ6, read_player_stats_civ6, read_unit_operations_civ6
+from .readers import (
+    read_build_queue_civ6, read_city_ownership_status, read_player_stats_civ6,
+    read_unit_operations_civ6,
+)
 
 DEFAULT_LOGS_DIR = (
     Path.home()
@@ -35,6 +38,9 @@ READERS: tuple[LogReader, ...] = (
     LogReader("Player_Stats.csv", "stats", read_player_stats_civ6),
     LogReader("UnitOperations.log", "unit_operations", read_unit_operations_civ6),
     LogReader("City_BuildQueue.csv", "build_queue", read_build_queue_civ6),
+    # AI_CityBuild.csv is joined privately by the build-queue reader above; declared
+    # separately so it gets its own FileStatus rather than failing invisibly (spec §3.2).
+    LogReader("AI_CityBuild.csv", "city_ownership", read_city_ownership_status),
 )
 
 CIV6 = GameProfile(

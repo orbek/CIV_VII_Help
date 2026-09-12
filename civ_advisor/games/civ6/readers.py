@@ -11,7 +11,7 @@ from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-from civ_advisor.ingest.csvfile import LogFormatError, latest_game_segment, read_table
+from civ_advisor.ingest.csvfile import LogFormatError, expect_header, latest_game_segment, read_table
 from civ_advisor.ingest.production import BuildQueueRow
 from civ_advisor.ingest.readers import StatsRow
 from civ_advisor.ingest.tactical import UnitOperationRow, _unit
@@ -23,6 +23,15 @@ from .columns import (
     PLAYER_STATS_FLOAT_COLUMNS,
     PLAYER_STATS_INT_COLUMNS,
 )
+
+BUILD_QUEUE_HEADER = [
+    "Game Turn", "City", "Production Added", "Current Item", "Current Production",
+    "Production Needed", "Overflow",
+]
+UNIT_OPERATIONS_HEADER = ["Game Turn", "Mode", "Player", "Unit", "Operation"]
+CITY_BUILD_HEADER = [
+    "Game Turn", "Player", "City", "Food Adv.", "Prod. Adv.", "Construct", "Order Source",
+]
 
 IDENTITY_FILE = "GameCore.log"
 
@@ -83,6 +92,7 @@ _DIAGNOSTIC = re.compile(r"^Unit operation handler [0-9a-f]+$")
 
 def read_unit_operations_civ6(logs_dir: Path, path: Path) -> list[UnitOperationRow]:
     table = read_table(path)
+    expect_header(table, UNIT_OPERATIONS_HEADER)
     out: list[UnitOperationRow] = []
     # Civ VII deletes its Logs/ directory on every launch, so this file rarely spans
     # two games there. Civ VI never truncates it: it accumulates across every game
@@ -107,6 +117,22 @@ OWNERSHIP_FILE = "AI_CityBuild.csv"
 PURCHASE_SENTINEL = "PURCHASE"
 
 
+def read_city_ownership_status(logs_dir: Path, path: Path) -> list:
+    """Declares AI_CityBuild.csv to `load_logs` so it gets its own `FileStatus`.
+
+    `read_build_queue_civ6` joins this file privately, through `_ownership_by_turn`,
+    for ownership -- it never goes through `load_logs`'s per-file isolation on its
+    own. Without a declared reader for it, a broken or missing AI_CityBuild.csv would
+    silently blank every queue row's owner with no visible fault anywhere (spec
+    §3.2: a joined file must not go unreported just because nothing consumes rows
+    from it directly). This reader supplies that visibility and nothing else --
+    it always returns an empty list; the actual join lives in `_ownership_by_turn`.
+    """
+    table = read_table(path)
+    expect_header(table, CITY_BUILD_HEADER)
+    return []
+
+
 def _ownership_by_turn(logs_dir: Path) -> dict[str, list[tuple[int, int]]]:
     """city -> [(turn, player), ...] ascending, from AI_CityBuild.csv.
 
@@ -118,10 +144,13 @@ def _ownership_by_turn(logs_dir: Path) -> dict[str, list[tuple[int, int]]]:
         return {}
     try:
         table = read_table(path)
-    except (LogFormatError, ValueError, IndexError):
+    except (LogFormatError, ValueError, IndexError, OSError):
         return {}
     seen: dict[str, list[tuple[int, int]]] = {}
-    for row in table.rows:
+    # Civ VI never truncates this log either: without segmenting to the latest
+    # game, a city name reused by a different owner in an earlier match would
+    # carry that earlier owner forward into the current game's queue.
+    for row in latest_game_segment(table.rows, turn_col=0):
         if len(row) < 3:
             continue
         city = row[2].strip()
@@ -156,6 +185,7 @@ def _owner_at(entries: list[tuple[int, int]], turn: int) -> int | None:
 def read_build_queue_civ6(logs_dir: Path, path: Path) -> list[BuildQueueRow]:
     ownership = _ownership_by_turn(logs_dir)
     table = read_table(path)
+    expect_header(table, BUILD_QUEUE_HEADER)
     out: list[BuildQueueRow] = []
     for row in latest_game_segment(table.rows, turn_col=0):
         if len(row) != 7:

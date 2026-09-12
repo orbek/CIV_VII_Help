@@ -141,3 +141,28 @@ def test_gamecore_uses_last_resolved_identity_and_ignores_random(tmp_path: Path)
         PlayerIdentityRow(0, 1, "CIVILIZATION_PRUSSIA", "LEADER_AUGUSTUS", "CIVILIZATION_LEVEL_FULL_CIV", "AI"),
         PlayerIdentityRow(0, 8, "CIVILIZATION_PLACEHOLDER_CITYSTATE", None, "CIVILIZATION_LEVEL_CITY_STATE", "AI"),
     ]
+
+
+def test_gamecore_keeps_only_the_last_player_0_block(tmp_path: Path):
+    """A log that never truncates (Civ VI) can carry an EARLIER, unrelated
+    game's identity map before the current one. An id the current game's
+    block never re-touches must not survive from that earlier block: it
+    would otherwise sit alongside the current game's own id for the same
+    civilization, making that civilization look "fielded by two players"."""
+    p = tmp_path / "GameCore.log"
+    p.write_text(
+        # Earlier game: player 3 was Persia. This id is never mentioned again.
+        "Player 0: Civilization - CIVILIZATION_AMERICA (1)  Leader - LEADER_BENJAMIN_FRANKLIN (2), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human\n"
+        "Player 3: Civilization - CIVILIZATION_PERSIA (3)  Leader - LEADER_CYRUS (4), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - AI\n"
+        # Current game (restarts at "Player 0:"): Persia is player 1 this time.
+        "Player 0: Civilization - CIVILIZATION_AMERICA (1)  Leader - LEADER_BENJAMIN_FRANKLIN (2), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human\n"
+        "Player 1: Civilization - CIVILIZATION_PERSIA (3)  Leader - LEADER_CYRUS (4), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - AI\n"
+    )
+    assert read_player_identities(p) == [
+        PlayerIdentityRow(0, 0, "CIVILIZATION_AMERICA", "LEADER_BENJAMIN_FRANKLIN", "CIVILIZATION_LEVEL_FULL_CIV", "Human"),
+        PlayerIdentityRow(0, 1, "CIVILIZATION_PERSIA", "LEADER_CYRUS", "CIVILIZATION_LEVEL_FULL_CIV", "AI"),
+    ]

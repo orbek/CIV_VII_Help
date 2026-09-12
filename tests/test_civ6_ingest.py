@@ -53,6 +53,28 @@ def test_civ6_identities_come_from_the_shared_gamecore_reader(civ6_dir):
     assert by_player[62].level == "CIVILIZATION_LEVEL_FREE_CITIES"
 
 
+def test_player_by_civilization_ignores_a_stale_id_from_an_earlier_game(tmp_path):
+    """GameCore.log never truncates in Civ VI. An earlier game's leftover id
+    for a civilization must not survive alongside the current game's id for
+    that same civilization -- that would make `_player_by_civilization` see
+    it as fielded by two players and drop it, silently discarding a live
+    rival from every Player_Stats row that names it."""
+    from civ_advisor.games.civ6.readers import _player_by_civilization
+
+    (tmp_path / "GameCore.log").write_text(
+        "Player 0: Civilization - CIVILIZATION_AMERICA (1)  Leader - LEADER_BENJAMIN_FRANKLIN (2), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human\n"
+        "Player 3: Civilization - CIVILIZATION_PERSIA (3)  Leader - LEADER_CYRUS (4), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - AI\n"
+        "Player 0: Civilization - CIVILIZATION_AMERICA (1)  Leader - LEADER_BENJAMIN_FRANKLIN (2), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human\n"
+        "Player 1: Civilization - CIVILIZATION_PERSIA (3)  Leader - LEADER_CYRUS (4), "
+        "- Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - AI\n"
+    )
+    players = _player_by_civilization(tmp_path)
+    assert players == {"CIVILIZATION_AMERICA": 0, "CIVILIZATION_PERSIA": 1}
+
+
 def test_player_stats_reads_both_faith_columns_by_position(civ6_dir):
     """`Faith` is the header name at index 13 (balance) AND index 17 (yield).
     A name-keyed reader silently keeps one and drops the other."""
@@ -188,3 +210,97 @@ def test_a_queue_row_with_no_owner_anywhere_is_not_attributed_to_the_human(tmp_p
     rows = read_build_queue_civ6(tmp_path, tmp_path / "City_BuildQueue.csv")
     assert len(rows) == 1
     assert rows[0].player is None
+
+
+def test_ownership_from_an_earlier_game_does_not_leak_into_the_current_one(tmp_path):
+    """AI_CityBuild.csv never truncates, same as every other Civ VI log. A city
+    name reused by a different owner in an earlier game must not carry that
+    earlier owner into the current game's queue -- especially not onto the
+    human, who never owned it in the current game at all."""
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+
+    (tmp_path / "City_BuildQueue.csv").write_text(
+        "Game Turn, City, Production Added, Current Item, Current Production, "
+        "Production Needed, Overflow\n"
+        "100, LOC_CITY_NAME_SOMEWHERE_ELSE, 5.0, UNIT_WARRIOR, 5.0, 50, 0.0\n"
+        "60, LOC_CITY_NAME_TESTCITY, 6.0, UNIT_BUILDER, 6.0, 50, 0.0\n"
+    )
+    (tmp_path / "AI_CityBuild.csv").write_text(
+        "Game Turn, Player, City, Food Adv., Prod. Adv., Construct, Order Source\n"
+        # An earlier game: the human (player 0) owned this city name, at turn 50.
+        "50, 0, LOC_CITY_NAME_TESTCITY, 0, 0, ,\n"
+        # The current game (turn column drops 50 -> 5, marking a new game): an
+        # AI (player 3) owns the same city name this time, established turn 5.
+        "5, 3, LOC_CITY_NAME_TESTCITY, 0, 0, ,\n"
+    )
+    rows = read_build_queue_civ6(tmp_path, tmp_path / "City_BuildQueue.csv")
+    testcity = [r for r in rows if r.city == "LOC_CITY_NAME_TESTCITY"]
+    assert len(testcity) == 1
+    # Unsegmented, the earlier game's (50, player 0) entry would sort after and
+    # overwrite the current game's (5, player 3) when queried at turn 60 --
+    # filing this AI's build queue under the human.
+    assert testcity[0].player == 3
+
+
+def test_build_queue_raises_on_a_reordered_header(tmp_path):
+    """Pinning only a column COUNT would let a patch that reorders columns (e.g.
+    swapping Current Item and Current Production) silently misread one field as
+    another. The header itself must be pinned, matching Civ VII's own strictness."""
+    import pytest
+
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+    from civ_advisor.ingest.csvfile import LogFormatError
+
+    (tmp_path / "City_BuildQueue.csv").write_text(
+        # "Current Item" and "Current Production" swapped from their real order.
+        "Game Turn, City, Production Added, Current Production, Current Item, "
+        "Production Needed, Overflow\n"
+        "5, LOC_CITY_NAME_ROME, 6.0, UNIT_BUILDER, 6.0, 50, 0.0\n"
+    )
+    (tmp_path / "AI_CityBuild.csv").write_text(
+        "Game Turn, Player, City, Food Adv., Prod. Adv., Construct, Order Source\n"
+    )
+    with pytest.raises(LogFormatError, match="header"):
+        read_build_queue_civ6(tmp_path, tmp_path / "City_BuildQueue.csv")
+
+
+def test_unit_operations_raises_on_a_reordered_header(tmp_path):
+    """Same strictness for UnitOperations.log: a reordered header must not be
+    silently accepted just because the column count still matches."""
+    import pytest
+
+    from civ_advisor.games.civ6.readers import read_unit_operations_civ6
+    from civ_advisor.ingest.csvfile import LogFormatError
+
+    (tmp_path / "UnitOperations.log").write_text(
+        # "Mode" and "Player" swapped from their real order.
+        "Game Turn, Player, Mode, Unit, Operation\n"
+        "001, 0, Adding, UNIT_WARRIOR (1), UNITOPERATION_MOVE_TO (2)\n"
+    )
+    with pytest.raises(LogFormatError, match="header"):
+        read_unit_operations_civ6(tmp_path, tmp_path / "UnitOperations.log")
+
+
+def test_city_ownership_status_reader_reports_a_missing_file(tmp_path):
+    """AI_CityBuild.csv is joined privately by the build-queue reader; this
+    reader exists only so a broken or missing sibling gets its own visible
+    FileStatus instead of silently emptying every queue row's attribution."""
+    import pytest
+
+    from civ_advisor.games.civ6.readers import read_city_ownership_status
+
+    with pytest.raises(OSError):
+        read_city_ownership_status(tmp_path, tmp_path / "AI_CityBuild.csv")
+
+
+def test_city_ownership_status_reader_raises_on_a_reordered_header(tmp_path):
+    import pytest
+
+    from civ_advisor.games.civ6.readers import read_city_ownership_status
+    from civ_advisor.ingest.csvfile import LogFormatError
+
+    (tmp_path / "AI_CityBuild.csv").write_text(
+        "Player, Game Turn, City, Food Adv., Prod. Adv., Construct, Order Source\n"
+    )
+    with pytest.raises(LogFormatError, match="header"):
+        read_city_ownership_status(tmp_path, tmp_path / "AI_CityBuild.csv")

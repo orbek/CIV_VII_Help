@@ -97,21 +97,42 @@ def read_deals(path: Path) -> list[DealItem]:
 
 
 def read_player_identities(path: Path) -> list[PlayerIdentityRow]:
-    """Return the last resolved GameCore identity line for each player.
+    """Return the last resolved GameCore identity BLOCK.
 
-    GameCore first emits RANDOM placeholders and later the real civilization/leader
-    map. A reload may append another complete map, so later resolved lines win.
+    GameCore emits the identity map in discrete blocks, each restarting at a
+    "Player 0:" line: first RANDOM placeholders, then the resolved map, and
+    (on a reload, or across a Civ VI log that never truncates and so spans
+    every game ever played) another complete map appended later. Grouping by
+    block and keeping only the LAST block that resolved anything is what
+    makes this safe for Civ VI: scanning every line as one running "last line
+    per player" map (the previous approach) let a player from an earlier,
+    unrelated game survive into the current one whenever that earlier game
+    happened to field more players than the current one -- and worse, made a
+    civilization that sat at a different id across two games look "fielded
+    by two players" to `_player_by_civilization`, silently dropping a live
+    rival. Civ VII's own log has exactly one resolved block per launch, or
+    two across a reload; grouping changes nothing there, and a file with no
+    "Player 0:" line at all degrades to one running block, i.e. the previous
+    behaviour.
     """
-    latest: dict[int, PlayerIdentityRow] = {}
+    blocks: list[dict[int, PlayerIdentityRow]] = []
+    current: dict[int, PlayerIdentityRow] | None = None
     with path.open(encoding="utf-8-sig", errors="replace") as fh:
         for line in fh:
             match = _PLAYER.search(line)
-            if not match or match.group(2) == "RANDOM" or match.group(3) == "RANDOM":
+            if not match:
                 continue
             player = int(match.group(1))
-            latest[player] = PlayerIdentityRow(
+            if player == 0 or current is None:
+                current = {}
+                blocks.append(current)
+            if match.group(2) == "RANDOM" or match.group(3) == "RANDOM":
+                continue
+            current[player] = PlayerIdentityRow(
                 0, player, match.group(2),
                 None if match.group(3) == "(null)" else match.group(3),
                 match.group(4), match.group(5),
             )
+    resolved_blocks = [b for b in blocks if b]
+    latest = resolved_blocks[-1] if resolved_blocks else {}
     return [latest[player] for player in sorted(latest)]

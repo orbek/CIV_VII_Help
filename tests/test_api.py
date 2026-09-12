@@ -694,3 +694,222 @@ def test_on_change_skips_publishing_when_rebuild_returns_none(tmp_path, fixture_
         # which fires only when on_change escapes with an exception, never appears.
         assert not any("poll failed" in r.message for r in caplog.records)
         assert published == []
+
+
+def _selector(tmp_path, civ7_dir, civ6_dir, pinned=None):
+    from civ_advisor.games.selection import GameSelector
+    return GameSelector(pinned=pinned, logs_dirs={"civ7": civ7_dir, "civ6": civ6_dir})
+
+
+def test_api_game_reports_the_mode_and_what_detection_thinks(fixture_dir, civ6_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        body = c.get("/api/game").json()
+    assert body["mode"] == "pinned" and body["active"]["id"] == "civ7"
+    assert [g["id"] for g in body["games"]] == ["civ6", "civ7"]
+    assert body["active"]["display_name"] == "Civilization VII"
+
+
+def test_posting_a_game_pins_it_and_switches_the_store(fixture_dir, civ6_dir, tmp_path):
+    """Starts pinned to civ7 (not auto) so the starting point is deterministic: the
+    committed fixtures' real mtimes are both well outside the detection window, so an
+    unpinned selector would start with no active game at all rather than civ7."""
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        before = c.get("/api/status").json()
+        assert c.post("/api/game", json={"game": "civ6"}).status_code == 200
+        after = c.get("/api/status").json()
+    assert before["game"]["active"]["id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ6"
+    assert after["game"]["mode"] == "pinned"
+    assert after["epoch"] == before["epoch"] + 1       # a switch is a new sitting
+    assert after["session"] != before["session"]
+
+
+def test_posting_auto_returns_to_detection(fixture_dir, civ6_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.post("/api/game", json={"game": "auto"}).status_code == 200
+        assert c.get("/api/game").json()["mode"] == "auto"
+
+
+def test_posting_an_unknown_game_is_refused_without_changing_anything(fixture_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.post("/api/game", json={"game": "civ5"}).status_code == 422
+        assert c.get("/api/game").json()["active"]["id"] == "civ7"
+
+
+def test_status_carries_the_game_when_no_selector_is_configured(fixture_dir):
+    """A fixed-profile app still says which game it is advising on."""
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
+        body = c.get("/api/status").json()
+    assert body["game"]["active"]["id"] == "civ7" and body["game"]["mode"] == "pinned"
+
+
+def test_an_idle_app_explains_itself_rather_than_erroring_blankly(tmp_path):
+    """Auto mode, nothing recent on disk: the briefing is unavailable, and /api/game
+    still answers so the header can say why and offer the control."""
+    from civ_advisor.games.selection import GameSelector
+
+    empty = {"civ7": tmp_path / "no7", "civ6": tmp_path / "no6"}
+    selector = GameSelector(logs_dirs=empty)
+    with TestClient(create_app(None, poll_interval=60, profile=None,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.get("/api/briefing").status_code == 503
+        body = c.get("/api/game").json()
+    assert body["active"] is None
+    assert body["detection"]["reason"] in {"no_candidates", "all_stale"}
+    assert body["mode"] == "auto"
+
+
+def _age_declared_logs(directory: Path, game_id: str, mtime: float) -> None:
+    """Set every log file the profile declares (that actually exists) to one mtime,
+    so detection's "newest declared log" is exactly this value, not whatever real
+    mtime `shutil.copytree` happened to preserve from an untouched file."""
+    import os
+
+    from civ_advisor.games.registry import get_profile
+
+    for name in get_profile(game_id).log_files:
+        path = directory / name
+        if path.exists():
+            os.utime(path, (mtime, mtime))
+
+
+def test_detection_flipping_forces_an_immediate_rebuild_with_no_further_file_write(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """LANDMINE 1: a game switch changes logs_dir AND the declared file set at once.
+    If the supervisor merely re-pointed the watcher without forcing a rebuild, the
+    header would flip to Civ VI while the dashboard kept showing Civ VII's last
+    snapshot until Civ VI's own files next changed -- which, right after a switch,
+    they have no reason to. This drives the switch through detection (not a pin, so
+    through `supervise()`/`start_watching()`, not the direct POST /api/game path) and
+    asserts the new game's data appears without writing to its logs again after the
+    clock moves.
+    """
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"     # kept apart from the logs dirs: archive_root_for
+    shutil.copytree(fixture_dir, civ7)  # nests under `base / game_id`, which must not
+    shutil.copytree(civ6_dir, civ6)     # collide with the logs dir itself
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])              # fresh
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)      # stale
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        for _ in range(3):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        before = poll_status(c)
+        assert before["game_id"] == "civ7"
+
+        # Move the clock forward and make civ6 the freshest candidate -- civ7 falls
+        # outside the recency window (600s) and out of detection's favor. No further
+        # write to civ6 happens after this: whatever appears next comes from the
+        # forced rebuild alone, not from the watcher noticing a later change.
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        deadline = time.monotonic() + 3.0
+        after = before
+        while time.monotonic() < deadline and after.get("game_id") != "civ6":
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["game_id"] == "civ6"
+    assert after["game"]["mode"] == "auto"
+
+
+def test_the_watcher_keeps_working_on_the_new_game_after_a_detected_switch(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """LANDMINE 2: `watch()` advances its own dedup state (`last`/`pending`) before
+    calling `on_change`, regardless of what `on_change` does. The old watcher for
+    civ7 is cancelled by `supervise()` the moment the switch is detected, so its
+    dedup state cannot get anything stuck -- but the freshly created civ6 watcher
+    must still notice a REAL subsequent civ6 file change, proving the switch left
+    the poller in a working state rather than a wedged one.
+    """
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        for _ in range(3):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        assert poll_status(c)["game_id"] == "civ7"     # settled on civ7 before switching
+
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        deadline = time.monotonic() + 3.0
+        switched = poll_status(c)
+        while time.monotonic() < deadline and switched.get("game_id") != "civ6":
+            time.sleep(0.05)
+            switched = poll_status(c)
+        assert switched["game_id"] == "civ6"
+        revision_at_switch = switched["revision"]
+
+        # A real content change to civ6's own log, well after the switch settled --
+        # nothing here should still be "pending" from the old civ7 watcher.
+        with open(civ6 / "Player_Stats.csv", "a") as f:
+            f.write("\n")
+
+        deadline = time.monotonic() + 3.0
+        after = switched
+        while time.monotonic() < deadline and after["revision"] <= revision_at_switch:
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["revision"] > revision_at_switch
+    assert after["game_id"] == "civ6"

@@ -15,6 +15,7 @@ from civ_advisor.decisions.context import DecisionContext
 from civ_advisor.decisions.evidence import EvidenceLedger
 from civ_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
 from civ_advisor.games.base import Capability, GameProfile
+from civ_advisor.games.selection import Resolution
 from civ_advisor.knowledge.catalog import GuideEntry
 from civ_advisor.llm.models import Commentary, CommentaryResult
 from civ_advisor.state.models import GameState, PlayerKind, PlayerTurn
@@ -39,6 +40,39 @@ def capability_report(profile: GameProfile) -> dict[str, bool]:
     from X being quiet.
     """
     return {c.value: profile.supports(c) for c in Capability}
+
+
+def game_to_dict(resolution: Resolution) -> dict:
+    """Which game is being advised on, how that was decided, and what else is on offer.
+
+    `mode` and `disagrees` are not decoration: a pinned choice that detection contradicts
+    is the one case where the dashboard's numbers come from a game the player may not be
+    looking at, and the header has to say so rather than leave it to be discovered.
+    """
+    from civ_advisor.games.registry import get_profile, profile_ids
+
+    def described(profile) -> dict:
+        return {"id": profile.id, "display_name": profile.display_name,
+                "capabilities": capability_report(profile)}
+
+    active = resolution.profile
+    return {
+        "mode": resolution.mode,
+        "pinned": resolution.pinned_id,
+        "active": None if active is None else dict(
+            described(active), logs_dir=str(resolution.logs_dir)),
+        "disagrees": resolution.disagrees,
+        "detection": {
+            "game": resolution.detected_id,
+            "reason": resolution.detection_reason,
+            "candidates": [
+                {"id": c.game_id, "logs_dir": str(c.logs_dir), "present": c.present,
+                 "age": None if c.age is None else round(c.age, 1)}
+                for c in resolution.candidates
+            ],
+        },
+        "games": [described(get_profile(g)) for g in profile_ids()],
+    }
 
 
 def insight_to_dict(i: Insight) -> dict:
@@ -140,7 +174,7 @@ def state_to_dict(state: GameState, oracle: bool = True) -> dict:
     }
 
 
-def status_to_dict(snapshot: Snapshot, oracle: bool) -> dict:
+def status_to_dict(snapshot: Snapshot, oracle: bool, game: dict | None = None) -> dict:
     """Everything the header needs to say how trustworthy the numbers on screen are.
 
     The turn number alone is not enough: the player has to be able to tell a quiet turn
@@ -148,6 +182,8 @@ def status_to_dict(snapshot: Snapshot, oracle: bool) -> dict:
     """
     return {
         "schema_version": snapshot.schema_version,
+        "game_id": snapshot.game_id,
+        "game": game,
         "session": snapshot.session,
         "epoch": snapshot.epoch,
         "epoch_reason": snapshot.epoch_reason,
@@ -281,7 +317,7 @@ def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...])
 
 def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult,
                      changes: dict | None = None, record: dict | None = None,
-                     decisions: dict | None = None) -> dict:
+                     decisions: dict | None = None, game: dict | None = None) -> dict:
     """The whole dashboard from one revision.
 
     The browser used to assemble five independent responses, which let a late reply from
@@ -293,7 +329,7 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
     state = snapshot.state
     events = visible(intel.feed(state), oracle)[:INTEL_LIMIT]
     return {
-        "status": status_to_dict(snapshot, oracle),
+        "status": status_to_dict(snapshot, oracle, game=game),
         "state": state_to_dict(state, oracle),
         "insights": [insight_to_dict(i) for i in visible(snapshot.insights, oracle)],
         "hidden_insights": len(snapshot.insights) - len(visible(snapshot.insights, oracle)),

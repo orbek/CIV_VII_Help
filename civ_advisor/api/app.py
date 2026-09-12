@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -13,7 +14,8 @@ from fastapi.staticfiles import StaticFiles
 
 from civ_advisor.advisors import tactical
 from civ_advisor.advisors.base import visible
-from civ_advisor.context_store import KINDS, PersistentContextStore, StoreError
+from civ_advisor.archive import DEFAULT_ROOT, archive_root_for
+from civ_advisor.context_store import KINDS, PersistentContextStore, StoreError, store_path_for
 from civ_advisor.decisions import changes as change_tracking
 from civ_advisor.decisions import decide_all
 from civ_advisor.decisions.context import (
@@ -24,6 +26,8 @@ from civ_advisor.decisions.context import (
 )
 from civ_advisor.decisions.models import PlayerReport
 from civ_advisor.games.base import GameProfile
+from civ_advisor.games.registry import UnknownGame
+from civ_advisor.games.selection import AUTO, GameSelector, Resolution
 from civ_advisor.ingest.poller import snapshot as poll_snapshot
 from civ_advisor.ingest.poller import watch
 from civ_advisor.llm import questions
@@ -37,12 +41,15 @@ from .serialize import (
     changes_to_dict,
     commentary_to_dict,
     decisions_to_dict,
+    game_to_dict,
     insight_to_dict,
     intel_to_dict,
     player_record_to_dict,
     state_to_dict,
     status_to_dict,
 )
+
+log = logging.getLogger(__name__)
 
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 KEEPALIVE_SECONDS = 15
@@ -51,14 +58,39 @@ DISABLED_MESSAGE = "Local commentary is off; start with an Ollama model to enabl
 HIDDEN_MESSAGE = "Oracle off — this local commentary saw intercepted evidence."
 
 
-def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None,
+def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
+               archive_root: Path | None = None,
                commentary_worker: CommentaryWorker | None = None,
                player_store: PersistentContextStore | None = None,
-               *, profile: GameProfile) -> FastAPI:
+               *, profile: GameProfile | None,
+               selector: GameSelector | None = None,
+               storage_base: Path | None = None,
+               archiving: bool = True) -> FastAPI:
     context_store = ContextStore()
     history = change_tracking.History()
+
+    # A selector of None means "one fixed game, no detection" -- what every existing
+    # call site (and test) wants, and what keeps this change additive.
+    if selector is None:
+        if profile is None or logs_dir is None:
+            raise ValueError("create_app needs either a profile and a logs_dir, or a selector")
+        selector = GameSelector(pinned=profile.id, logs_dirs={profile.id: logs_dir})
+        supervise_selection = False
+    else:
+        supervise_selection = True
+    base = storage_base if storage_base is not None else DEFAULT_ROOT
+
+    # `archiving=False` (the player said --no-archive) is a different instruction from
+    # "no root was supplied, derive one per game" (archive_root is None); conflating them
+    # is how a --no-archive run ends up writing to a user's home directory anyway.
+    def archive_for(active: GameProfile) -> Path | None:
+        if not archiving:
+            return None
+        return archive_root if archive_root is not None else archive_root_for(active.id, base=base)
+
     record = player_store if player_store is not None else PersistentContextStore()
     record.load()
+    fixed_record = player_store is not None
 
     def identity_provider(captured: Snapshot) -> dict:
         """The decision, context and catalog revisions that complete a generation's identity.
@@ -77,14 +109,36 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
             "catalog_revision": context.catalog_revision,
         }
 
-    store = Store(logs_dir, archive_root, commentary_worker=commentary_worker,
+    store = Store(logs_dir, None if profile is None else archive_for(profile),
+                  commentary_worker=commentary_worker,
                   identity_provider=identity_provider, profile=profile)
+    resolution = selector.resolve()
+
+    def activate(new: Resolution) -> bool:
+        """Point everything at `new`'s game. Returns whether anything changed."""
+        nonlocal resolution, record
+        resolution = new
+        active = new.profile
+        if active is None or new.logs_dir is None:
+            return False
+        store.archive_root = archive_for(active)   # set before the early return: the
+        # fixed-profile path activates the game it was already constructed with
+        if store.profile is not None and store.profile.id == active.id \
+                and store.logs_dir == new.logs_dir:
+            return False
+        if not fixed_record:
+            record = PersistentContextStore(path=store_path_for(active.id, base=base))
+            record.load()
+        history.forget()          # "since last turn" has no meaning across a game switch
+        store.switch_to(active, new.logs_dir)
+        return True
+
+    activate(resolution)
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         loop = asyncio.get_running_loop()
-        initial = poll_snapshot(logs_dir, profile.log_files)
-        await asyncio.to_thread(store.rebuild)
+        watcher: asyncio.Task | None = None
 
         def on_change() -> None:  # runs in a worker thread
             captured = store.rebuild()
@@ -97,13 +151,53 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
                 "type": "state_changed", "turn": captured.analysis_turn,
                 "latest_turn": captured.latest_turn, "revision": captured.revision,
                 "session": captured.session, "epoch": captured.epoch,
+                "game": captured.game_id,
             })
 
-        task = asyncio.create_task(watch(logs_dir, profile.log_files, on_change, poll_interval, initial))
+        async def start_watching() -> asyncio.Task | None:
+            if not store.active:
+                return None
+            assert store.logs_dir is not None and store.profile is not None
+            initial = poll_snapshot(store.logs_dir, store.profile.log_files)
+            await asyncio.to_thread(store.rebuild)
+            return asyncio.create_task(watch(store.logs_dir, store.profile.log_files,
+                                             on_change, poll_interval, initial))
+
+        async def supervise() -> None:
+            """Re-resolve the selection every poll and swap games when it changes.
+
+            Never ends on an exception: it is not awaited, so an escape would freeze the
+            advisor on one game for the rest of the session with nothing on screen saying
+            so. CancelledError is a BaseException, so shutdown still works.
+            """
+            nonlocal watcher
+            while True:
+                await asyncio.sleep(poll_interval)
+                try:
+                    new = await asyncio.to_thread(selector.resolve)
+                    if not activate(new):
+                        continue
+                    if watcher is not None:
+                        watcher.cancel()
+                    watcher = await start_watching()
+                    captured = store.snapshot
+                    store.publish({
+                        "type": "game_changed", "game": store.profile.id,
+                        "session": None if captured is None else captured.session,
+                        "epoch": None if captured is None else captured.epoch,
+                    })
+                except Exception:
+                    log.exception("game selection failed; keeping the current game")
+
+        watcher = await start_watching()
+        supervisor = asyncio.create_task(supervise()) if supervise_selection else None
         try:
             yield
         finally:
-            task.cancel()
+            if watcher is not None:
+                watcher.cancel()
+            if supervisor is not None:
+                supervisor.cancel()
             if store.commentary_worker is not None:
                 store.commentary_worker.close()
 
@@ -116,8 +210,15 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         response can come from different rebuilds."""
         captured = store.snapshot
         if captured is None or captured.state is None:
+            if not store.active:
+                raise HTTPException(
+                    status_code=503,
+                    detail="cannot tell which game is running; pick one from the header")
             raise HTTPException(status_code=503, detail="state not loaded yet")
         return captured
+
+    def game_now() -> dict:
+        return game_to_dict(selector.resolve() if supervise_selection else resolution)
 
     def commentary_result(captured: Snapshot, oracle: bool) -> CommentaryResult:
         if store.commentary_worker is None:
@@ -178,7 +279,8 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
             captured, oracle_on, commentary_result(captured, oracle_on),
             changes=_changes(captured, oracle_on, context, cards),
             record=player_record_to_dict(record),
-            decisions=decisions_to_dict(context, cards))
+            decisions=decisions_to_dict(context, cards),
+            game=game_now())
 
     @app.get("/api/decisions")
     def api_decisions(oracle: int = 1) -> dict:
@@ -360,7 +462,31 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
 
     @app.get("/api/status")
     def api_status(oracle: int = 1) -> dict:
-        return status_to_dict(current(), bool(oracle))
+        return status_to_dict(current(), bool(oracle), game=game_now())
+
+    @app.get("/api/game")
+    def api_game() -> dict:
+        return game_to_dict(selector.resolve() if supervise_selection else resolution)
+
+    @app.post("/api/game", response_model=None)
+    def api_set_game(body: dict = Body(...)) -> dict:
+        """Pin the session to one game, or return to detection.
+
+        The override wins immediately rather than at the next poll: the player has just
+        told the advisor which game they are looking at, and a dashboard that keeps
+        showing the other one for a second is a dashboard that was wrong on purpose.
+        """
+        choice = str(body.get("game", ""))
+        try:
+            if choice == AUTO:
+                selector.unpin()
+            else:
+                selector.pin(choice)
+        except UnknownGame as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        if activate(selector.resolve()):
+            store.rebuild()
+        return game_to_dict(resolution)
 
     @app.get("/api/state")
     def api_state(oracle: int = 1) -> dict:

@@ -34,15 +34,19 @@ def test_archive_flags_reach_create_app(fixture_dir, monkeypatch, tmp_path):
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
     monkeypatch.setattr(cli, "create_app",
                         lambda logs_dir, poll, archive_root=None, commentary_worker=None,
-                        player_store=None, profile=None:
+                        player_store=None, profile=None, **kwargs:
                         seen.update(root=archive_root, worker=commentary_worker,
-                                    store=player_store) or
+                                    store=player_store, **kwargs) or
                         object.__new__(type("A", (), {"title": "x"})))
     cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive"])
     assert seen["root"] is None
+    assert seen["archiving"] is False   # --no-archive must reach create_app as its own flag,
+    # not be folded into archive_root=None: that is how a --no-archive run could still end
+    # up archiving under a derived per-game default.
     cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7",
              "--archive-dir", str(tmp_path / "arc")])
     assert seen["root"] == tmp_path / "arc"
+    assert seen["archiving"] is True
 
 
 def test_the_notes_file_is_configurable_and_can_be_turned_off(fixture_dir, monkeypatch, tmp_path):
@@ -159,3 +163,73 @@ def test_archive_list_shows_pre_2b_archives_under_a_label(tmp_path, capsys, monk
     assert cli.main(["archive", "list", "--archive-dir", str(tmp_path / ".civ-advisor")]) == 0
     out = capsys.readouterr().out
     assert "pre-2b" in out and "seeds-1-2" in out
+
+
+def test_game_auto_starts_in_detection(monkeypatch):
+    import civ_advisor.cli as cli
+
+    seen = {}
+
+    def fake_create_app(logs_dir, poll_interval, **kwargs):
+        seen.update(kwargs)
+        return object()
+
+    monkeypatch.setattr(cli, "create_app", fake_create_app)
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    assert cli.main(["--game", "auto", "--no-llm", "--no-context-file", "--no-archive"]) == 0
+    assert seen["selector"].mode == "auto"
+
+
+def test_game_civ6_starts_pinned(monkeypatch):
+    import civ_advisor.cli as cli
+
+    seen = {}
+    monkeypatch.setattr(cli, "create_app", lambda l, p, **k: seen.update(k) or object())
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    assert cli.main(["--game", "civ6", "--no-llm", "--no-context-file", "--no-archive"]) == 0
+    assert seen["selector"].mode == "pinned" and seen["selector"].pinned_id == "civ6"
+
+
+def test_civ_advisor_entry_point_defaults_to_auto(monkeypatch):
+    """`civ-advisor` with no --game at all must default to detection, not a fixed civ7 --
+    that is the whole point of registering a second game."""
+    import civ_advisor.cli as cli
+
+    monkeypatch.setattr("sys.argv", ["civ-advisor"])
+    seen = {}
+    monkeypatch.setattr(cli, "create_app", lambda logs_dir, poll_interval, **k: seen.update(k) or object())
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+
+    assert cli.main(["--no-llm", "--no-context-file", "--no-archive"]) == 0
+    assert seen["selector"].mode == "auto"
+
+
+def test_civ7_advisor_entry_point_defaults_to_a_pinned_civ7(monkeypatch):
+    """`civ7-advisor` is the retained Phase 1 alias: an invocation with no --game must
+    behave exactly as it always has, pinned to civ7, so nobody's existing shortcut,
+    script or muscle memory changes underneath them."""
+    import civ_advisor.cli as cli
+
+    monkeypatch.setattr("sys.argv", ["civ7-advisor"])
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+    seen = {}
+    monkeypatch.setattr(cli, "create_app", lambda logs_dir, poll_interval, **k: seen.update(k) or object())
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+
+    assert cli.main(["--no-llm", "--no-context-file", "--no-archive"]) == 0
+    assert seen["selector"].mode == "pinned" and seen["selector"].pinned_id == "civ7"
+
+
+def test_an_unrecognised_argv_0_degrades_to_auto_rather_than_a_silent_civ7(monkeypatch):
+    """Under pytest, a frozen build, or `python -m civ_advisor.cli`, argv[0] names
+    neither console script. The safer default is `auto` -- a fixed civ7 guessed from
+    an unrecognisable argv[0] is exactly the silent wrong-game guess this phase exists
+    to remove."""
+    import civ_advisor.cli as cli
+
+    monkeypatch.setattr("sys.argv", ["/usr/bin/pytest"])
+    assert cli._default_game() == "auto"

@@ -1,4 +1,5 @@
-"""`civ7-advisor` command: start the dashboard server, or inspect the log archive."""
+"""`civ-advisor` / `civ7-advisor` commands: start the dashboard server, or inspect
+the log archive. Both run `main()`; only their default `--game` differs."""
 from __future__ import annotations
 
 import argparse
@@ -16,10 +17,24 @@ from civ_advisor.context_store import (
 )
 from civ_advisor.games.civ7 import CIV7
 from civ_advisor.games.registry import UnknownGame, get_profile, profile_ids
+from civ_advisor.games.selection import AUTO, GameSelector
 from civ_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
 from civ_advisor.llm.client import DEFAULT_TIMEOUT_S
 
 DEFAULT_LOGS_DIR = CIV7.default_logs_dir  # retained: the path Civ VII users know
+
+# `civ7-advisor` is Phase 1's console script, kept as an alias so a Civ VII-only
+# invocation never changes: it still defaults to a fixed civ7. The new `civ-advisor`
+# name defaults to `auto` instead, because once a second game is registered a `civ7`
+# default makes detection invisible. Both scripts point at the same `main`, so the two
+# defaults are told apart by argv[0] alone -- and anything else (a test harness, `python
+# -m civ_advisor.cli`, a frozen build) falls back to `auto`, the answer that never
+# silently ignores a Civ VI player.
+LEGACY_ENTRY_POINT = "civ7-advisor"
+
+
+def _default_game() -> str:
+    return "civ7" if Path(sys.argv[0]).name == LEGACY_ENTRY_POINT else AUTO
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,6 +42,7 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["archive"]:
         return _archive_command(argv[1:])
 
+    default_game = _default_game()
     parser = argparse.ArgumentParser(
         prog="civ-advisor",
         description="Second-screen turn advisor for Civilization VI and VII. Reads the game's "
@@ -34,8 +50,9 @@ def main(argv: list[str] | None = None) -> int:
                     "(per game) because Civ VII deletes its logs on launch.",
     )
     parser.add_argument("--game", default=None,
-                        help=f"which game to advise on: {', '.join(profile_ids())} "
-                             "(default: civ7; required with --logs-dir)")
+                        help="which game to advise on, or 'auto' to detect it each poll: "
+                             f"{', '.join(profile_ids())}, {AUTO} "
+                             f"(default: {default_game}; required with --logs-dir)")
     parser.add_argument("--logs-dir", type=Path, default=None,
                         help="log directory to read (default: the chosen game's own)")
     parser.add_argument("--host", default="127.0.0.1")
@@ -65,24 +82,29 @@ def main(argv: list[str] | None = None) -> int:
             file=sys.stderr,
         )
         return 2
-    game = args.game or "civ7"
-    try:
-        profile = get_profile(game)
-    except UnknownGame as exc:
-        print(str(exc), file=sys.stderr)
-        return 2
-    logs_dir = args.logs_dir or profile.default_logs_dir
 
-    if not logs_dir.is_dir():
-        print(
-            f"{profile.display_name} log directory not found: {logs_dir}\n"
-            f"Start the game once so it creates the folder, or pass --logs-dir <path>.",
-            file=sys.stderr,
-        )
-        return 2
+    game = args.game or default_game
+    logs_dirs: dict[str, Path] = {}
+    if game == AUTO:
+        profile = None
+        logs_dir = None
+    else:
+        try:
+            profile = get_profile(game)
+        except UnknownGame as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
+        logs_dir = args.logs_dir or profile.default_logs_dir
+        if not logs_dir.is_dir():
+            print(
+                f"{profile.display_name} log directory not found: {logs_dir}\n"
+                f"Start the game once so it creates the folder, or pass --logs-dir <path>.",
+                file=sys.stderr,
+            )
+            return 2
+        logs_dirs[profile.id] = logs_dir
+    selector = GameSelector(pinned=None if game == AUTO else game, logs_dirs=logs_dirs)
 
-    archive_root = None if args.no_archive else (
-        args.archive_dir or archive_root_for(profile.id))
     try:
         worker = None if args.no_llm else CommentaryWorker(
             OllamaClient(args.llm_model, timeout=args.llm_timeout)
@@ -90,20 +112,37 @@ def main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         parser.error(str(exc))
     # With --no-context-file the store is pointed at a throwaway path, so nothing is
-    # written and nothing from a previous run is offered.
+    # written and nothing from a previous run is offered. --context-file names one file
+    # for whichever game ends up active; with neither, create_app derives a per-game
+    # path itself as the active game changes -- which matters most in --game auto,
+    # where there is no game yet to derive a path from.
+    fixed_notes = args.no_context_file or args.context_file is not None
     store_path = (Path(tempfile.mkdtemp(prefix="civ-context-")) / "player-context.json"
-                  if args.no_context_file else
-                  (args.context_file or store_path_for(profile.id)))
-    _report_legacy_data(archive_root, store_path)
-    app = create_app(logs_dir, args.poll_interval, archive_root=archive_root,
+                  if args.no_context_file else args.context_file)
+    app = create_app(logs_dir, args.poll_interval,
+                     archive_root=args.archive_dir,
+                     archiving=not args.no_archive,
                      commentary_worker=worker,
-                     player_store=PersistentContextStore(path=store_path),
-                     profile=profile)
+                     player_store=PersistentContextStore(path=store_path) if fixed_notes else None,
+                     profile=profile, selector=selector,
+                     storage_base=DEFAULT_ROOT)
+    # Task 5's notice, now against whichever game is pinned; with --game auto there is
+    # no game yet and nothing is claimed about where a user's old data belongs.
+    if profile is not None:
+        _report_legacy_data(
+            None if args.no_archive else (args.archive_dir or archive_root_for(profile.id)),
+            store_path or store_path_for(profile.id))
+
+    archive_root = None if args.no_archive else (
+        args.archive_dir or (None if profile is None else archive_root_for(profile.id)))
     where = f"archiving to {archive_root}" if archive_root else "archiving off"
     llm = "LLM off" if worker is None else f"Ollama {args.llm_model}"
-    notes = "notes off" if args.no_context_file else f"notes in {store_path}"
-    print(f"{profile.display_name} Advisor -> http://{args.host}:{args.port}  "
-          f"(reading {logs_dir}; {where}; {llm}; {notes})")
+    notes = ("notes off" if args.no_context_file else
+             f"notes in {store_path}" if store_path is not None else
+             f"notes under {DEFAULT_ROOT}/<game>")
+    which = "detecting the game each poll" if profile is None else \
+        f"{profile.display_name}, reading {logs_dir}"
+    print(f"Civ Advisor -> http://{args.host}:{args.port}  ({which}; {where}; {llm}; {notes})")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

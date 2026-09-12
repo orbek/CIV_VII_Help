@@ -127,6 +127,11 @@ class History:
         if len(self.entries) > self.limit:
             del self.entries[: len(self.entries) - self.limit]
 
+    def forget(self) -> None:
+        """Drop every recorded turn. A game switch, not a reload: the entries are another
+        game's turns and `previous()` must not be able to reach them even by accident."""
+        self.entries.clear()
+
     def previous(self, entry: HistoryEntry) -> HistoryEntry | None:
         """The newest earlier turn of the same sitting, or None.
 

@@ -806,6 +806,16 @@ block, replacing the "Tasks 4 and 5" comment):
     LogReader("UnitOperations.log", "unit_operations", read_unit_operations_civ6),
 ```
 
+**`Player_Stats_2.csv` is deliberately NOT declared here.** `CIV6` declares
+TOURISM and DIPLOMATIC_FAVOR, which live in that file, and Task 8's
+conformance test asserts a profile declaring them must read it. There is no
+canonical `RawLogs` field for those yet, so wiring it now would mean
+inventing one before anything consumes it. Task 8 closes this: either
+`Player_Stats_2.csv` gains a reader and a canonical field, or those two
+capabilities come off `CIV6` until one exists. Whichever Task 8 chooses, the
+conformance test is what forces the choice rather than letting the
+declaration and the readers drift apart silently.
+
 importing both from `.readers`. Note these are NOT wrapped in `simple` —
 they already take the two-argument form.
 
@@ -1302,6 +1312,16 @@ def test_every_declared_capability_is_backed_by_a_declared_reader(profile):
         assert "Player_Happiness.csv" in profile.log_files
     if profile.supports(Capability.PEACE_DEALS):
         assert "DiplomacyDeals.log" in profile.log_files
+    # The other direction, which is the one that actually bites: a capability
+    # declared with no reader able to produce it promises a panel that cannot
+    # be filled. Civ VI declares FAITH/CIVICS from Player_Stats and
+    # TOURISM/DIPLOMATIC_FAVOR from Player_Stats_2.
+    stats_backed = {Capability.FAITH, Capability.CIVICS}
+    stats2_backed = {Capability.TOURISM, Capability.DIPLOMATIC_FAVOR}
+    if stats_backed & set(profile.capabilities):
+        assert "Player_Stats.csv" in profile.log_files
+    if stats2_backed & set(profile.capabilities):
+        assert "Player_Stats_2.csv" in profile.log_files
 ```
 
 - [ ] **Step 2: Run to verify they fail**

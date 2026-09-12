@@ -438,6 +438,42 @@ correct behaviour.
 4. **Ruleset provider** from `DebugGameplay.sqlite` (§7), with its own
    source class and provenance labelling.
 
+   Investigated 2026-09-12; full findings in
+   `.superpowers/sdd/civ6-ruleset-research.md`. The database splits into two
+   confidence regimes and the phase is bounded to the first:
+
+   **Verifiable, and in scope.** Building and district cost, prerequisites,
+   maintenance and direct flat yields; technology and civic cost and
+   prerequisites; eureka and inspiration triggers (a dedicated `Boosts`
+   table); unit cost, combat strength, prerequisites and upgrades. These are
+   plain indexed rows. A Library is 90 production, 1 gold maintenance,
+   requires a Campus and Writing, and yields a flat +2 Science — stated as
+   fact, from the player's own installed files.
+
+   **Not verifiable, and out of scope.** Most conditional and derived
+   effects — policy cards, government and wonder special abilities, most
+   civic-unlocked perks — exist only as `Modifiers` → `ModifierArguments`
+   chains whose argument semantics depend on an `EffectType` the database
+   does not catalogue. The Great Library's science modifier records who it
+   applies to and when, but not how much. Reading a number out of that
+   chain would be inference presented as fact, which is the one thing this
+   advisor may not do. These surface as "this exists, the ruleset does not
+   state its magnitude", or they do not surface at all.
+
+   **Provenance without a version string.** The database identifies no game
+   version, no active DLC and no enabled mods: `PRAGMA user_version` is
+   unset and no Version/DLC/Mod/Ruleset table exists. `XP1`/`XP2` table-name
+   suffixes imply both expansions are compiled in, but that is inference and
+   may not be reported as a ruleset identity. A figure from this source is
+   therefore labelled with what IS establishable — that it was read from the
+   installed game files, the file's modification time, and a hash of the
+   file — which is reproducible and falsifiable even though it is not a
+   version number. It may never be labelled "Civ VI <version>".
+
+   Queries run in under 20ms, so lookups happen at recommendation time
+   rather than via a startup extract; resolved facts are cached, raw rows
+   are not.
+
 ## 12. Out of scope
 
 - Civ V, Civ IV, or any other title. The `GameProfile` seam would admit

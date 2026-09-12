@@ -197,8 +197,13 @@ prose is displayed with it.
 
 Advice built only from things you could see in-game is **Fair**. Advice that
 uses the AI's internal logs — its war-intent scores, its target lists, and its
-strategic focus weights — is **Oracle**, drawn over a faint diagonal
-hatch and badged "intercept". Untick **Oracle** in the header to see whether
+strategic focus weights in Civilization VII; its combat desire, its standing
+diplomatic grievances, and its scored research and civic preferences in
+Civilization VI — is **Oracle**, drawn over a faint diagonal
+hatch and badged "intercept". Combat desire in particular is read relative to
+the same turn's other rivals and to the rival's own earlier reading; the game
+publishes no scale for it, so it is never a calibrated danger level, however
+it is badged. Untick **Oracle** in the header to see whether
 the fair evidence alone would have told you the same thing. That comparison is
 the point: it shows you where your read of the game was right and where it
 wasn't. The toggle hides Oracle table columns too, not just the cards — and with Oracle

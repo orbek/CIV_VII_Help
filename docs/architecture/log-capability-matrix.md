@@ -33,6 +33,19 @@ models. What it declares is enforced by `CIV6.capabilities`
 See [the multi-game design](../superpowers/specs/2026-09-12-multi-game-advisor-design.md)
 §3 for the full spec this is drawn from.
 
+## Civilization VI-only signals (phase 3)
+
+All four are AI-internal and every claim built from them is ORACLE. Civ VII
+writes none of these files, declares none of these capabilities, and its
+advisors see four empty lists.
+
+| File | Capability | What it supports | What it does NOT support |
+|---|---|---|---|
+| `AI_Military.csv` | `combat_desire` | The AI's own appetite for a fight, per player per turn. Reported as rank within the turn and change over 10 turns. | An absolute danger level. The game publishes no scale, one capture cannot establish one, and the insight never rises above ADVISE. |
+| `DiplomacyModifiers.csv` | `diplomatic_modifiers` | Standing negative modifiers between the human and a rival, quoted in the game's own wording. | Which side holds the opinion. The log records the ordered pair but never the direction, and the capture writes one meeting in both orderings. |
+| `AI_Research.csv` | `research_preference` | The AI's stated research goal (`Boost == GOAL`) and its top-scored techs, per turn. | Any victory path. See the design §3.2. |
+| `AI_GovtPolicies.csv` | `policy_preference` | Top-scored civics and policy cards, per turn. | Any victory path; also no `GOAL` marker exists in this file at all. |
+
 ## Civilization VII
 
 Audited 2026-09-08 against `tests/fixtures/logs_v2` (a real session, turns 1–100) and

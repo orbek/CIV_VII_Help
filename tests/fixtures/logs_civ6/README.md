@@ -26,3 +26,11 @@ form above rather than deleted, because a later phase is expected to want
 them. `AI_Military.csv` and `DiplomacyModifiers.csv` are kept present for
 the same reason but were NOT trimmed — both were already small (38 KB and
 1.7 KB) in the raw capture, so they are untouched at full size.
+
+Phase 3 added readers for `AI_Military.csv`, `DiplomacyModifiers.csv`,
+`AI_Research.csv` and `AI_GovtPolicies.csv`. The first two are whole. The
+last two are the 400-line trims described above, which cover **turns 1–2**
+(`AI_Research.csv`) and **turns 1–3** (`AI_GovtPolicies.csv`) — far short of
+this capture's `complete_through_turn` of 52. No test may assert research or
+policy content at a later turn, and no advisor may require a current-turn
+row for either file.

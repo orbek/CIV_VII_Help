@@ -32,3 +32,25 @@ def fixture_v2_dir() -> Path:
 def fixture_v2_state(fixture_v2_dir: Path):
     """GameState built from the turn-100 fixture that exercises all v2 readers."""
     return build_state(load_logs(fixture_v2_dir))
+
+
+from civ_advisor.games import registry  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_registry_state():
+    """Snapshot and restore the registry's mutable state before and after each test.
+
+    Tests register profiles into the global _PROFILES dict, which would persist
+    across test files in a single pytest run and cause cross-test contamination.
+    This fixture ensures each test starts with a clean registry state while preserving
+    any production profiles that were registered at import time (e.g., civ7 in Task 3).
+    """
+    # Snapshot the current state before the test
+    snapshot = registry._PROFILES.copy()
+
+    yield
+
+    # Restore the snapshot after the test
+    registry._PROFILES.clear()
+    registry._PROFILES.update(snapshot)

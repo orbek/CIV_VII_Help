@@ -6,8 +6,8 @@ import threading
 
 import pytest
 
-from civ7_advisor.llm import questions
-from civ7_advisor.llm.worker import CommentaryWorker
+from civ_advisor.llm import questions
+from civ_advisor.llm.worker import CommentaryWorker
 
 DECISION = {
     "id": "decision.culture.CITY", "subject": "Culture in Test1", "severity": "ADVISE",
@@ -41,12 +41,13 @@ IDENTITY = {"session": "s1", "epoch": 1, "evidence_mode": "oracle",
 
 
 def request(kind: str = questions.WHY, *, evidence=None, guides=None, identity=None,
-            text: str = "", decision=None) -> questions.QuestionRequest:
+            text: str = "", decision=None, display_name: str | None = None) -> questions.QuestionRequest:
+    kwargs = {} if display_name is None else {"display_name": display_name}
     return questions.build_request(
         kind, decision or DECISION,
         [FAIR_FACT] if evidence is None else evidence,
         [GUIDE] if guides is None else guides,
-        dict(IDENTITY, **(identity or {})), player_text=text)
+        dict(IDENTITY, **(identity or {})), player_text=text, **kwargs)
 
 
 def test_only_the_four_known_kinds_are_accepted():
@@ -61,6 +62,18 @@ def test_the_request_carries_exactly_the_ids_it_was_given():
     assert made.evidence_ids == ("comparison.culture.81",)
     assert made.action_ids == ("action.culture.inspect.CITY",)
     assert made.guide_ids == ("guide.culture",)
+
+
+def test_the_prompt_names_the_actual_game_this_question_is_about():
+    """The whole-phase review's Important: `questions.py` hardcoded "Civilization VII"
+    regardless of which game the decision was about."""
+    made = request()
+    assert "You are a Civilization VII turn advisor" in questions.prompt_for(made)
+
+    made = request(display_name="Civilization VI")
+    prompt = questions.prompt_for(made)
+    assert "You are a Civilization VI turn advisor" in prompt
+    assert "Civilization VII" not in prompt
 
 
 def test_the_cache_key_separates_fair_from_oracle_and_every_revision():
@@ -231,7 +244,7 @@ def test_a_slow_model_never_delays_the_answer():
 def test_a_question_does_not_queue_behind_a_turns_commentary(fixture_state):
     """Commentary can take minutes on a large local model. A question asked now must not
     wait for it, and neither must the refinement workflow that follows."""
-    from civ7_advisor.advisors import run_all
+    from civ_advisor.advisors import run_all
     from tests.factories import snapshot as make_snapshot
 
     commentary_running, release = threading.Event(), threading.Event()

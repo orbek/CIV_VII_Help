@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.load import LOG_FILES, load_logs
+from civ_advisor.games.base import GameProfile, LogReader, simple
+from civ_advisor.games.civ7 import CIV7
+from civ_advisor.ingest.load import load_logs
+from civ_advisor.ingest.readers import read_player_stats
 
 # The seven logs v1 shipped with; the v1 fixture has exactly these, so every newer log is
 # legitimately "file not found" there.
@@ -12,11 +15,11 @@ V1_FILES = ["Player_Stats.csv", "Player_Treasury.csv", "Player_Happiness.csv", "
 
 
 def test_load_logs_fixture_all_ok(fixture_dir: Path):
-    raw = load_logs(fixture_dir)
-    assert set(raw.files) == set(LOG_FILES)
+    raw = load_logs(fixture_dir, profile=CIV7)
+    assert set(raw.files) == set(CIV7.log_files)
     assert all(raw.files[name].ok for name in V1_FILES)
-    assert set(V1_FILES) <= set(LOG_FILES)
-    for name in set(LOG_FILES) - set(V1_FILES):
+    assert set(V1_FILES) <= set(CIV7.log_files)
+    for name in set(CIV7.log_files) - set(V1_FILES):
         assert raw.files[name].error == "file not found", name
     assert raw.files["Player_Stats.csv"].rows == 2523
     assert raw.files["Player_Stats.csv"].latest_turn == 82
@@ -29,7 +32,7 @@ def test_load_logs_isolates_a_broken_file(tmp_path: Path, fixture_dir: Path):
     for name in V1_FILES:
         shutil.copy(fixture_dir / name, tmp_path / name)
     (tmp_path / "Player_Treasury.csv").write_text("Turn, Player, Broken\n1, 0, x\n")
-    raw = load_logs(tmp_path)
+    raw = load_logs(tmp_path, profile=CIV7)
     assert raw.files["Player_Treasury.csv"].ok is False
     assert "unexpected header" in raw.files["Player_Treasury.csv"].error
     assert raw.treasury == []
@@ -38,7 +41,7 @@ def test_load_logs_isolates_a_broken_file(tmp_path: Path, fixture_dir: Path):
 
 
 def test_load_logs_reports_missing_files(tmp_path: Path):
-    raw = load_logs(tmp_path)
+    raw = load_logs(tmp_path, profile=CIV7)
     assert all(fs.ok is False and fs.error == "file not found" for fs in raw.files.values())
     assert raw.stats == []
 
@@ -48,7 +51,7 @@ def test_load_logs_isolates_a_non_missing_os_error(tmp_path: Path, fixture_dir: 
         shutil.copy(fixture_dir / name, tmp_path / name)
     (tmp_path / "Player_Treasury.csv").unlink()
     (tmp_path / "Player_Treasury.csv").mkdir()  # open() now raises IsADirectoryError
-    raw = load_logs(tmp_path)
+    raw = load_logs(tmp_path, profile=CIV7)
     treasury = raw.files["Player_Treasury.csv"]
     assert treasury.ok is False
     assert treasury.error and treasury.error != "file not found"
@@ -91,6 +94,75 @@ def test_new_logs_are_wired_to_their_rawlogs_attribute(tmp_path: Path, fixture_d
     for v1 in V1_FILES:
         shutil.copy(fixture_dir / v1, tmp_path / v1)
     (tmp_path / name).write_text(content)
-    raw = load_logs(tmp_path)
+    raw = load_logs(tmp_path, profile=CIV7)
     assert raw.files[name].ok is True and raw.files[name].rows == 1
     assert len(getattr(raw, attr)) == 1
+
+
+def test_load_logs_reads_only_the_files_the_profile_declares(tmp_path, fixture_dir):
+    """A profile that declares one file must not read, or report on, the other
+    twenty sitting next to it. This is what lets Civ VI declare a different set."""
+    from civ_advisor.games.base import GameProfile, LogReader, simple
+    from civ_advisor.ingest.readers import read_player_stats
+
+    only_stats = GameProfile(
+        id="civ7-statsonly", display_name="Stats Only", default_logs_dir=tmp_path,
+        readers=(LogReader("Player_Stats.csv", "stats", simple(read_player_stats)),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    raw = load_logs(fixture_dir, profile=only_stats)
+
+    assert list(raw.files) == ["Player_Stats.csv"]
+    assert raw.stats
+    assert raw.combat == []
+
+
+def test_load_logs_reports_a_misspelled_reader_attr_instead_of_silently_dropping_rows(fixture_dir):
+    """A profile whose LogReader.attr does not match a RawLogs field must fail loudly:
+    it must not create a stray attribute on RawLogs while every downstream consumer
+    reads the real (empty) field and gets confidently empty advice."""
+    typo_profile = GameProfile(
+        id="civ7-typo", display_name="Typo", default_logs_dir=fixture_dir,
+        readers=(LogReader("Player_Stats.csv", "militry", simple(read_player_stats)),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    raw = load_logs(fixture_dir, profile=typo_profile)
+
+    assert raw.files["Player_Stats.csv"].ok is False
+    assert "militry" in raw.files["Player_Stats.csv"].error
+    assert not hasattr(raw, "militry")
+    assert raw.stats == []
+
+
+def test_a_reader_receives_the_logs_directory_so_it_can_join_across_files(tmp_path):
+    """Civ VI's build queue has no owner column; ownership lives in a sibling
+    file. The reader must be handed the directory, not just its own path."""
+    from civ_advisor.games.base import GameProfile, LogReader
+
+    (tmp_path / "Player_Stats.csv").write_text("Game Turn, Player\n1, 0\n")
+    (tmp_path / "Sibling.csv").write_text("anything\n")
+    seen = {}
+
+    def reader(logs_dir, path):
+        seen["logs_dir"] = logs_dir
+        seen["path"] = path
+        seen["sibling_visible"] = (logs_dir / "Sibling.csv").is_file()
+        return []
+
+    profile = GameProfile(
+        id="joingame", display_name="Join Game", default_logs_dir=tmp_path,
+        readers=(LogReader("Player_Stats.csv", "stats", reader),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    load_logs(tmp_path, profile=profile)
+
+    assert seen["logs_dir"] == tmp_path
+    assert seen["path"] == tmp_path / "Player_Stats.csv"
+    assert seen["sibling_visible"] is True
+
+
+def test_load_logs_requires_a_profile(fixture_dir):
+    """Phase 1's default existed so one game's call sites need not change. With two games
+    registered a forgotten argument silently advises on the wrong one, so it must raise."""
+    with pytest.raises(TypeError):
+        load_logs(fixture_dir)

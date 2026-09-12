@@ -1,9 +1,9 @@
 import pytest
 
-from civ7_advisor.advisors import intel
-from civ7_advisor.advisors.base import Provenance
-from civ7_advisor.state.models import DealItem, GameState, Player, PlayerKind
-from civ7_advisor.state.names import NameResolver
+from civ_advisor.advisors import intel
+from civ_advisor.advisors.base import Provenance
+from civ_advisor.state.models import DealItem, GameState, Player, PlayerKind
+from civ_advisor.state.names import NameResolver
 from tests.factories import combat, deal, diplo_event, game_state, gossip_row
 
 

@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.archive import MANIFEST, archive_logs, game_key
-from civ7_advisor.ingest.load import LOG_FILES
+from civ_advisor.archive import MANIFEST, archive_logs, game_key
+from civ_advisor.games.civ7 import CIV7
 
 # One real GameCore.log line: the engine writes it when a save is loaded (tab after the bracket).
 SEEDS_LINE = "[2026-09-07 17:13:59]\tRandom Seeds: Game 1571231116, Map 1516997327\n"
@@ -44,11 +44,11 @@ def test_game_key_takes_the_last_seeds_line(tmp_path: Path):
 
 def test_archive_logs_copies_only_existing_listed_files_and_is_idempotent(tmp_path: Path, fixture_dir: Path):
     dest = tmp_path / "root" / "game" / "session"
-    before = {n: (fixture_dir / n).stat() for n in LOG_FILES if (fixture_dir / n).exists()}
-    copied = archive_logs(fixture_dir, dest, LOG_FILES)
+    before = {n: (fixture_dir / n).stat() for n in CIV7.log_files if (fixture_dir / n).exists()}
+    copied = archive_logs(fixture_dir, dest, CIV7.log_files)
     assert sorted(copied) == sorted(before)                      # the seven v1 files; missing ones skipped
     assert (dest / MANIFEST).is_file()
-    assert archive_logs(fixture_dir, dest, LOG_FILES) == []      # nothing changed -> nothing copied
+    assert archive_logs(fixture_dir, dest, CIV7.log_files) == []      # nothing changed -> nothing copied
     after = {n: (fixture_dir / n).stat() for n in before}
     assert all((before[n].st_mtime_ns, before[n].st_size) == (after[n].st_mtime_ns, after[n].st_size) for n in before)
     assert not set(p.name for p in fixture_dir.iterdir()) - set(before) - {"README.md"}  # source dir untouched
@@ -58,16 +58,16 @@ def test_archive_logs_recopies_a_changed_file(tmp_path: Path, fixture_dir: Path)
     src = tmp_path / "logs"
     shutil.copytree(fixture_dir, src)
     dest = tmp_path / "root" / "g" / "s"
-    archive_logs(src, dest, LOG_FILES)
+    archive_logs(src, dest, CIV7.log_files)
     with (src / "Historian.csv").open("a") as fh:
         fh.write("UNIT_KILLED, AGE_ANTIQUITY, 83, 1, 1, 0, 4, Warrior, NO_CONSTRUCTIBLE\n")
-    assert archive_logs(src, dest, LOG_FILES) == ["Historian.csv"]
+    assert archive_logs(src, dest, CIV7.log_files) == ["Historian.csv"]
     assert (dest / "Historian.csv").read_text().endswith("NO_CONSTRUCTIBLE\n")
 
 
 def test_archive_logs_refuses_a_destination_inside_the_logs_dir(tmp_path: Path):
     with pytest.raises(ValueError, match="inside"):
-        archive_logs(tmp_path, tmp_path / "archive", LOG_FILES)
+        archive_logs(tmp_path, tmp_path / "archive", CIV7.log_files)
 
 
 @pytest.mark.parametrize("name", ["../outside.csv", "/tmp/outside.csv", "nested/file.csv"])
@@ -88,3 +88,18 @@ def test_archive_logs_refuses_destination_symlinks(tmp_path: Path, name: str):
     with pytest.raises(ValueError, match="symlink"):
         archive_logs(logs, dest, ["Player_Stats.csv"])
     assert outside.read_text() == "keep"
+
+
+def test_the_archive_root_is_namespaced_per_game(tmp_path):
+    from civ_advisor.archive import archive_root_for
+
+    assert archive_root_for("civ6", base=tmp_path) == tmp_path / "civ6" / "archive"
+    assert archive_root_for("civ7", base=tmp_path) != archive_root_for("civ6", base=tmp_path)
+
+
+def test_the_legacy_archive_root_is_still_named(tmp_path):
+    """A user's existing archives are not orphaned by being renamed out of the code."""
+    from civ_advisor.archive import LEGACY_ARCHIVE_ROOT
+
+    assert LEGACY_ARCHIVE_ROOT.name == "archive"
+    assert LEGACY_ARCHIVE_ROOT.parent.name == ".civ7-advisor"

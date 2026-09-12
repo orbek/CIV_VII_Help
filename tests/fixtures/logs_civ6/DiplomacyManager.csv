@@ -1,0 +1,31 @@
+Game Turn, From, To, Initiator, Type, SubType, Message
+12, 5, 0, -1, FIRST_MEET_NO_MANS, NONE, 00000000, Requesting Session (B)
+12, 5, 0, 5, FIRST_MEET_NO_MANS, NONE, INITIAL, Adding to pending
+12, 5, 0, 5, FIRST_MEET_NO_MANS, NONE, INITIAL, Processing Statement
+12, 5, 0, 5, FIRST_MEET_NO_MANS, NONE, INITIAL, Processing Immediately
+12, 0, 5, 5, FIRST_MEET_NO_MANS, NONE, POSITIVE, Adding to pending
+12, 0, 5, 5, FIRST_MEET_NO_MANS, NONE, POSITIVE, Broadcasting
+12, 0, 5, 5, FIRST_MEET_NO_MANS, NONE, POSITIVE, Processing Statement
+12, 0, 5, 5, FIRST_MEET_NO_MANS, NONE, POSITIVE, Processing Immediately
+12, 5, 0, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, 00000000, Adding to pending
+12, 5, 0, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, 00000000, Processing Statement
+12, 5, 0, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, 00000000, Processing Immediately
+12, 0, 5, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, POSITIVE, Adding to pending
+12, 0, 5, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, POSITIVE, Broadcasting
+12, 0, 5, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, POSITIVE, Processing Statement
+12, 0, 5, 5, FIRST_MEET_NO_MANS_INFO_EXCHANGE, NONE, POSITIVE, Processing Immediately
+12, 0, 5, ?, STATEMENT_RESULT, ffffffff, ?, Sending Action
+12, 5, 0, ?, ?, ?, ?, Closing Session
+12, 0, 5, ?, STATEMENT_RESULT, ffffffff, ?, Processing Action
+19, 0, 5, -1, DIPLOMATIC_DELEGATION, NONE, INITIAL, Requesting Session (A)
+19, 0, 5, 0, DIPLOMATIC_DELEGATION, NONE, INITIAL, Adding to pending
+19, 0, 5, 0, DIPLOMATIC_DELEGATION, NONE, INITIAL, Broadcasting
+19, 0, 5, 0, DIPLOMATIC_DELEGATION, NONE, INITIAL, Processing Statement
+19, 0, 5, 0, DIPLOMATIC_DELEGATION, NONE, INITIAL, Processing Immediately
+19, 5, 0, 0, DIPLOMATIC_DELEGATION, AI_REFUSE_DEAL, NEGATIVE, Adding to pending
+19, 5, 0, 0, DIPLOMATIC_DELEGATION, AI_REFUSE_DEAL, NEGATIVE, Processing Statement
+19, 5, 0, 0, DIPLOMATIC_DELEGATION, AI_REFUSE_DEAL, NEGATIVE, Processing Immediately
+50, 5, 0, -1, DIPLOMATIC_WARNING, NONE, 00000000, Requesting Session (B)
+50, 5, 0, 5, DIPLOMATIC_WARNING, NONE, INITIAL, Adding to pending
+50, 5, 0, 5, DIPLOMATIC_WARNING, NONE, INITIAL, Processing Statement
+50, 5, 0, 5, DIPLOMATIC_WARNING, NONE, INITIAL, Processing Immediately

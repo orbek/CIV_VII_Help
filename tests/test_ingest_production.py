@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.csvfile import LogFormatError
-from civ7_advisor.ingest.production import BuildQueueRow, read_build_queue
+from civ_advisor.ingest.csvfile import LogFormatError
+from civ_advisor.ingest.production import BuildQueueRow, read_build_queue
 
 HEADER = "Game Turn, Player, City, Production Added, Current Item, Current Production, Production Needed, Overflow\n"
 # Captured from the live game on 2026-09-07 (turn 82, the human's capital building a Brickyard).

@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-BRIEFING_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "briefing.js"
+BRIEFING_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "briefing.js"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 
@@ -135,6 +135,106 @@ def test_a_broken_required_source_is_a_warning_not_a_quiet_note():
     """)
     assert lines == [{"cls": "file-warn",
                       "text": "Empire yields and standings is unavailable: unexpected header"}]
+
+
+def test_unattributed_rows_are_reported_even_when_the_domain_is_healthy():
+    lines = run_js(
+        'return B.coverageLines([{name: "production", label: "Settlement build queues",'
+        ' status: "ok", required: false, files: ["City_BuildQueue.csv"], missing: [],'
+        ' rows: 807, errors: [], unattributed: 12}]);'
+    )
+    assert len(lines) == 1
+    assert "12 rows could not be attributed" in lines[0]["text"]
+    assert "not assigned to you" in lines[0]["text"]
+
+
+def test_an_unbacked_partial_domain_never_claims_a_file_is_unreadable():
+    """LIVE DEFECT this task fixes: before, a domain whose files all read fine but
+    which has no reader at all for part of what it covers (Civ VI's diplomacy) rendered
+    as "0 of 1 logs unreadable" -- a false reason for a real gap. `missing` is empty
+    here on purpose; only `unbacked` explains why the domain is still "partial"."""
+    lines = run_js("""
+      return B.coverageLines([
+        { name: "diplomacy", label: "Rival diplomatic intent", required: false,
+          status: "partial", files: ["DiplomacySummary.csv"], missing: [], rows: 5,
+          latest_turn: 81, lag: 0, errors: [], unbacked: ["diplomacy", "deals"] },
+      ]);
+    """)
+    text = " | ".join(line["text"] for line in lines)
+    assert "unreadable" not in text
+    assert "0 of" not in text
+    assert "does not log 2 parts of this" in text
+
+
+def test_a_partial_domain_with_both_causes_reports_both():
+    lines = run_js("""
+      return B.coverageLines([
+        { name: "tactical", label: "Tactical unit positions and plans", required: false,
+          status: "partial", files: ["AI_Tactical.csv", "AI_Operation.csv"],
+          missing: ["AI_Operation.csv"], rows: 3, latest_turn: 80, lag: 1,
+          errors: ["file not found"], unbacked: ["mayhem"] },
+      ]);
+    """)
+    text = " | ".join(line["text"] for line in lines)
+    assert "1 of 2 logs unreadable" in text
+    assert "does not log 1 part of this" in text
+
+
+def _game(mode, pinned=None, candidates=()):
+    return {"mode": mode, "pinned": pinned, "detection": {"candidates": list(candidates)}}
+
+
+def test_a_pinned_game_whose_directory_is_absent_says_so():
+    game = _game("pinned", "civ6", [{"id": "civ6", "present": False, "age": None}])
+    gap = run_js(f"return B.pinnedGameGap({json.dumps(game)});")
+    assert gap == "its logs folder was not found — install or launch the game"
+
+
+def test_a_pinned_game_that_is_installed_but_unplayed_says_so_differently():
+    """The two gap messages must never collapse into each other: "not found" is the
+    remedy for an absent directory (install/launch), not for one that exists but has
+    nothing written in it yet (play a turn) -- conflating them would send a player who
+    already has the game installed off to reinstall it."""
+    game = _game("pinned", "civ6", [{"id": "civ6", "present": True, "age": None}])
+    gap = run_js(f"return B.pinnedGameGap({json.dumps(game)});")
+    assert gap == "no log has been written for it yet — play a turn"
+    assert "not found" not in gap
+
+
+def test_a_pinned_game_with_no_gap_is_null():
+    game = _game("pinned", "civ7", [{"id": "civ7", "present": True, "age": 12.3}])
+    assert run_js(f"return B.pinnedGameGap({json.dumps(game)});") is None
+
+
+def test_auto_mode_has_no_pinned_gap():
+    game = _game("auto", None, [{"id": "civ6", "present": False, "age": None}])
+    assert run_js(f"return B.pinnedGameGap({json.dumps(game)});") is None
+
+
+def test_an_unsupported_panel_is_explained_rather_than_omitted():
+    """An empty panel and an unsupported panel mean opposite things. The player has to be
+    able to tell 'no rival is chasing a victory' from 'this game does not record it'."""
+    lines = run_js(
+        'return B.capabilityNotices({victory_paths: {supported: false,'
+        ' reason: "Civ VI records era strategies, not victory paths."},'
+        ' happiness: {supported: true, reason: null}}, "victory");'
+    )
+    assert len(lines) == 1
+    assert lines[0]["reason"] == "Civ VI records era strategies, not victory paths."
+
+
+def test_a_supported_panel_gets_no_notice():
+    lines = run_js(
+        'return B.capabilityNotices({victory_paths: {supported: true, reason: null}},'
+        ' "victory");'
+    )
+    assert lines == []
+
+
+def test_a_panel_with_no_declared_capabilities_is_never_suppressed():
+    """Threats and Intel run off signals both games have. A panel not in the map must
+    render normally rather than silently disappearing on an unknown game."""
+    assert run_js('return B.capabilityNotices({}, "intel");') == []
 
 
 # ---- the decision brief ----------------------------------------------------------

@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from civ7_advisor.advisors import diplomacy_language as language
-from civ7_advisor.advisors import intel
+from civ_advisor.advisors import diplomacy_language as language
+from civ_advisor.advisors import intel
 
 YOU = language.Party("You", "your", second_person=True)
 THEM = language.Party("Ibn Battuta", "Ibn Battuta's")

@@ -1,13 +1,13 @@
 """Small builders for hand-made GameStates in advisor tests."""
 from __future__ import annotations
 
-from civ7_advisor.advisors.base import Insight, Provenance, Severity
-from civ7_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow
-from civ7_advisor.ingest.production import BuildQueueRow
-from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
-from civ7_advisor.ingest.textlogs import DealItem
-from civ7_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
-from civ7_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
+from civ_advisor.advisors.base import Insight, Provenance, Severity
+from civ_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow
+from civ_advisor.ingest.production import BuildQueueRow
+from civ_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
+from civ_advisor.ingest.textlogs import DealItem
+from civ_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from civ_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
 
 
 def insight(
@@ -65,6 +65,24 @@ def executed_war(turn: int, actor: int, target: int | None = 0) -> DiplomacyRow:
     return DiplomacyRow(turn, actor, "DECLARE_WAR", target, IntentKind.EXECUTED, None)
 
 
+def military_row(turn: int, player: int, combat_desire: float, **overrides):
+    from civ_advisor.ingest.aiscores import MilitaryRow
+
+    return MilitaryRow(**{
+        "turn": turn, "player": player, "regional_strength": 50,
+        "enemy_strength": 50, "other_strength": 0, "fav_tech": "TECH_ARCHERY",
+        "combat_desire": combat_desire, **overrides,
+    })
+
+
+def modifier_row(turn: int, player: int, opponent: int, modifier: str,
+                 value: float | None = None, action: str = "Activate"):
+    from civ_advisor.ingest.aiscores import DiplomacyModifierRow
+
+    return DiplomacyModifierRow(turn=turn, player=player, opponent=opponent,
+                                modifier=modifier, action=action, value=value)
+
+
 def kill(turn: int, victim: int, killer: int, unit: str = "Warrior", x: int = 10, y: int = 10) -> HistorianRow:
     return HistorianRow("UNIT_KILLED", "AGE_ANTIQUITY", turn, x, y, victim, killer, unit, None)
 
@@ -77,7 +95,7 @@ def city_target(
 
 
 def strategy(player: int, path: str, weight: int, status: str = "Following", since: int = 1) -> StrategyStatus:
-    return StrategyStatus(player, path, status, weight, since)
+    return StrategyStatus(player=player, strategy=path, status=status, since_turn=since, weight=weight)
 
 
 def build_queue_row(turn: int, player: int, city: str = "LOC_CITY_NAME_TEST1", item: str = "BUILDING_BRICKYARD",
@@ -109,16 +127,18 @@ def deal(turn: int, from_player: int, to_player: int, kind: str = "Peace") -> De
 
 def snapshot(
     state: GameState, insights=None, session: str = "session-1", epoch: int = 1,
-    revision: int = 1, captured_at: float = 0.0,
+    revision: int = 1, captured_at: float = 0.0, game_id: str = "civ7",
 ) -> Snapshot:
     """A published snapshot around a hand-made state, for worker and serializer tests."""
-    from civ7_advisor.advisors import run_all
+    from civ_advisor.advisors import run_all
+    from civ_advisor.games.registry import get_profile
 
-    ranked = run_all(state) if insights is None else list(insights)
+    profile = get_profile(game_id)
+    ranked = run_all(state, profile) if insights is None else list(insights)
     return Snapshot(
-        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        schema_version=SCHEMA_VERSION, game_id=game_id, session=session, epoch=epoch,
         epoch_reason="first_load", game_key=None, revision=revision,
         captured_at=captured_at, latest_turn=state.latest_turn,
         analysis_turn=state.complete_through_turn, state=state, insights=tuple(ranked),
-        coverage=_coverage(state, state.complete_through_turn),
+        coverage=_coverage(state, state.complete_through_turn, profile),
     )

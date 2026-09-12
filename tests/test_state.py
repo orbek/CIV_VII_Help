@@ -2,10 +2,10 @@ from dataclasses import fields
 
 import pytest
 
-from civ7_advisor.ingest.load import RawLogs
-from civ7_advisor.ingest.readers import StatsRow
-from civ7_advisor.state.build import build_state, display_name
-from civ7_advisor.state.models import PlayerKind, PlayerTurn, StrategyStatus
+from civ_advisor.ingest.load import RawLogs
+from civ_advisor.ingest.readers import StatsRow
+from civ_advisor.state.build import build_state, display_name
+from civ_advisor.state.models import PlayerKind, PlayerTurn, StrategyStatus
 
 
 def test_turn_bookkeeping(fixture_state):
@@ -47,7 +47,9 @@ def test_independent_has_treasury_but_no_happiness(fixture_state):
 
 def test_strategies_fold_to_current_status(fixture_state):
     st = fixture_state.strategies
-    assert st[4]["CULTURAL"] == StrategyStatus(4, "CULTURAL", "Following", 100, since_turn=74)
+    assert st[4]["CULTURAL"] == StrategyStatus(
+        player=4, strategy="CULTURAL", status="Following", since_turn=74, weight=100,
+    )
     assert st[1]["CULTURAL"].status == "Stopped" and st[1]["CULTURAL"].since_turn == 80
     assert st[7]["SCIENCE"].weight == 100 and st[7]["SCIENCE"].following
     assert 0 not in st  # the human has no AI strategy rows
@@ -89,12 +91,17 @@ def test_display_name_fallback():
 
 
 def test_new_rows_are_carried_and_peace_is_folded():
-    from civ7_advisor.ingest.load import RawLogs
-    from civ7_advisor.ingest.readers import StatsRow
+    from civ_advisor.ingest.load import RawLogs
+    from civ_advisor.ingest.readers import StatsRow
     from tests.factories import build_queue_row, combat, deal, diplo_event, gossip_row
 
     def stats(turn, player):
-        return StatsRow(turn, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+        return StatsRow(
+            turn=turn, player=player, cities=1, techs=1, land_units=2, naval_units=0,
+            tiles_owned=5, tiles_improved=1, gold_balance=10.0, science=1, culture=1, gold=1,
+            production=1, food=1, towns=0, settlement_cap=3, settlements_over_cap=0,
+            urban_pop=1, rural_pop=2, happiness=1, diplomacy=0,
+        )
 
     raw = RawLogs(
         stats=[stats(1, 0), stats(1, 4), stats(2, 0), stats(2, 4), stats(3, 0)],
@@ -119,11 +126,16 @@ def test_empty_state_has_empty_collections_and_no_resolver():
 
 
 def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
-    from civ7_advisor.ingest.textlogs import PlayerIdentityRow
+    from civ_advisor.ingest.textlogs import PlayerIdentityRow
 
     raw = RawLogs(
         stats=[
-            StatsRow(1, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+            StatsRow(
+                turn=1, player=player, cities=1, techs=1, land_units=2, naval_units=0,
+                tiles_owned=5, tiles_improved=1, gold_balance=10.0, science=1, culture=1,
+                gold=1, production=1, food=1, towns=0, settlement_cap=3,
+                settlements_over_cap=0, urban_pop=1, rural_pop=2, happiness=1, diplomacy=0,
+            )
             for player in (0, 1)
         ],
         player_identities=[
@@ -136,3 +148,62 @@ def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
     state = build_state(raw)
     assert state.players[1].kind is PlayerKind.RIVAL and state.players[1].name == "Xerxes"
     assert state.names is not None and state.names.player_for("Benjamin Franklin") == 0
+
+
+def test_optional_stats_fields_default_to_none_not_zero():
+    """A game that cannot supply happiness must yield None. 0.0 would read as
+    'this civ is miserable' rather than 'this game has no such concept'."""
+    from civ_advisor.state.models import PlayerTurn
+
+    pt = PlayerTurn(turn=1, player=0, cities=1, techs=2, land_units=1,
+                    naval_units=0, tiles_owned=5, tiles_improved=1,
+                    gold_balance=10.0, science=1.0, culture=1.0, gold=2.0,
+                    production=3.0, food=4.0)
+    assert pt.happiness is None
+    assert pt.towns is None
+    assert pt.settlement_cap is None
+    assert pt.diplomacy is None
+
+
+def test_settlements_is_none_when_towns_is_none():
+    """cities + towns would raise on None; the derived property must propagate the
+    absence instead, same as the fields it's built from."""
+    from civ_advisor.state.models import PlayerTurn
+
+    pt = PlayerTurn(turn=1, player=0, cities=1, techs=2, land_units=1,
+                    naval_units=0, tiles_owned=5, tiles_improved=1,
+                    gold_balance=10.0, science=1.0, culture=1.0, gold=2.0,
+                    production=3.0, food=4.0)
+    assert pt.settlements is None
+
+
+def test_civ7_city_state_identities_still_classify_as_independent(tmp_path):
+    """Civ VII's own GameCore.log does log non-FULL_CIV levels for its
+    city-states -- this guards the level-based classification branch in
+    build_state, which sits ahead of the owner-key/happiness path: a Civ VII
+    city-state must still land INDEPENDENT and out of rivals(), not be
+    disturbed by a branch introduced for Civ VI."""
+    from civ_advisor.ingest.load import load_logs
+
+    (tmp_path / "GameCore.log").write_text(
+        "[2026-09-07 17:13:59]\tPlayer 0: Civilization - CIVILIZATION_AMERICA (1)  "
+        "Leader - LEADER_BENJAMIN_FRANKLIN (2), - Level - CIVILIZATION_LEVEL_FULL_CIV, "
+        "SlotStatus - Human\n"
+        "[2026-09-07 17:13:59]\tPlayer 8: Civilization - CIVILIZATION_PLACEHOLDER_CITYSTATE "
+        "(861373409)  Leader - (null) (-1), - Level - CIVILIZATION_LEVEL_CITY_STATE, "
+        "SlotStatus - AI\n"
+    )
+    (tmp_path / "Player_Stats.csv").write_text(
+        "Game Turn, Player, Cities, Towns, Settlement Cap, Settlements Over Cap, Urban Pop, "
+        "Rural Pop, Techs, Land Units, Naval Units, TILES: Owned, Improved, BALANCE: Gold, "
+        "YIELDS: Science, Culture, Gold, Production, Food, Happiness, Diplomacy, "
+        "BY TYPE: Buildings\n"
+        "1, 0, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0\n"
+        "1, 8, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0\n"
+    )
+    from civ_advisor.games.civ7 import CIV7
+
+    raw = load_logs(tmp_path, profile=CIV7)
+    state = build_state(raw)
+    assert state.players[8].kind is PlayerKind.INDEPENDENT
+    assert 8 not in [p.id for p in state.rivals()]

@@ -5,10 +5,11 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from civ7_advisor.api.app import create_app
-from civ7_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
+from civ_advisor.api.app import create_app
+from civ_advisor.games.civ7 import CIV7
+from civ_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
 
-APP_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "app.js"
+APP_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "app.js"
 # RivalThreat fields that come from the AI's own logs (AI_DiplomaticActions, AI_Targets).
 ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since",
                         "city_tiles_targeted", "units_targeted", "target_box", "target_turn")
@@ -16,7 +17,7 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since",
 
 @pytest.fixture(scope="module")
 def client(fixture_dir: Path):
-    with TestClient(create_app(fixture_dir, poll_interval=60)) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
         yield c
 
 
@@ -88,14 +89,14 @@ def test_threats_table_columns_are_split_by_provenance():
 
 
 def test_state_is_503_before_first_rebuild(fixture_dir: Path):
-    app = create_app(fixture_dir)  # no lifespan entered -> never rebuilt
+    app = create_app(fixture_dir, profile=CIV7)  # no lifespan entered -> never rebuilt
     assert TestClient(app).get("/api/state").status_code == 503
 
 
 def test_events_stream_delivers_and_drops_its_subscriber_on_disconnect(fixture_dir: Path):
     """Drive /events over raw ASGI: a published event reaches the client, and the queue is
     released when the client goes away — a leak here costs one queue per page refresh."""
-    app = create_app(fixture_dir)  # no lifespan needed: /events reads no state
+    app = create_app(fixture_dir, profile=CIV7)  # no lifespan needed: /events reads no state
     store = app.state.store
     scope = {
         "type": "http",
@@ -178,7 +179,7 @@ def _v2_dir(tmp_path: Path, fixture_dir: Path) -> Path:
 
 
 def test_intel_endpoint_filters_oracle_events_server_side(tmp_path: Path, fixture_dir: Path):
-    with TestClient(create_app(_v2_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_v2_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         events = c.get("/api/intel").json()
         kinds = {(e["kind"], e["provenance"]) for e in events}
         assert ("gossip", "fair") in kinds and ("combat", "fair") in kinds
@@ -195,7 +196,7 @@ def test_intel_endpoint_filters_oracle_events_server_side(tmp_path: Path, fixtur
 
 
 def test_intel_is_503_before_first_rebuild(fixture_dir: Path):
-    assert TestClient(create_app(fixture_dir)).get("/api/intel").status_code == 503
+    assert TestClient(create_app(fixture_dir, profile=CIV7)).get("/api/intel").status_code == 503
 
 
 def test_tactical_endpoint_is_gated_server_side(client):
@@ -207,7 +208,7 @@ def test_tactical_endpoint_is_gated_server_side(client):
 
 
 def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixture_dir):
-    with TestClient(create_app(fixture_dir, poll_interval=60)) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
         assert c.get("/api/commentary").json()["status"] == "disabled"
 
     commentary = Commentary("local:test", "a" * 64, 81, True, "Opinion [threat.x].",
@@ -223,7 +224,7 @@ def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixt
         def close(self):
             pass
 
-    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker(), profile=CIV7)) as c:
         assert c.get("/api/commentary").json()["commentary"]["model"] == "local:test"
         # Fair mode is generated from a fair prompt, but a generation that still reports
         # having read intercepts is withheld rather than trusted.
@@ -309,13 +310,13 @@ def test_insights_endpoint_filters_by_mode_on_the_server(client):
 
 
 def test_briefing_is_503_before_the_first_rebuild(fixture_dir: Path):
-    app = create_app(fixture_dir)  # lifespan never entered -> nothing published
+    app = create_app(fixture_dir, profile=CIV7)  # lifespan never entered -> nothing published
     assert TestClient(app).get("/api/briefing").status_code == 503
     assert TestClient(app).get("/api/status").status_code == 503
 
 
 def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir: Path):
-    from civ7_advisor.llm.models import CommentaryIdentity
+    from civ_advisor.llm.models import CommentaryIdentity
 
     identity = CommentaryIdentity(session="s", epoch=1, evidence_mode="oracle",
                                   snapshot_revision=3, turn=81, insight_ids=("threat.x",))
@@ -335,7 +336,7 @@ def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir
         def close(self):
             pass
 
-    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker(), profile=CIV7)) as c:
         body = c.get("/api/commentary").json()
         assert body["status"] == "queued" and body["commentary"] is None
         # Earlier prose travels as dated history, with the identity that dates it.
@@ -382,7 +383,7 @@ def _behind_dir(tmp_path: Path, fixture_dir: Path) -> Path:
 def test_decisions_travel_with_their_evidence_and_guides_resolved(tmp_path, fixture_dir):
     """Citations resolve on the server. A bare id the drawer cannot look up would be a
     dead link, so the resolution happens where it can fail loudly."""
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         body = c.get("/api/decisions").json()
         card = next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
         assert card["subject"] == "Culture in Test1"
@@ -408,7 +409,7 @@ def test_decisions_travel_with_their_evidence_and_guides_resolved(tmp_path, fixt
 
 
 def test_the_briefing_carries_the_decision_brief(tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         body = c.get("/api/briefing").json()
         assert body["decisions"]["cards"]
         assert body["decisions"]["context"]["snapshot_revision"] == body["status"]["revision"]
@@ -419,7 +420,7 @@ def test_the_briefing_carries_the_decision_brief(tmp_path, fixture_dir):
 
 def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         def culture_card(body):
             return next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
@@ -471,7 +472,7 @@ def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision
 
 def test_a_submission_from_another_session_is_refused_with_a_recoverable_conflict(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         response = c.post("/api/context", json={
             "id": "report.stale", "subject": "LOC_CITY_NAME_TEST1", "label": "objective",
             "value": "soonest_culture", "observed_turn": 81, "session": "a-previous-session",
@@ -485,7 +486,7 @@ def test_a_submission_from_another_session_is_refused_with_a_recoverable_conflic
 
 
 def test_a_field_the_panel_does_not_collect_is_refused(tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         response = c.post("/api/context", json={
             "id": "report.free", "subject": "LOC_CITY_NAME_TEST1", "label": "my_hopes",
@@ -498,7 +499,7 @@ def test_a_field_the_panel_does_not_collect_is_refused(tmp_path, fixture_dir):
 
 def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         c.post("/api/context", json={
             "id": "report.options", "subject": "LOC_CITY_NAME_TEST1",
@@ -522,11 +523,11 @@ def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
 
 def _client_with_notes(tmp_path: Path, fixture_dir: Path, worker=None):
     """A client whose player record is a throwaway file, never the developer's own."""
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     return TestClient(create_app(
         _behind_dir(tmp_path, fixture_dir), poll_interval=60, commentary_worker=worker,
-        player_store=PersistentContextStore(path=tmp_path / "notes.json")))
+        player_store=PersistentContextStore(path=tmp_path / "notes.json"), profile=CIV7))
 
 
 def test_the_first_turn_reports_no_trend_at_all(tmp_path, fixture_dir):
@@ -569,7 +570,7 @@ def test_a_question_is_answered_from_the_decisions_own_facts(tmp_path, fixture_d
 def test_a_fair_question_never_receives_intercepted_evidence(tmp_path, fixture_dir):
     """The evidence is filtered before the request exists, so nothing downstream has to
     remember to strip it."""
-    from civ7_advisor.llm import questions
+    from civ_advisor.llm import questions
 
     seen: list[questions.QuestionRequest] = []
 
@@ -603,12 +604,12 @@ def test_a_fair_question_never_receives_intercepted_evidence(tmp_path, fixture_d
 
 
 def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fixture_dir):
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"
     first = PersistentContextStore(path=notes)
-    with TestClient(create_app(logs, poll_interval=60, player_store=first)) as c:
+    with TestClient(create_app(logs, poll_interval=60, player_store=first, profile=CIV7)) as c:
         card = next(x for x in c.get("/api/decisions").json()["cards"]
                     if x["id"].startswith("decision.culture."))
         written = c.post("/api/record", json={
@@ -624,7 +625,7 @@ def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fi
 
     # A second process is a new session, so the entries are offered rather than applied.
     second = PersistentContextStore(path=notes)
-    with TestClient(create_app(logs, poll_interval=60, player_store=second)) as c:
+    with TestClient(create_app(logs, poll_interval=60, player_store=second, profile=CIV7)) as c:
         held = c.get("/api/record").json()
         assert held["entries"] == [] and len(held["pending"]) == 1
         group = held["pending"][0]
@@ -640,15 +641,17 @@ def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fi
 
 
 def test_held_entries_can_be_discarded_instead(tmp_path, fixture_dir):
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"
     with TestClient(create_app(logs, poll_interval=60,
-                               player_store=PersistentContextStore(path=notes))) as c:
+                               player_store=PersistentContextStore(path=notes),
+                               profile=CIV7)) as c:
         c.post("/api/record", json={"kind": "watch", "subject": "decision.x"})
     with TestClient(create_app(logs, poll_interval=60,
-                               player_store=PersistentContextStore(path=notes))) as c:
+                               player_store=PersistentContextStore(path=notes),
+                               profile=CIV7)) as c:
         group = c.get("/api/record").json()["pending"][0]
         assert c.post("/api/record/associate", json={
             "session": group["session"], "epoch": group["epoch"],
@@ -663,3 +666,536 @@ def test_the_briefing_carries_changes_and_the_record(tmp_path, fixture_dir):
         assert body["changes"]["turn"] == 81
         assert body["record"]["session"] == body["status"]["session"]
         assert body["record"]["entries"] == [] and body["record"]["error"] is None
+
+
+def test_on_change_skips_publishing_when_rebuild_returns_none(tmp_path, fixture_dir, monkeypatch, caplog):
+    """Store.rebuild() can return None: idle (no game selected), or a switch_to that
+    landed mid-rebuild discarded this exact read. on_change must skip publishing
+    rather than crash -- a crash here is silently swallowed by the poller's broad
+    except, which has already advanced its own change-tracking before awaiting
+    on_change, so nothing reschedules and the dashboard is stuck on a stale or
+    absent snapshot until the game happens to write again."""
+    import logging
+    import shutil
+    import time
+
+    logs = tmp_path / "logs"
+    shutil.copytree(fixture_dir, logs)
+    app = create_app(logs, poll_interval=0.05, profile=CIV7)
+    with TestClient(app):
+        store = app.state.store
+        published = []
+        monkeypatch.setattr(store, "publish", lambda event: published.append(event))
+        monkeypatch.setattr(store, "rebuild", lambda: None)
+        with caplog.at_level(logging.ERROR, logger="civ_advisor.ingest.poller"):
+            (logs / "Player_Stats.csv").touch()
+            time.sleep(0.3)   # several poll intervals: seen, confirmed stable, on_change fires
+        # Nothing raised out of on_change: the poller's own "poll failed" log line,
+        # which fires only when on_change escapes with an exception, never appears.
+        assert not any("poll failed" in r.message for r in caplog.records)
+        assert published == []
+
+
+def _selector(tmp_path, civ7_dir, civ6_dir, pinned=None):
+    from civ_advisor.games.selection import GameSelector
+    return GameSelector(pinned=pinned, logs_dirs={"civ7": civ7_dir, "civ6": civ6_dir})
+
+
+def test_api_game_reports_the_mode_and_what_detection_thinks(fixture_dir, civ6_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        body = c.get("/api/game").json()
+    assert body["mode"] == "pinned" and body["active"]["id"] == "civ7"
+    assert [g["id"] for g in body["games"]] == ["civ6", "civ7"]
+    assert body["active"]["display_name"] == "Civilization VII"
+
+
+def test_posting_a_game_pins_it_and_switches_the_store(fixture_dir, civ6_dir, tmp_path):
+    """Starts pinned to civ7 (not auto) so the starting point is deterministic: the
+    committed fixtures' real mtimes are both well outside the detection window, so an
+    unpinned selector would start with no active game at all rather than civ7."""
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        before = c.get("/api/status").json()
+        assert c.post("/api/game", json={"game": "civ6"}).status_code == 200
+        after = c.get("/api/status").json()
+    assert before["game"]["active"]["id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ6"
+    assert after["game"]["mode"] == "pinned"
+    assert after["epoch"] == before["epoch"] + 1       # a switch is a new sitting
+    assert after["session"] != before["session"]
+
+
+def test_posting_auto_returns_to_detection(fixture_dir, civ6_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.post("/api/game", json={"game": "auto"}).status_code == 200
+        assert c.get("/api/game").json()["mode"] == "auto"
+
+
+def test_posting_an_unknown_game_is_refused_without_changing_anything(fixture_dir, tmp_path):
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir})
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.post("/api/game", json={"game": "civ5"}).status_code == 422
+        assert c.get("/api/game").json()["active"]["id"] == "civ7"
+
+
+def test_status_carries_the_game_when_no_selector_is_configured(fixture_dir):
+    """A fixed-profile app still says which game it is advising on."""
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
+        body = c.get("/api/status").json()
+    assert body["game"]["active"]["id"] == "civ7" and body["game"]["mode"] == "pinned"
+
+
+def test_a_capability_gap_coexists_with_the_real_data_it_does_not_gate(civ6_dir):
+    """Task 10 fix round 1: maintenance and happiness are unsupported for Civ VI, but
+    they back no rendered element the app actually has -- the yield comparison and the
+    build queue are independent of them and must be real and present in the SAME
+    response as the capability gap, never hidden behind it. This is the data-layer half
+    of the guarantee app.js's rendering enforces (a table + a stated gap, not one or the
+    other); the coexistence itself is data the browser suite renders, this proves the
+    data both would draw from is there together."""
+    from civ_advisor.games.civ6 import CIV6
+
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+        body = c.get("/api/briefing").json()
+    caps = body["status"]["game"]["active"]["capabilities"]
+    assert caps["maintenance"]["supported"] is False and caps["maintenance"]["reason"]
+    assert caps["happiness"]["supported"] is False and caps["happiness"]["reason"]
+    # The yield comparison this capability gap does NOT gate is real, non-empty data --
+    # not something the gap suppressed.
+    economy_stats = {row["stat"] for row in body["state"]["economy"]}
+    assert {"gold", "production", "food"} <= economy_stats
+    assert any(row["stat"] == "gold" and row["human"] > 0 for row in body["state"]["economy"])
+    # And the build queue this tab also shows is real, not empty either.
+    assert len(body["state"]["production"]["human"]) > 0
+
+
+def test_the_victory_tab_s_leaderboards_coexist_with_its_strategy_gap(civ6_dir):
+    """The same rule as economy, for the victory tab: `victory_paths` describes only the
+    strategy/standings table (Civ VI has no AI_Victories reader, so state.strategies is
+    legitimately empty and that table alone collapses) -- it does not gate the
+    output-proxy leaderboards or the advice stream, both computed straight from
+    Player_Stats.csv and real for Civ VI. Losing four populated leaderboards and real
+    insights behind a notice that only explains the strategy table would be the same
+    defect as economy's, just on the other tab."""
+    from civ_advisor.games.civ6 import CIV6
+
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+        body = c.get("/api/briefing").json()
+    caps = body["status"]["game"]["active"]["capabilities"]
+    assert caps["victory_paths"]["supported"] is False and caps["victory_paths"]["reason"]
+    # The leaderboards this capability gap does NOT gate are real, non-empty data for
+    # every proxy path -- not something the gap suppressed.
+    leaderboards = body["state"]["leaderboards"]
+    assert set(leaderboards) == {"SCIENCE", "CULTURAL", "ECONOMIC", "MILITARY"}
+    assert all(len(board) > 1 for board in leaderboards.values())
+    # And real advice about those leaderboards still comes through.
+    assert any(i["advisor"] == "victory" for i in body["insights"])
+
+
+def test_an_idle_app_explains_itself_rather_than_erroring_blankly(tmp_path):
+    """Auto mode, nothing recent on disk: the briefing is unavailable, and /api/game
+    still answers so the header can say why and offer the control."""
+    from civ_advisor.games.selection import GameSelector
+
+    empty = {"civ7": tmp_path / "no7", "civ6": tmp_path / "no6"}
+    selector = GameSelector(logs_dirs=empty)
+    with TestClient(create_app(None, poll_interval=60, profile=None,
+                               selector=selector, storage_base=tmp_path)) as c:
+        assert c.get("/api/briefing").status_code == 503
+        body = c.get("/api/game").json()
+    assert body["active"] is None
+    assert body["detection"]["reason"] in {"no_candidates", "all_stale"}
+    assert body["mode"] == "auto"
+
+
+def _age_declared_logs(directory: Path, game_id: str, mtime: float) -> None:
+    """Set every log file the profile declares (that actually exists) to one mtime,
+    so detection's "newest declared log" is exactly this value, not whatever real
+    mtime `shutil.copytree` happened to preserve from an untouched file."""
+    import os
+
+    from civ_advisor.games.registry import get_profile
+
+    for name in get_profile(game_id).log_files:
+        path = directory / name
+        if path.exists():
+            os.utime(path, (mtime, mtime))
+
+
+def test_detection_flipping_forces_an_immediate_rebuild_with_no_further_file_write(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """LANDMINE 1: a game switch changes logs_dir AND the declared file set at once.
+    If the supervisor merely re-pointed the watcher without forcing a rebuild, the
+    header would flip to Civ VI while the dashboard kept showing Civ VII's last
+    snapshot until Civ VI's own files next changed -- which, right after a switch,
+    they have no reason to. This drives the switch through detection (not a pin, so
+    through `supervise()`/`start_watching()`, not the direct POST /api/game path) and
+    asserts the new game's data appears without writing to its logs again after the
+    clock moves.
+    """
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"     # kept apart from the logs dirs: archive_root_for
+    shutil.copytree(fixture_dir, civ7)  # nests under `base / game_id`, which must not
+    shutil.copytree(civ6_dir, civ6)     # collide with the logs dir itself
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])              # fresh
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)      # stale
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        for _ in range(3):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        before = poll_status(c)
+        assert before["game_id"] == "civ7"
+
+        # Move the clock forward and make civ6 the freshest candidate -- civ7 falls
+        # outside the recency window (600s) and out of detection's favor. No further
+        # write to civ6 happens after this: whatever appears next comes from the
+        # forced rebuild alone, not from the watcher noticing a later change.
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        deadline = time.monotonic() + 3.0
+        after = before
+        while time.monotonic() < deadline and after.get("game_id") != "civ6":
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["game_id"] == "civ6"
+    assert after["game"]["mode"] == "auto"
+
+
+def test_the_watcher_keeps_working_on_the_new_game_after_a_detected_switch(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """LANDMINE 2: `watch()` advances its own dedup state (`last`/`pending`) before
+    calling `on_change`, regardless of what `on_change` does. The old watcher for
+    civ7 is cancelled by `supervise()` the moment the switch is detected, so its
+    dedup state cannot get anything stuck -- but the freshly created civ6 watcher
+    must still notice a REAL subsequent civ6 file change, proving the switch left
+    the poller in a working state rather than a wedged one.
+    """
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        for _ in range(3):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        assert poll_status(c)["game_id"] == "civ7"     # settled on civ7 before switching
+
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        deadline = time.monotonic() + 3.0
+        switched = poll_status(c)
+        while time.monotonic() < deadline and switched.get("game_id") != "civ6":
+            time.sleep(0.05)
+            switched = poll_status(c)
+        assert switched["game_id"] == "civ6"
+        revision_at_switch = switched["revision"]
+
+        # A real content change to civ6's own log, well after the switch settled --
+        # nothing here should still be "pending" from the old civ7 watcher.
+        with open(civ6 / "Player_Stats.csv", "a") as f:
+            f.write("\n")
+
+        deadline = time.monotonic() + 3.0
+        after = switched
+        while time.monotonic() < deadline and after["revision"] <= revision_at_switch:
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["revision"] > revision_at_switch
+    assert after["game_id"] == "civ6"
+
+
+def test_the_watcher_keeps_working_after_pinning_via_post(tmp_path, fixture_dir, civ6_dir):
+    """CRITICAL fix (Task 7 fix round 1): `POST /api/game` used to switch the store and
+    rebuild once but never retire the old watcher or start a new one, so the header
+    control appeared to work -- one switch -- and then the dashboard silently stopped
+    updating for the rest of the session, still polling the OLD game's directory.
+    This mirrors the detected-switch landmine test above for the PINNED path: pin via
+    POST, then write a real change to the new game's log, and confirm the revision
+    still advances. A short poll interval so the watcher actually gets a chance to
+    fire; removing the watcher restart in api_set_game must fail this test."""
+    import shutil
+    import time
+
+    from civ_advisor.games.selection import GameSelector
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": civ7, "civ6": civ6})
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        r = None
+        for _ in range(5):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        before = poll_status(c)
+        assert before["game_id"] == "civ7"
+
+        pinned = c.post("/api/game", json={"game": "civ6"}).json()
+        assert pinned["active"]["id"] == "civ6"
+        revision_at_pin = poll_status(c)["revision"]
+
+        # A real content change to civ6's own log, well after the pin -- if the watcher
+        # was never restarted against civ6's directory, this is never noticed.
+        with open(civ6 / "Player_Stats.csv", "a") as f:
+            f.write("\n")
+
+        deadline = time.monotonic() + 3.0
+        after = poll_status(c)
+        while time.monotonic() < deadline and after["revision"] <= revision_at_pin:
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["revision"] > revision_at_pin
+    assert after["game_id"] == "civ6"
+
+
+def test_the_briefing_never_labels_one_game_s_data_with_the_other_game_s_identity(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """CRITICAL (whole-phase review): `game_now()` used to call `selector.resolve()`
+    fresh on every request, independent of `activate()` and of the snapshot `current()`
+    actually returns. With a long poll interval, civ6 can become the fresher detection
+    candidate well before `supervise()` next ticks -- the OLD code would then label
+    civ7's still-active snapshot, coverage and capabilities with `game.active == civ6`,
+    while every number on screen was still civ7's. The label must always agree with the
+    snapshot actually being served; this asserts that agreement can never be broken,
+    not merely that it holds in the ordinary case."""
+    import shutil
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    # A long poll interval: supervise() will not tick again during this test.
+    app = create_app(civ7, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=storage)
+    with TestClient(app) as c:
+        before = c.get("/api/status").json()
+        assert before["game_id"] == "civ7" and before["game"]["active"]["id"] == "civ7"
+
+        # Make civ6 the fresher candidate -- a fresh selector.resolve() right now would
+        # say civ6 -- without waiting for supervise() to actually act on it.
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        after = c.get("/api/status").json()
+
+    # supervise() has not ticked (poll_interval=60), so the store is still civ7's --
+    # and its label must say so too. The false output this fix removes: a response
+    # whose own game_id and game.active.id disagree.
+    assert after["game_id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ7"
+    assert after["game_id"] == after["game"]["active"]["id"]
+
+
+def test_losing_detection_does_not_blank_the_capabilities_of_the_game_still_on_screen(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """IMPORTANT 2 (whole-phase review): `activate()` used to overwrite `resolution`
+    with a None-profile `Resolution` the instant detection could no longer confirm ANY
+    game, even though a None-profile resolution is a no-op for `activate()` -- the store
+    itself never switches away from its last active game. The dashboard kept showing
+    civ7's real, live data, but the game label would say "no active game," which blanks
+    every capability declaration on the browser side (`capabilityNotices(null, ...)`
+    returns nothing). An unsupported panel would then render as an unexplained blank
+    grid instead of the correct "not available" notice -- absence inferred from a
+    transient detection gap, over data that is still genuinely on screen."""
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        r = None
+        for _ in range(5):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        assert poll_status(c)["game_id"] == "civ7"
+
+        # Both games now read as stale: a fresh resolve() would say "cannot tell,"
+        # even though civ7's snapshot is still the one on screen.
+        clock[0] += 20_000
+
+        deadline = time.monotonic() + 3.0
+        after = poll_status(c)
+        while (time.monotonic() < deadline
+               and after["game"]["detection"]["reason"] != "all_stale"):
+            time.sleep(0.05)
+            after = poll_status(c)
+        assert after["game"]["detection"]["reason"] == "all_stale"
+
+    # The snapshot never moved off civ7 (a None resolution is a no-op for activate()).
+    assert after["game_id"] == "civ7"
+    # Its label and capabilities must not have been blanked by the transient "cannot
+    # tell": the game the dashboard is still describing is exactly the one on screen.
+    assert after["game"]["active"] is not None
+    assert after["game"]["active"]["id"] == "civ7"
+    assert after["game"]["active"]["capabilities"]["victory_paths"]["supported"] is True
+
+
+def test_posting_a_pin_publishes_a_game_changed_event_like_a_detected_switch_does(
+    fixture_dir, civ6_dir, tmp_path
+):
+    """IMPORTANT 6 (whole-phase review): `supervise()`'s own detected switch publishes
+    `game_changed`; the `POST /api/game` path activated and restarted the watcher but
+    never published anything, and the rebuild it awaits bypasses `on_change` (which is
+    what publishes `state_changed`) -- so a second open browser tab kept showing the
+    old game until that game's own logs next happened to change. Both paths now share
+    `apply_selection()`, which publishes unconditionally on a successful activation."""
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    app = create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=tmp_path)
+    with TestClient(app) as c:
+        store = app.state.store
+        queue = store.subscribe()
+        response = c.post("/api/game", json={"game": "civ6"})
+        assert response.status_code == 200
+        event = queue.get_nowait()
+
+    assert event["type"] == "game_changed" and event["game"] == "civ6"
+
+
+def test_unpinning_while_detection_cannot_tell_reports_auto_not_the_stale_pin(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """Whole-phase re-review: activate()'s fix for the null-active case carried
+    mode/pinned_id/disagrees over from the STALE resolution, so unpinning while
+    detection could not confirm any game left the API still reporting mode="pinned"
+    and the old pinned id -- the header would tell the player they were pinned to a
+    game they had just unpinned from. Every selection fact must come from the CURRENT
+    selection (`new`); only the still-on-screen game's profile/logs_dir may be kept."""
+    import shutil
+
+    from civ_advisor.games.selection import GameSelector
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": civ7, "civ6": civ6},
+                           clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=storage)
+    with TestClient(app) as c:
+        before = c.get("/api/status").json()
+        assert before["game_id"] == "civ7" and before["game"]["active"]["id"] == "civ7"
+
+        # Detection can no longer confirm anything, and the player unpins in the same
+        # moment -- both facts must be reported immediately, not held back a tick.
+        clock[0] += 20_000
+        assert c.post("/api/game", json={"game": "auto"}).status_code == 200
+
+        after = c.get("/api/status").json()
+
+    assert after["game"]["mode"] == "auto"
+    assert after["game"]["pinned"] is None
+    assert after["game"]["disagrees"] is False
+    # The store never switched away (a None resolution is a no-op for activate()) --
+    # the game whose data is still on screen must still be named.
+    assert after["game_id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ7"

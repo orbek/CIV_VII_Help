@@ -1,4 +1,4 @@
-from civ7_advisor.state.names import NameResolver
+from civ_advisor.state.names import NameResolver
 
 
 def _resolver() -> NameResolver:

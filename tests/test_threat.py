@@ -2,8 +2,8 @@ from dataclasses import replace
 
 import pytest
 
-from civ7_advisor.advisors import threat
-from civ7_advisor.advisors.base import Provenance, Severity
+from civ_advisor.advisors import threat
+from civ_advisor.advisors.base import Provenance, Severity
 from tests.factories import city_target, combat, executed_war, game_state, kill, scored_war
 
 

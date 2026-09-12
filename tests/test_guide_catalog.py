@@ -8,7 +8,7 @@ from importlib import resources
 
 import pytest
 
-from civ7_advisor.knowledge.catalog import (
+from civ_advisor.knowledge.catalog import (
     NAVIGATION_REVIEWED,
     Catalog,
     CatalogError,
@@ -52,7 +52,7 @@ def test_every_shipped_entry_that_backs_instructions_has_been_reviewed():
 def test_no_shipped_entry_supplies_a_numeric_effect():
     """The catalog's central promise. No figure here was verified against an installed
     ruleset, so every figure in a recommendation must come from the player's own preview."""
-    raw = json.loads(resources.files("civ7_advisor.knowledge")
+    raw = json.loads(resources.files("civ_advisor.knowledge.civ7")
                      .joinpath("guides.json").read_text(encoding="utf-8"))
     for row in raw["entries"]:
         assert "effects" not in row, row["id"]
@@ -90,7 +90,7 @@ def test_ruleset_compatibility_is_separate_from_review_and_from_link_health():
 def test_the_catalog_is_the_single_source_for_item_yields():
     """Phase 3 reconciles production.ITEM_YIELDS against this rather than keeping two
     contradictory rules tables. Pin that the overlap agrees today."""
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
 
     catalog = load_catalog()
     for item, yields in catalog.item_yields.items():
@@ -151,3 +151,14 @@ def test_naming_a_guide_the_catalog_does_not_ship_is_an_error():
     fail rather than render."""
     with pytest.raises(KeyError, match="unknown guide ids: guide.invented"):
         load_catalog().resolve(("guide.culture", "guide.invented"))
+
+
+def test_catalog_is_loaded_from_the_package_the_profile_names():
+    """The guides a game gets must follow from its profile, not from a constant,
+    or a second game would silently be handed Civ VII's catalog."""
+    from civ_advisor.games.civ7 import CIV7
+
+    catalog = load_catalog(package=CIV7.knowledge_package)
+
+    assert catalog.entries
+    assert {e.game for e in catalog.entries} == {"civ7"}

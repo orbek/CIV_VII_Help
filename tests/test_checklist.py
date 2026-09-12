@@ -2,9 +2,9 @@ from dataclasses import FrozenInstanceError
 
 import pytest
 
-from civ7_advisor.advisors import ADVISORS
-from civ7_advisor.advisors.base import Provenance, Severity
-from civ7_advisor.advisors.checklist import ADVISOR_ORDER, rank
+from civ_advisor.advisors import ADVISORS
+from civ_advisor.advisors.base import Provenance, Severity
+from civ_advisor.advisors.checklist import ADVISOR_ORDER, rank
 from tests.factories import insight
 
 

@@ -1,8 +1,8 @@
 import pytest
 
-from civ7_advisor.advisors import ADVISORS, production
-from civ7_advisor.advisors.base import Provenance, Severity, humanize
-from civ7_advisor.advisors.checklist import ADVISOR_ORDER
+from civ_advisor.advisors import ADVISORS, production
+from civ_advisor.advisors.base import Provenance, Severity, humanize
+from civ_advisor.advisors.checklist import ADVISOR_ORDER
 from tests.factories import build_queue_row, game_state
 
 
@@ -168,7 +168,7 @@ def test_production_is_registered():
 def test_the_reviewed_catalog_wins_over_the_unverified_yield_table():
     """One lookup for the whole codebase, so the decision layer and this advisor cannot
     disagree about what a building is for."""
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
 
     assert production.item_yield("BUILDING_MONUMENT") == "culture"
     assert production.reviewed_yield("BUILDING_MONUMENT") is True
@@ -179,7 +179,7 @@ def test_the_reviewed_catalog_wins_over_the_unverified_yield_table():
 
 
 def test_a_mismatch_says_when_its_yield_association_is_only_a_heuristic():
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
     from tests.factories import build_queue_row, game_state
 
     state = game_state(turn=20, rivals={1: "Rival"},
@@ -192,7 +192,7 @@ def test_a_mismatch_says_when_its_yield_association_is_only_a_heuristic():
 
 
 def test_a_reviewed_item_carries_no_heuristic_caveat():
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
     from tests.factories import build_queue_row, game_state
 
     state = game_state(turn=20, rivals={1: "Rival"},

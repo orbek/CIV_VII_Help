@@ -1,12 +1,13 @@
-from civ7_advisor.advisors import intel, production, run_all, threat
-from civ7_advisor.ingest.events import read_combat_log, read_diplomacy_summary, read_gossip
-from civ7_advisor.ingest.load import LOG_FILES, load_logs
-from civ7_advisor.ingest.production import read_build_queue
+from civ_advisor.advisors import intel, production, run_all, threat
+from civ_advisor.ingest.events import read_combat_log, read_diplomacy_summary, read_gossip
+from civ_advisor.games.civ7 import CIV7
+from civ_advisor.ingest.load import load_logs
+from civ_advisor.ingest.production import read_build_queue
 
 
 def test_every_log_in_the_v2_fixture_parses(fixture_v2_dir):
-    raw = load_logs(fixture_v2_dir)
-    assert all(raw.files[n].ok for n in LOG_FILES), {
+    raw = load_logs(fixture_v2_dir, profile=CIV7)
+    assert all(raw.files[n].ok for n in CIV7.log_files), {
         n: f.error for n, f in raw.files.items() if not f.ok
     }
     assert raw.build_queue and raw.combat and raw.gossip and raw.diplomacy_summary and raw.deals

@@ -5,10 +5,10 @@ from copy import deepcopy
 import httpx
 import pytest
 
-from civ7_advisor.advisors import run_all
-from civ7_advisor.llm.client import COMMENTARY_SCHEMA, ModelUnavailable, OllamaClient, OllamaUnavailable
-from civ7_advisor.llm.prompts import build_prompt, response_schema, turn_payload
-from civ7_advisor.llm.worker import CommentaryWorker
+from civ_advisor.advisors import run_all
+from civ_advisor.llm.client import COMMENTARY_SCHEMA, ModelUnavailable, OllamaClient, OllamaUnavailable
+from civ_advisor.llm.prompts import build_prompt, response_schema, turn_payload
+from civ_advisor.llm.worker import CommentaryWorker
 from tests.factories import game_state, snapshot
 
 
@@ -90,6 +90,78 @@ def test_empty_full_state_commentary_still_declares_the_oracle_tactical_block():
     oracle-mode prompt that includes it must report saw_oracle."""
     prompt, saw_oracle, _ = build_prompt(game_state(), [])
     assert saw_oracle and '"provenance":"oracle"' in prompt
+
+
+def test_the_prompt_forbids_attributing_a_victory_path_to_a_rival():
+    """The whole-phase review's Important: the prompt forbade inventing FIGURES but
+    said nothing about inference, so a model handed Civ VI's scored preference lists
+    could plausibly write the victory-path claim three phases have refused to make."""
+    prompt, _, _ = build_prompt(game_state(), [])
+    assert "victory path" in prompt.lower() or "win condition" in prompt.lower()
+    assert "strategy" in prompt.lower()
+
+
+def test_the_prompt_names_the_actual_game_it_is_advising(fixture_v2_state):
+    """Pre-existing default is Civilization VII, which is correct for every Civ VII
+    call site and would be wrong for Civ VI -- a caller must be able to override it."""
+    prompt, _, _ = build_prompt(fixture_v2_state, [])
+    assert "You are a Civilization VII turn advisor" in prompt
+
+    prompt, _, _ = build_prompt(fixture_v2_state, [], display_name="Civilization VI")
+    assert "You are a Civilization VI turn advisor" in prompt
+    assert "Civilization VII" not in prompt
+
+
+def test_ai_score_events_are_capped_so_they_do_not_crowd_out_older_gossip():
+    """The whole-phase review's Important: Civ VI can log up to three ai_score events
+    per rival per turn. With eight rivals that is ~24/turn, and the feed sorts
+    newest-turn-first, so uncapped they alone can fill the model's intel window and
+    push out every earlier turn's gossip, diplomacy and combat. A cap on ai_score
+    specifically must leave room for at least one much older gossip event."""
+    from civ_advisor.ingest.aiscores import TechScoreRow
+
+    rivals = {i: f"Rival {i}" for i in range(1, 9)}
+    s = game_state(turn=20, rivals=rivals)
+    # Recent turns: 8 rivals x 3 techs each x several turns -- far more than
+    # AI_SCORE_WINDOW, all newer than the gossip below.
+    s.tech_scores = [
+        TechScoreRow(turn=t, player=p, action="Tech", tech=f"TECH_{i}",
+                     score=float(100 - i), boost=None, turns=None)
+        for t in range(11, 21) for p in rivals for i in range(3)
+    ]
+    from tests.factories import gossip_row
+    s.gossip = [gossip_row(1, "Cyrus", "CIVILIZATION_PERSIA")]  # turn 1: far older than any score
+
+    payload = turn_payload(s, [], oracle=True)
+    kinds = [e["kind"] for e in payload["intel"]]
+
+    assert kinds.count("ai_score") <= 24
+    assert "gossip" in kinds, "the one gossip event must survive the ai_score flood"
+
+
+def test_worker_prompt_names_the_snapshots_own_game_not_civ_vii():
+    """The whole-phase review's Important: `prompts.py` hardcoded "Civilization VII"
+    regardless of which profile produced the snapshot, so a Civ VI session was told it
+    was Civ VII. The worker must resolve the snapshot's own profile and pass its
+    display name through, not rely on `build_prompt`'s Civ VII default."""
+    from civ_advisor.advisors.base import Insight, Provenance, Severity
+    from tests.factories import snapshot as make_snapshot
+
+    class FakeClient:
+        model = "local:test"
+
+    fair_insight = Insight(
+        id="threat.at_war.4", advisor="threat", severity=Severity.WARN,
+        provenance=Provenance.FAIR, title="x", recommendation="y", why="z", turn=5,
+        subject_player=None,
+    )
+    worker = CommentaryWorker(FakeClient())  # type: ignore[arg-type]
+    civ6_snap = make_snapshot(game_state(turn=5), insights=(fair_insight,), game_id="civ6")
+    request = worker._request(civ6_snap, oracle=False)
+
+    assert request is not None, "the request must have rows, or this proves nothing"
+    assert "You are a Civilization VI turn advisor" in request.prompt
+    assert "Civilization VII" not in request.prompt
 
 
 def test_worker_caches_validated_commentary_per_complete_turn(fixture_state):

@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from civ7_advisor.advisors.base import Provenance, Severity
-from civ7_advisor.decisions import changes as tracking
-from civ7_advisor.decisions.models import DecisionCard
-from civ7_advisor.store import SCHEMA_VERSION, DomainCoverage, Snapshot
+from civ_advisor.advisors.base import Provenance, Severity, visible
+from civ_advisor.decisions import changes as tracking
+from civ_advisor.decisions.models import DecisionCard
+from civ_advisor.store import SCHEMA_VERSION, DomainCoverage, Snapshot
 from tests.factories import game_state, insight
 
 
@@ -27,7 +27,7 @@ def snapshot(turn: int, insights: tuple, *, session: str = "s1", epoch: int = 1,
              revision: int = 1, **statuses: str) -> Snapshot:
     state = game_state(turn=turn)
     return Snapshot(
-        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        schema_version=SCHEMA_VERSION, game_id="civ7", session=session, epoch=epoch,
         epoch_reason="first_load", game_key=None, revision=revision, captured_at=0.0,
         latest_turn=turn + 1, analysis_turn=turn, state=state, insights=insights,
         coverage=coverage(**statuses),
@@ -44,7 +44,7 @@ def entry(turn: int, insights: tuple, *, catalog: str = "cat-1", cards: tuple = 
 
 def gap(stat: str, ratio: float, turn: int):
     """A yield comparison fact, as the ledger produces one."""
-    from civ7_advisor.decisions.models import EvidenceFact, SourceKind
+    from civ_advisor.decisions.models import EvidenceFact, SourceKind
 
     return EvidenceFact(id=f"comparison.{stat}.{turn}", label=stat,
                         source_kind=SourceKind.DERIVED, provenance=Provenance.FAIR,
@@ -200,3 +200,104 @@ def test_the_retrospective_puts_two_records_side_by_side_and_claims_nothing():
     assert "no success is being scored" in retro["caveat"]
     # No score, no rate, no causal field of any kind.
     assert set(retro) == {"states", "acknowledged", "caveat"}
+
+
+def _serve(previous, current, *, oracle: bool):
+    """Mirrors `api/app.py`'s `_changes`: the recorded history is always complete,
+    and only the served rows are filtered by mode, at this single point."""
+    return visible(tracking.compare(previous, current), oracle)
+
+
+def test_fair_mode_changes_never_carries_an_oracle_insights_id_or_title():
+    """The whole-phase review's Critical: `signals_from` iterated every insight with
+    no oracle filter, so an Oracle-only insight's id and title reached the fair-mode
+    "since last turn" payload even though cards and intel correctly hid it.
+
+    Proved against a payload that actually HAS rows -- two recorded turns with a
+    fair-visible signal changing between them -- so this cannot pass vacuously the
+    way the guard it replaces did against an empty, single-turn fixture."""
+    oracle_insight = insight("threat.combat_desire.7", advisor="threat",
+                              provenance=Provenance.ORACLE,
+                              title="Cyrus's appetite for a fight is rising")
+    fair_insight_before = insight("threat.at_war.7", advisor="threat",
+                                  severity=Severity.WARN)
+    fair_insight_after = insight("threat.at_war.7", advisor="threat",
+                                 severity=Severity.CRITICAL)
+
+    before = entry(10, (fair_insight_before, oracle_insight))
+    after = entry(11, (fair_insight_after, oracle_insight))
+    # Recorded complete regardless of mode: both turns' history has the Oracle signal.
+    assert "threat.combat_desire.7" in before.signals
+    assert "threat.combat_desire.7" in after.signals
+
+    served = _serve(before, after, oracle=False)
+    assert served, "the payload under test must have rows, or this proves nothing"
+
+    ids = {c.signal_id for c in served}
+    assert "threat.at_war.7" in ids
+    assert "threat.combat_desire.7" not in ids
+    assert all("appetite for a fight" not in c.label for c in served)
+
+
+def test_oracle_mode_changes_does_carry_the_oracle_signal():
+    """The filter must be a filter, not a deletion: served with oracle=True the same
+    Oracle-only insight shows up, proving the fair-mode test above exercises a real
+    filter rather than an insight that never made it into a Signal at all."""
+    oracle_insight = insight("threat.combat_desire.7", advisor="threat",
+                              provenance=Provenance.ORACLE)
+    before = entry(10, ())
+    after = entry(11, (oracle_insight,))
+    assert "threat.combat_desire.7" in after.signals
+    ids = {c.signal_id for c in _serve(before, after, oracle=True)}
+    assert "threat.combat_desire.7" in ids
+
+
+def test_toggle_order_fair_then_oracle_does_not_manufacture_a_new_signal():
+    """The instruction this fixes: filtering at record time made the recorded
+    history depend on which mode happened to be active when a turn was captured. A
+    signal present in the game data on turn 10 -- served fair -- must not be
+    reported as "newly observed" on turn 11 just because turn 11 happens to be
+    served with Oracle on."""
+    desire_t10 = insight("threat.combat_desire.7", advisor="threat",
+                         provenance=Provenance.ORACLE, turn=10)
+    desire_t11 = insight("threat.combat_desire.7", advisor="threat",
+                         provenance=Provenance.ORACLE, turn=11)
+
+    history = tracking.History()
+    e10 = entry(10, (desire_t10,))
+    history.record(e10)
+    served_t10 = _serve(history.previous(e10), e10, oracle=False)
+    assert served_t10 == []   # first turn of the sitting: nothing to compare yet
+
+    e11 = entry(11, (desire_t11,))
+    previous = history.previous(e11)
+    history.record(e11)
+    served_t11 = _serve(previous, e11, oracle=True)
+
+    by_id = {c.signal_id: c for c in served_t11}
+    assert "threat.combat_desire.7" in by_id
+    assert by_id["threat.combat_desire.7"].state != tracking.NEW
+
+
+def test_toggle_order_oracle_then_fair_is_also_stable():
+    """The reverse order: turn 10 served with Oracle on, turn 11 served fair. Fair
+    mode must simply omit the Oracle row -- never report it as new -- and the
+    recorded history itself must be identical either way."""
+    desire_t10 = insight("threat.combat_desire.7", advisor="threat",
+                         provenance=Provenance.ORACLE, turn=10)
+    desire_t11 = insight("threat.combat_desire.7", advisor="threat",
+                         provenance=Provenance.ORACLE, turn=11)
+
+    history = tracking.History()
+    e10 = entry(10, (desire_t10,))
+    history.record(e10)
+    _serve(history.previous(e10), e10, oracle=True)
+
+    e11 = entry(11, (desire_t11,))
+    previous = history.previous(e11)
+    history.record(e11)
+    served_t11 = _serve(previous, e11, oracle=False)
+
+    assert all(c.signal_id != "threat.combat_desire.7" for c in served_t11)
+    assert "threat.combat_desire.7" in e10.signals
+    assert "threat.combat_desire.7" in e11.signals

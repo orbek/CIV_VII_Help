@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.csvfile import LogFormatError, latest_game_segment, read_table
-from civ7_advisor.ingest.readers import read_player_stats
+from civ_advisor.ingest.csvfile import LogFormatError, latest_game_segment, read_table
+from civ_advisor.ingest.readers import read_player_stats
 
 
 def test_read_table_strips_cells_and_skips_blank_lines(tmp_path: Path):

@@ -16,6 +16,7 @@ from civ_advisor.ingest.textlogs import read_player_identities
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
+from .readers import read_player_stats_civ6, read_unit_operations_civ6
 
 DEFAULT_LOGS_DIR = (
     Path.home()
@@ -31,7 +32,9 @@ READERS: tuple[LogReader, ...] = (
     LogReader("AI_MayhemTracker.csv", "mayhem", simple(read_mayhem)),
     LogReader("AI_UnitEfficiency.csv", "unit_efficiency", simple(read_unit_efficiency)),
     LogReader("GameCore.log", "player_identities", simple(read_player_identities)),
-    # Tasks 4 and 5 add the Civ VI variant readers here.
+    LogReader("Player_Stats.csv", "stats", read_player_stats_civ6),
+    LogReader("UnitOperations.log", "unit_operations", read_unit_operations_civ6),
+    # Task 5 adds the build queue's cross-file join here.
 )
 
 CIV6 = GameProfile(

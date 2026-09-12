@@ -51,3 +51,70 @@ def test_civ6_identities_come_from_the_shared_gamecore_reader(civ6_dir):
               if r.level == "CIVILIZATION_LEVEL_FULL_CIV"]
     assert len(majors) == 6
     assert by_player[62].level == "CIVILIZATION_LEVEL_FREE_CITIES"
+
+
+def test_player_stats_reads_both_faith_columns_by_position(civ6_dir):
+    """`Faith` is the header name at index 13 (balance) AND index 17 (yield).
+    A name-keyed reader silently keeps one and drops the other."""
+    from civ_advisor.games.civ6.readers import read_player_stats_civ6
+
+    rows = read_player_stats_civ6(civ6_dir, civ6_dir / "Player_Stats.csv")
+    rome = [r for r in rows if r.turn == 53 and r.player == 0]
+    assert len(rome) == 1
+    row = rome[0]
+    assert row.cities == 2
+    assert row.techs == 5
+    assert row.civics == 5
+    assert row.gold_balance == 98.0
+    assert row.gold == 11.0
+    assert row.production == 13.0
+    assert row.food == 9.0
+    assert row.faith_balance == 0.0
+    assert row.faith == 0.0
+
+
+def test_player_stats_leaves_civ7_only_fields_unavailable(civ6_dir):
+    """Civ VI logs no towns, settlement cap, urban/rural split, amenities or
+    diplomacy yield. These must be None, never 0."""
+    from civ_advisor.games.civ6.readers import read_player_stats_civ6
+
+    row = read_player_stats_civ6(civ6_dir, civ6_dir / "Player_Stats.csv")[0]
+    assert row.towns is None
+    assert row.settlement_cap is None
+    assert row.urban_pop is None
+    assert row.rural_pop is None
+    assert row.happiness is None
+    assert row.diplomacy is None
+
+
+def test_unit_operations_skips_engine_diagnostics_but_not_real_rows(civ6_dir):
+    """Civ VI interleaves 'Unit operation handler <hex>, is disabled' lines
+    among the data -- at lines 2-4, before any data row.
+
+    Counts are for the COMMITTED fixture, which Task 3 trimmed to 400 lines:
+    396 data rows and 3 diagnostics, turns 1-7. (The untrimmed capture had
+    6533 data rows through turn 52.) The trim deliberately kept the
+    diagnostics, which are the whole point of this test."""
+    from civ_advisor.games.civ6.readers import read_unit_operations_civ6
+
+    rows = read_unit_operations_civ6(civ6_dir, civ6_dir / "UnitOperations.log")
+    assert len(rows) == 396
+    assert max(r.turn for r in rows) == 7
+
+
+def test_unit_operations_still_raises_on_an_unrecognised_short_row(tmp_path):
+    """Skipping every short row would turn a malformed log into quiet data
+    loss. Only the known diagnostic shape may be skipped."""
+    import pytest
+
+    from civ_advisor.games.civ6.readers import read_unit_operations_civ6
+    from civ_advisor.ingest.csvfile import LogFormatError
+
+    path = tmp_path / "UnitOperations.log"
+    path.write_text(
+        "Game Turn, Mode, Player, Unit, Operation\n"
+        "001, Adding, 0, UNIT_WARRIOR (1), UNITOPERATION_MOVE_TO (2)\n"
+        "002, Adding\n"
+    )
+    with pytest.raises((LogFormatError, ValueError, IndexError)):
+        read_unit_operations_civ6(tmp_path, path)

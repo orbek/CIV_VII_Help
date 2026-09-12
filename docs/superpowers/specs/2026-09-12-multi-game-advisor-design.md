@@ -226,6 +226,21 @@ than typed in. It is scoped to phase 4 so that parity work is not delayed
 by it, and so the provenance labelling ("installed ruleset" as a source
 class distinct from "your report") gets its own design attention.
 
+Moving `guides.json` into a per-game package and adding `--game` to the
+link checker is not, by itself, enough to serve a second game's guides.
+`civ_advisor/knowledge/catalog.py:160` rejects any entry whose `game` is
+not `"civ7"`, and `ALLOWED_HOSTS` (catalog.py:40-41) pins the publisher
+markers `(civ7)` and `/civ-vii/`. A `knowledge/civ6/guides.json` therefore
+cannot load at all until both are made per-profile. And even once it can
+load, it would not reach a player: the two advice-path call sites —
+`civ_advisor/advisors/production.py:48` and
+`civ_advisor/decisions/context.py:336` — call `load_catalog()` with no
+arguments, so they get the module default regardless of which game is
+being advised. Only `scripts/check_guides.py` consults
+`profile.knowledge_package`. Until the catalog is threaded through the
+advice path, the per-game split has no effect on what a player is
+actually shown.
+
 ## 8. Storage and selection
 
 - `--game civ6 | civ7 | auto`. `auto` selects whichever game's logs
@@ -296,6 +311,32 @@ correct behaviour.
    side effect, so a profile whose module nothing imports exists in the
    source but is absent from `profile_ids()`, from `--game`'s help text,
    and from the "this build knows:" error — silently unavailable.
+
+   `LogReader.read` is typed `Callable[[Path], list]` and `load_logs`
+   passes exactly one path per reader. Civ VI's build-queue reader (§3.2)
+   must join `City_BuildQueue.csv` against `AI_CityBuild.csv` for
+   ownership, and §5's identity recovery reads across files too. Neither
+   is expressible today. Phase 2 must widen the signature (e.g.
+   `read(logs_dir, path)`) rather than let a reader reach for a sibling
+   file behind `load_logs`'s back — doing that would report a header
+   change in the joined file as a fault against the wrong file, and would
+   leave the joined file with no `FileStatus` of its own despite the
+   profile depending on it.
+
+   `profile` defaults to `CIV7` in three places (`ingest/load.py`,
+   `store.py`, `api/app.py`). Once a second profile exists, any caller
+   that forgets the argument runs Civ VII's readers against a Civ VI
+   directory: every file reports "file not found" and the user gets
+   empty advice instead of an error. Phase 2 must make `profile` required
+   at all three layers.
+
+   `LogReader.read` is typed `Callable[[Path], list]` (`civ_advisor/games/base.py`).
+   The bare `list` discards the row type each downstream consumer depends on, and
+   this is the one place a per-game reader contract could be made checkable — two
+   games feeding the same `RawLogs` field must produce the same row type, and
+   nothing currently enforces that. Phase 2 should type the return properly when
+   it widens the signature for cross-file joins, so the two changes land together
+   rather than touching every reader twice.
 3. **VI-only signals into existing advisors.** Combat desire and
    diplomatic modifiers into the threat advisor; research and policy
    scores into intel. All ORACLE-badged.

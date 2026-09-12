@@ -1,7 +1,7 @@
 [project]
 name = "civ-advisor"
 version = "0.1.0"
-description = "Second-screen turn advisor for Civilization VI and VII, driven by the games' own log files"
+description = "Second-screen turn advisor for Civilization VII, driven by the game's own log files"
 requires-python = ">=3.12"
 dependencies = [
     "fastapi>=0.115",

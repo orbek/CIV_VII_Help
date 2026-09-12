@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from civ_advisor.games.base import GameProfile
@@ -70,6 +70,7 @@ def load_logs(logs_dir: Path, profile: GameProfile = CIV7) -> RawLogs:
     design is not the same as missing, and only the profile knows which is which.
     """
     raw = RawLogs()
+    raw_log_fields = {f.name for f in fields(RawLogs)}
     for reader in profile.readers:
         path = logs_dir / reader.filename
         try:
@@ -81,6 +82,11 @@ def load_logs(logs_dir: Path, profile: GameProfile = CIV7) -> RawLogs:
         except (LogFormatError, ValueError, IndexError) as exc:
             log.warning("%s: dropping file for this rebuild: %s", reader.filename, exc)
             raw.files[reader.filename] = FileStatus(reader.filename, False, 0, None, str(exc))
+            continue
+        if reader.attr not in raw_log_fields:
+            error = f"reader.attr {reader.attr!r} is not a RawLogs field"
+            log.warning("%s: %s", reader.filename, error)
+            raw.files[reader.filename] = FileStatus(reader.filename, False, 0, None, error)
             continue
         setattr(raw, reader.attr, rows)
         raw.files[reader.filename] = FileStatus(

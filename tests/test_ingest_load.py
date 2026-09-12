@@ -3,8 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from civ_advisor.games.base import GameProfile, LogReader
 from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.load import load_logs
+from civ_advisor.ingest.readers import read_player_stats
 
 # The seven logs v1 shipped with; the v1 fixture has exactly these, so every newer log is
 # legitimately "file not found" there.
@@ -113,3 +115,20 @@ def test_load_logs_reads_only_the_files_the_profile_declares(tmp_path, fixture_d
     assert list(raw.files) == ["Player_Stats.csv"]
     assert raw.stats
     assert raw.combat == []
+
+
+def test_load_logs_reports_a_misspelled_reader_attr_instead_of_silently_dropping_rows(fixture_dir):
+    """A profile whose LogReader.attr does not match a RawLogs field must fail loudly:
+    it must not create a stray attribute on RawLogs while every downstream consumer
+    reads the real (empty) field and gets confidently empty advice."""
+    typo_profile = GameProfile(
+        id="civ7-typo", display_name="Typo", default_logs_dir=fixture_dir,
+        readers=(LogReader("Player_Stats.csv", "militry", read_player_stats),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    raw = load_logs(fixture_dir, profile=typo_profile)
+
+    assert raw.files["Player_Stats.csv"].ok is False
+    assert "militry" in raw.files["Player_Stats.csv"].error
+    assert not hasattr(raw, "militry")
+    assert raw.stats == []

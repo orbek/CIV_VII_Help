@@ -44,7 +44,8 @@ def _isolate_registry_state():
     Tests register profiles into the global _PROFILES dict, which would persist
     across test files in a single pytest run and cause cross-test contamination.
     This fixture ensures each test starts with a clean registry state while preserving
-    any production profiles that were registered at import time (e.g., civ7 in Task 3).
+    any production profiles, which register at import time (before any test runs) and
+    so are already present in the snapshot; only ids a test registers itself are wiped.
     """
     # Snapshot the current state before the test
     snapshot = registry._PROFILES.copy()

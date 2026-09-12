@@ -164,7 +164,8 @@ appears as dated history instead, never as an explanation of what is now on
 screen. Fair mode gets its own generation from a fair prompt rather than hiding
 every result that ever read an intercept.
 
-Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
+Options: `--game civ7` (the only game this build advises on so far),
+`--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
 `--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, `--no-llm`,
 `--context-file PATH`, and `--no-context-file`.
 

@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING, Callable
 
 from civ_advisor.advisors import Insight, run_all
 from civ_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
+from civ_advisor.games.base import GameProfile
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.load import RawLogs, load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.models import GameState
@@ -155,13 +157,15 @@ def _coverage(state: GameState, analysis_turn: int) -> tuple[DomainCoverage, ...
 class Store:
     def __init__(self, logs_dir: Path, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
-                 identity_provider: Callable[[Snapshot], dict] | None = None) -> None:
+                 identity_provider: Callable[[Snapshot], dict] | None = None,
+                 *, profile: GameProfile = CIV7) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision
         # layer still works — the identity is then simply less specific.
         self.identity_provider = identity_provider
         self.logs_dir = logs_dir
+        self.profile = profile
         self.archive_root = archive_root
         self.snapshot: Snapshot | None = None
         self._lock = threading.Lock()
@@ -190,7 +194,7 @@ class Store:
 
     def rebuild(self) -> Snapshot:
         """Re-read every log, archive it, and recompute advice. Safe to call from a worker thread."""
-        raw = load_logs(self.logs_dir)
+        raw = load_logs(self.logs_dir, self.profile)
         state = build_state(raw)
         insights = run_all(state)
         key = game_key(self.logs_dir)

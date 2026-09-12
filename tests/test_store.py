@@ -213,3 +213,19 @@ def test_two_stores_started_in_the_same_second_get_different_sessions(fixture_di
     collision could apply one game's record to another."""
     sessions = {Store(fixture_dir).rebuild().session for _ in range(5)}
     assert len(sessions) == 5
+
+
+def test_store_watches_and_reads_only_the_profile_s_files(fixture_dir, tmp_path):
+    """The profile reaches the reader table, not just the constructor."""
+    from civ_advisor.games.base import GameProfile, LogReader
+    from civ_advisor.ingest.readers import read_player_stats
+    from civ_advisor.store import Store
+
+    only_stats = GameProfile(
+        id="store-statsonly", display_name="Stats Only", default_logs_dir=tmp_path,
+        readers=(LogReader("Player_Stats.csv", "stats", read_player_stats),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    snapshot = Store(fixture_dir, profile=only_stats).rebuild()
+
+    assert list(snapshot.state.files) == ["Player_Stats.csv"]

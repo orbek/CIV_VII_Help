@@ -33,7 +33,7 @@ def test_archive_flags_reach_create_app(fixture_dir, monkeypatch, tmp_path):
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
     monkeypatch.setattr(cli, "create_app",
                         lambda logs_dir, poll, archive_root=None, commentary_worker=None,
-                        player_store=None:
+                        player_store=None, profile=None:
                         seen.update(root=archive_root, worker=commentary_worker,
                                     store=player_store) or
                         object.__new__(type("A", (), {"title": "x"})))
@@ -84,3 +84,35 @@ def test_archive_list_prints_sessions(tmp_path, capsys):
 def test_archive_list_with_no_archive_is_quiet(tmp_path, capsys):
     assert cli.main(["archive", "list", "--archive-dir", str(tmp_path / "none")]) == 0
     assert "No archive" in capsys.readouterr().out
+
+
+def test_game_flag_selects_the_profile_and_its_default_logs_dir(monkeypatch, capsys):
+    """--game picks both the readers and where to look, so a user who names the
+    game does not also have to know the path."""
+    import civ_advisor.cli as cli
+
+    seen = {}
+
+    def fake_create_app(logs_dir, poll_interval, **kwargs):
+        seen["logs_dir"] = logs_dir
+        seen["profile"] = kwargs["profile"]
+        return object()
+
+    monkeypatch.setattr(cli, "create_app", fake_create_app)
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+    # The profile's real default_logs_dir only exists if the game is installed, and
+    # the test is about which path is chosen, not whether it is present. main() makes
+    # exactly one is_dir() call before create_app, and monkeypatch undoes this after.
+    monkeypatch.setattr(Path, "is_dir", lambda self: True)
+
+    assert cli.main(["--game", "civ7", "--no-llm", "--no-context-file"]) == 0
+    assert seen["profile"].id == "civ7"
+    assert seen["logs_dir"] == seen["profile"].default_logs_dir
+
+
+def test_unknown_game_is_refused_with_the_known_ids(capsys):
+    """A typo must not fall back to a default and silently advise on the wrong game."""
+    import civ_advisor.cli as cli
+
+    assert cli.main(["--game", "civ5"]) == 2
+    assert "civ7" in capsys.readouterr().err

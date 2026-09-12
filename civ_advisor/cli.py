@@ -12,10 +12,12 @@ import uvicorn
 from civ_advisor.api.app import create_app
 from civ_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
 from civ_advisor.context_store import DEFAULT_STORE_PATH, PersistentContextStore
+from civ_advisor.games.civ7 import CIV7
+from civ_advisor.games.registry import UnknownGame, get_profile, profile_ids
 from civ_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
 from civ_advisor.llm.client import DEFAULT_TIMEOUT_S
 
-DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
+DEFAULT_LOGS_DIR = CIV7.default_logs_dir  # retained: the path Civ VII users know
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,8 +31,10 @@ def main(argv: list[str] | None = None) -> int:
                     "files; never writes to them. Archives them under ~/.civ7-advisor because the "
                     "game deletes its logs on launch.",
     )
-    parser.add_argument("--logs-dir", type=Path, default=DEFAULT_LOGS_DIR,
-                        help=f"Civ VII Logs directory (default: {DEFAULT_LOGS_DIR})")
+    parser.add_argument("--game", default="civ7",
+                        help=f"which game to advise on: {', '.join(profile_ids())} (default: civ7)")
+    parser.add_argument("--logs-dir", type=Path, default=None,
+                        help="log directory to read (default: the chosen game's own)")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--poll-interval", type=float, default=1.0,
@@ -50,9 +54,16 @@ def main(argv: list[str] | None = None) -> int:
                         help="keep goals and acknowledgements for this run only")
     args = parser.parse_args(argv)
 
-    if not args.logs_dir.is_dir():
+    try:
+        profile = get_profile(args.game)
+    except UnknownGame as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    logs_dir = args.logs_dir or profile.default_logs_dir
+
+    if not logs_dir.is_dir():
         print(
-            f"Civ VII log directory not found: {args.logs_dir}\n"
+            f"{profile.display_name} log directory not found: {logs_dir}\n"
             f"Start the game once so it creates the folder, or pass --logs-dir <path>.",
             file=sys.stderr,
         )
@@ -69,14 +80,15 @@ def main(argv: list[str] | None = None) -> int:
     # written and nothing from a previous run is offered.
     store_path = (Path(tempfile.mkdtemp(prefix="civ7-context-")) / "player-context.json"
                   if args.no_context_file else args.context_file)
-    app = create_app(args.logs_dir, args.poll_interval, archive_root=archive_root,
+    app = create_app(logs_dir, args.poll_interval, archive_root=archive_root,
                      commentary_worker=worker,
-                     player_store=PersistentContextStore(path=store_path))
+                     player_store=PersistentContextStore(path=store_path),
+                     profile=profile)
     where = f"archiving to {archive_root}" if archive_root else "archiving off"
     llm = "LLM off" if worker is None else f"Ollama {args.llm_model}"
     notes = "notes off" if args.no_context_file else f"notes in {store_path}"
-    print(f"Civ VII Advisor -> http://{args.host}:{args.port}  "
-          f"(reading {args.logs_dir}; {where}; {llm}; {notes})")
+    print(f"{profile.display_name} Advisor -> http://{args.host}:{args.port}  "
+          f"(reading {logs_dir}; {where}; {llm}; {notes})")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
     return 0
 

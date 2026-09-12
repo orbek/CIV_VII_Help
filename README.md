@@ -54,7 +54,7 @@ deciding now. **Why this? · How to do it** opens compact steps beside the
 action.
 
 **How do I do it in the game?** The steps come from a small reviewed guide
-catalog packaged with the advisor (`civ_advisor/knowledge/guides.json`) and
+catalog packaged with the advisor (`civ_advisor/knowledge/civ7/guides.json`) and
 each links the article it was written from. The steps say what to look for
 rather than naming buttons, because the game's UI changes between updates, and
 they never supply a figure — see [Guides and figures](#guides-and-figures).
@@ -145,7 +145,7 @@ changes. They never silently override a fresher log row.
 
 Guide links are audited by hand, never during play:
 
-    uv run python scripts/check_guides.py
+    uv run python scripts/check_guides.py --game civ7
 
 That checks link health only. An HTTP 200 is not a review, and a link-check
 date is not the game's version. The script never rewrites the catalog.

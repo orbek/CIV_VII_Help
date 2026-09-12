@@ -26,6 +26,7 @@ from dataclasses import asdict, dataclass
 
 import httpx
 
+from civ_advisor.games.registry import get_profile
 from civ_advisor.knowledge.catalog import UNREACHABLE, load_catalog
 
 USER_AGENT = "civ7-advisor guide-audit (link health check; contact via repository)"
@@ -81,9 +82,10 @@ def main(argv: list[str] | None = None) -> int:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--timeout", type=float, default=20.0)
     parser.add_argument("--json", action="store_true", help="machine-readable output")
+    parser.add_argument("--game", default="civ7", help="which game's catalog to audit")
     args = parser.parse_args(argv)
 
-    catalog = load_catalog()
+    catalog = load_catalog(package=get_profile(args.game).knowledge_package)
     results: list[Result] = []
     with httpx.Client(timeout=args.timeout, follow_redirects=True,
                       headers={"User-Agent": USER_AGENT}) as client:

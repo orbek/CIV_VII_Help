@@ -82,7 +82,7 @@ def test_a_family_whose_guides_are_unreviewed_produces_no_card():
 
     from importlib import resources
 
-    raw = json.loads(resources.files("civ_advisor.knowledge")
+    raw = json.loads(resources.files("civ_advisor.knowledge.civ7")
                      .joinpath("guides.json").read_text("utf-8"))
     for row in raw["entries"]:
         row["review_status"] = "link_only"

@@ -271,7 +271,7 @@ def test_a_guide_that_is_not_reviewed_yields_no_steps_and_no_candidate():
 
 def _catalog_json() -> str:
     from importlib import resources
-    return resources.files("civ_advisor.knowledge").joinpath("guides.json").read_text("utf-8")
+    return resources.files("civ_advisor.knowledge.civ7").joinpath("guides.json").read_text("utf-8")
 
 
 # ---- the worked refinement acceptance case (plan section 6) ----------------------

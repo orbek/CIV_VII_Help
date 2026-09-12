@@ -49,7 +49,7 @@ CIV7 = GameProfile(
     display_name="Civilization VII",
     default_logs_dir=DEFAULT_LOGS_DIR,
     readers=READERS,
-    knowledge_package="civ_advisor.knowledge",
+    knowledge_package="civ_advisor.knowledge.civ7",
 )
 
 register(CIV7)

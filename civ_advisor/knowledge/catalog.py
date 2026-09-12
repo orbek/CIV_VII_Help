@@ -23,6 +23,7 @@ from importlib import resources
 from urllib.parse import unquote, urlparse
 
 CATALOG_FILE = "guides.json"
+DEFAULT_CATALOG_PACKAGE = "civ_advisor.knowledge.civ7"
 SCHEMA_VERSION = 1
 
 # Editorial review states, strongest first. Only NAVIGATION_REVIEWED may back an
@@ -192,10 +193,10 @@ def _entry(row: dict) -> GuideEntry:
     return entry
 
 
-def load_catalog(raw: str | None = None) -> Catalog:
+def load_catalog(raw: str | None = None, package: str = DEFAULT_CATALOG_PACKAGE) -> Catalog:
     """The packaged catalog. Offline; raises `CatalogError` if it is not usable."""
     if raw is None:
-        raw = resources.files(__package__).joinpath(CATALOG_FILE).read_text(encoding="utf-8")
+        raw = resources.files(package).joinpath(CATALOG_FILE).read_text(encoding="utf-8")
     try:
         data = json.loads(raw)
     except json.JSONDecodeError as exc:

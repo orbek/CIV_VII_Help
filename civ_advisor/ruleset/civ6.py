@@ -87,19 +87,35 @@ class Civ6Ruleset:
 
     Constructed by `open_ruleset` (Task 5), which owns the caching and the degradation.
     Constructing one directly opens a connection that the caller must `close()`.
+
+    A provider `open_ruleset` already handed out can be closed out from under a caller
+    still holding it -- `clear_cache()` closes every cached provider for a game switch,
+    and a rebuild that was already mid-flight against the old one does not know that
+    happened. `_closed` is what makes that state explicit and checkable rather than an
+    accident of whichever `sqlite3` exception a closed connection happens to raise:
+    `close()` sets it, and every lookup checks it first and degrades -- `available`
+    becomes False, `reason` explains why, `building()` returns `None` -- rather than
+    ever touching the closed connection and letting `sqlite3.ProgrammingError` reach the
+    advisor.
     """
 
     _identity: RulesetIdentity
     _connection: sqlite3.Connection
     _countable: frozenset[str] = frozenset()
     _cache: dict[tuple[str, str], object] = field(default_factory=dict, repr=False)
+    _closed: bool = False
 
     @property
     def available(self) -> bool:
-        return True
+        return not self._closed
 
     @property
     def reason(self) -> str | None:
+        if self._closed:
+            return (f"{self._identity.path.name} was closed (the game was switched or "
+                    "reloaded while this reference was still in use), so no figure is "
+                    "taken from it now; the advisor will ask you for the game's own "
+                    "preview instead.")
         return None
 
     def identity(self) -> RulesetIdentity | None:
@@ -107,6 +123,7 @@ class Civ6Ruleset:
 
     def close(self) -> None:
         self._connection.close()
+        self._closed = True
 
     def _refresh_if_changed(self) -> None:
         """Re-derive identity from the file's current bytes, and drop every cached
@@ -191,7 +208,13 @@ class Civ6Ruleset:
         digest is captured before the rows are read and re-derived after, and a
         mismatch discards everything read and retries against the file's new state
         rather than serving a figure assembled from a moving target.
+
+        Returns `None` immediately, touching neither the connection nor the file, if
+        this provider has been closed out from under its caller -- see the class
+        docstring.
         """
+        if self._closed:
+            return None
         self._refresh_if_changed()
         cached = self._cache.get(("building", building_type))
         if cached is not None:
@@ -358,35 +381,57 @@ def open_ruleset(path: Path | None = None) -> RulesetProvider:
     Never raises. Absent, unreadable, or shaped differently than expected all produce a
     `NullRuleset` carrying a reason — which is exactly the Civilization VII behaviour, so
     a failure here degrades to asking the player rather than to an error in front of one.
+    A provider this function already returned keeps degrading gracefully after
+    `clear_cache()` closes it too: see `Civ6Ruleset.available`/`.reason`/`.building()`.
+
+    `_LOCK` guards only `_OPEN` itself, never the file work. Opening a connection and
+    hashing an 18 MB file (~15 ms) happens outside it, so one caller's open of one path
+    cannot serialise a concurrent caller opening a different one -- or, with a cache hit,
+    opening the same one. The recheck after that unlocked work is what stops two threads
+    that both missed the cache from publishing two different providers for one path: the
+    second to finish closes its own connection and returns the first's instead.
     """
     path = (path or DEFAULT_DATABASE).expanduser()
-    with _LOCK:
-        try:
-            current = stamp(path)
-        except OSError as exc:
+    try:
+        current = stamp(path)
+    except OSError as exc:
+        with _LOCK:
             _forget(path)
-            return NullRuleset(
-                f"{path.name} was not readable at {path} ({exc.strerror or exc}), so no "
-                "figure is taken from your installed ruleset; the advisor will ask you "
-                "for the game's own preview instead.")
+        return NullRuleset(
+            f"{path.name} was not readable at {path} ({exc.strerror or exc}), so no "
+            "figure is taken from your installed ruleset; the advisor will ask you "
+            "for the game's own preview instead.")
+
+    with _LOCK:
         cached = _OPEN.get(path)
         if cached is not None and cached[0] == current:
             return cached[1]
-        _forget(path)
-        try:
-            provider = Civ6Ruleset.open(path)
-        except (sqlite3.DatabaseError, OSError) as exc:
-            return NullRuleset(
-                f"{path.name} could not be read as a database ({exc}), so no figure is "
-                "taken from your installed ruleset; the advisor will ask you for the "
-                "game's own preview instead.")
-        complaint = _schema_complaint(provider._connection)
-        if complaint is not None:
+
+    # Everything from here down is file IO -- deliberately outside `_LOCK`.
+    try:
+        provider = Civ6Ruleset.open(path)
+    except (sqlite3.DatabaseError, OSError) as exc:
+        return NullRuleset(
+            f"{path.name} could not be read as a database ({exc}), so no figure is "
+            "taken from your installed ruleset; the advisor will ask you for the "
+            "game's own preview instead.")
+    complaint = _schema_complaint(provider._connection)
+    if complaint is not None:
+        provider.close()
+        return NullRuleset(
+            f"{path.name} is not shaped the way this advisor knows how to read — "
+            f"{complaint}. No figure is taken from it; the advisor will ask you for "
+            "the game's own preview instead.")
+
+    with _LOCK:
+        already = _OPEN.get(path)
+        if already is not None and already[0] == current:
+            # Another thread opened and published this same path, at this same
+            # identity, while we were doing our own IO above. Keep the one already
+            # published rather than two live connections to one file; ours is surplus.
             provider.close()
-            return NullRuleset(
-                f"{path.name} is not shaped the way this advisor knows how to read — "
-                f"{complaint}. No figure is taken from it; the advisor will ask you for "
-                "the game's own preview instead.")
+            return already[1]
+        _forget(path)
         _OPEN[path] = (current, provider)
         return provider
 

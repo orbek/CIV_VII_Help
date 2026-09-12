@@ -125,6 +125,29 @@
     return null;
   }
 
+  /* Which capabilities each panel needs to be meaningful. A panel missing from this map
+     depends on nothing game-specific and always renders: silence must be earned by a
+     declaration, never by a lookup failing. */
+  var PANEL_CAPABILITIES = {
+    victory: ["victory_paths"],
+    economy: ["maintenance", "happiness"],
+  };
+
+  /* An empty panel and an unsupported panel mean opposite things: "no rival is chasing
+     a victory" versus "this game does not record which victory a rival is pursuing."
+     One notice per capability this panel needs that the active game does not support,
+     each carrying the profile's own reason rather than a generic placeholder. */
+  function capabilityNotices(capabilities, panel) {
+    var needed = PANEL_CAPABILITIES[panel] || [];
+    var out = [];
+    needed.forEach(function (name) {
+      var held = (capabilities || {})[name];
+      if (!held || held.supported) return;
+      out.push({ capability: name, reason: held.reason || "not available in this game" });
+    });
+    return out;
+  }
+
   /* ---- the decision brief ------------------------------------------------------
 
      Grouping overlapping warnings by subject, without losing any of them. Two rival
@@ -243,7 +266,8 @@
 
   const api = {
     acceptResponse: acceptResponse, seen: seen, ago: ago, coverageLines: coverageLines,
-    pinnedGameGap: pinnedGameGap,
+    pinnedGameGap: pinnedGameGap, capabilityNotices: capabilityNotices,
+    PANEL_CAPABILITIES: PANEL_CAPABILITIES,
     groupDecisions: groupDecisions, splitBrief: splitBrief, maxSeverity: maxSeverity,
     fingerprint: fingerprint, acknowledgementKey: acknowledgementKey,
     isAcknowledged: isAcknowledged, commentaryExplains: commentaryExplains,

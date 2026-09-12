@@ -211,6 +211,32 @@ def test_auto_mode_has_no_pinned_gap():
     assert run_js(f"return B.pinnedGameGap({json.dumps(game)});") is None
 
 
+def test_an_unsupported_panel_is_explained_rather_than_omitted():
+    """An empty panel and an unsupported panel mean opposite things. The player has to be
+    able to tell 'no rival is chasing a victory' from 'this game does not record it'."""
+    lines = run_js(
+        'return B.capabilityNotices({victory_paths: {supported: false,'
+        ' reason: "Civ VI records era strategies, not victory paths."},'
+        ' happiness: {supported: true, reason: null}}, "victory");'
+    )
+    assert len(lines) == 1
+    assert lines[0]["reason"] == "Civ VI records era strategies, not victory paths."
+
+
+def test_a_supported_panel_gets_no_notice():
+    lines = run_js(
+        'return B.capabilityNotices({victory_paths: {supported: true, reason: null}},'
+        ' "victory");'
+    )
+    assert lines == []
+
+
+def test_a_panel_with_no_declared_capabilities_is_never_suppressed():
+    """Threats and Intel run off signals both games have. A panel not in the map must
+    render normally rather than silently disappearing on an unknown game."""
+    assert run_js('return B.capabilityNotices({}, "intel");') == []
+
+
 # ---- the decision brief ----------------------------------------------------------
 
 INSIGHTS = """

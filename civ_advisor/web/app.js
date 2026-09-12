@@ -379,6 +379,19 @@
     }
   }
 
+  /* An unsupported panel keeps its tab and states its reason. Removing the tab would
+     make the dashboard's shape depend on the game in a way the player cannot ask about;
+     an empty panel would read as "nothing is happening", which is a different claim. */
+  function capabilityBlock(panel) {
+    const caps = state.game && state.game.active ? state.game.active.capabilities : null;
+    const notices = B.capabilityNotices(caps, panel);
+    if (!notices.length) return null;
+    const box = el("div", "cap-absent");
+    box.append(el("p", "cap-absent-head", "Not available in this game"));
+    notices.forEach((n) => box.append(el("p", "cap-absent-why", n.reason)));
+    return box;
+  }
+
   /* Coverage, not a wall of file paths. A required domain failing is a real warning; an
      optional one that the game simply has not written disables its capability and says
      so once. "Empty but readable" and "no rows recent enough" are stated as what they
@@ -448,53 +461,68 @@
     const paths = Object.keys(d.leaderboards);
     const pathCols = paths.map((p) => ({ label: PATH_LABEL[p] || p }));
 
-    $("#victory-head").hidden = !seen();
-    $("#victory-table").replaceChildren(seen() ? table(
-      [{ label: "Rival" }, ...pathCols],
-      d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...paths.map((p) => {
-        const st = s.strategies.find((x) => x.strategy === p);
-        if (!st) return { text: "—", cls: "dim" };
-        if (!st.following) return { text: st.status, cls: "dim" };
-        const span = el("span");
-        span.append(document.createTextNode(st.status), el("span", "fig", String(st.weight)));
-        return span;
-      })])) : withheld());
+    // Victory paths is one capability, but a missing reader for it means the whole tab's
+    // content (which strategy each rival is following) is not something this game's logs
+    // can back -- the tab stays, its content collapses into the one honest statement.
+    const victoryAbsent = capabilityBlock("victory");
+    if (victoryAbsent) {
+      $("#victory").replaceChildren(victoryAbsent);
+    } else {
+      $("#victory-head").hidden = !seen();
+      $("#victory-table").replaceChildren(seen() ? table(
+        [{ label: "Rival" }, ...pathCols],
+        d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...paths.map((p) => {
+          const st = s.strategies.find((x) => x.strategy === p);
+          if (!st) return { text: "—", cls: "dim" };
+          if (!st.following) return { text: st.status, cls: "dim" };
+          const span = el("span");
+          span.append(document.createTextNode(st.status), el("span", "fig", String(st.weight)));
+          return span;
+        })])) : withheld());
 
-    const depth = paths.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
-    $("#victory-boards").replaceChildren(table(
-      [{ label: "Rank", num: true }, ...pathCols],
-      Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...paths.map((p) => {
-        const entry = d.leaderboards[p][i];
-        return entry ? named(entry.name, entry.value, entry.id === d.human) : { text: "—", cls: "dim" };
-      })])));
-    $("#victory-cards").replaceChildren(stream(byAdvisor("victory"), "victory"));
+      const depth = paths.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
+      $("#victory-boards").replaceChildren(table(
+        [{ label: "Rank", num: true }, ...pathCols],
+        Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...paths.map((p) => {
+          const entry = d.leaderboards[p][i];
+          return entry ? named(entry.name, entry.value, entry.id === d.human) : { text: "—", cls: "dim" };
+        })])));
+      $("#victory-cards").replaceChildren(stream(byAdvisor("victory"), "victory"));
+    }
 
-    $("#economy-table").replaceChildren(table([
-      { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
-      { label: "You vs median", num: true }, { label: "Best rival's", num: true }, { label: "Best rival" },
-    ], d.economy.map((c) => [
-      c.label, fmt(c.human), fmt(c.rival_median),
-      { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
-      fmt(c.leader_value), c.leader_name,
-    ])));
+    // Same for economy: maintenance and happiness back this tab's yield comparison and
+    // production reads, and a game missing either cannot fill it meaningfully.
+    const economyAbsent = capabilityBlock("economy");
+    if (economyAbsent) {
+      $("#economy").replaceChildren(economyAbsent);
+    } else {
+      $("#economy-table").replaceChildren(table([
+        { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
+        { label: "You vs median", num: true }, { label: "Best rival's", num: true }, { label: "Best rival" },
+      ], d.economy.map((c) => [
+        c.label, fmt(c.human), fmt(c.rival_median),
+        { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
+        fmt(c.leader_value), c.leader_name,
+      ])));
 
-    const turnsCell = (c) => c.item === "" ? dim("idle")
-      : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
-    const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
-      .replace(/\b\w/g, (ch) => ch.toUpperCase());
-    const prod = d.production;
-    $("#production-table").replaceChildren(prod.human.length
-      ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
-        prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
-      : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
-        ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
-    $("#rival-production-head").hidden = !seen() || prod.rivals === null;
-    $("#rival-production-table").replaceChildren(!seen() || prod.rivals === null ? withheld()
-      : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
-        prod.rivals.map((r) => [r.name, Math.round((r.military_share || 0) * r.cities.length),
-          `${Math.round((r.military_share || 0) * 100)}%`])));
+      const turnsCell = (c) => c.item === "" ? dim("idle")
+        : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
+      const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
+        .replace(/\b\w/g, (ch) => ch.toUpperCase());
+      const prod = d.production;
+      $("#production-table").replaceChildren(prod.human.length
+        ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
+          prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
+        : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
+          ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
+      $("#rival-production-head").hidden = !seen() || prod.rivals === null;
+      $("#rival-production-table").replaceChildren(!seen() || prod.rivals === null ? withheld()
+        : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
+          prod.rivals.map((r) => [r.name, Math.round((r.military_share || 0) * r.cities.length),
+            `${Math.round((r.military_share || 0) * 100)}%`])));
 
-    $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
+      $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
+    }
 
     renderTactical();
 

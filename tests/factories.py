@@ -75,6 +75,14 @@ def military_row(turn: int, player: int, combat_desire: float, **overrides):
     })
 
 
+def modifier_row(turn: int, player: int, opponent: int, modifier: str,
+                 value: float | None = None, action: str = "Activate"):
+    from civ_advisor.ingest.aiscores import DiplomacyModifierRow
+
+    return DiplomacyModifierRow(turn=turn, player=player, opponent=opponent,
+                                modifier=modifier, action=action, value=value)
+
+
 def kill(turn: int, victim: int, killer: int, unit: str = "Warrior", x: int = 10, y: int = 10) -> HistorianRow:
     return HistorianRow("UNIT_KILLED", "AGE_ANTIQUITY", turn, x, y, victim, killer, unit, None)
 

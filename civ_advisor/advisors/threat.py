@@ -16,10 +16,28 @@ ARMY_GROWTH_DELTA = 3        # rival must have gained this many more land units 
 COMBAT_DESIRE_TURNS = 10     # window the rival's own reading is compared over
 COMBAT_DESIRE_MIN = 0.5      # noise floor, not a danger level: below this, say nothing
 COMBAT_DESIRE_RISE = 0.5     # rise over the window at/above which the change is worth saying
+GRIEVANCE_ADVISE = -5.0   # a standing modifier at/below this is worth acting on
+GRIEVANCE_SHOWN = 3       # how many are quoted in the evidence
 
 KILL_EVENTS = ("UNIT_KILLED", "SHIP_SUNK")
 CITY_TARGET = "TARGET_ENEMY_CITY"
 UNIT_TARGET_SUFFIX = "_PRIORITY_UNIT"
+
+
+@dataclass(frozen=True)
+class Grievance:
+    """One standing diplomatic modifier between the human and a rival.
+
+    `pair` is the ordered (Player, Opponent) the log filed it under. It is NOT a
+    direction: DiplomacyModifiers.csv never records which side holds the opinion,
+    and the fixture writes a single meeting in both orderings. Carried so the two
+    ledgers stay distinguishable, not so a caller can attribute one.
+    """
+
+    turn: int
+    modifier: str          # the game's own wording, verbatim
+    value: float
+    pair: tuple[int, int]
 
 
 @dataclass(frozen=True)
@@ -50,6 +68,7 @@ class RivalThreat:
     combat_desire_turn: int | None = None
     combat_desire_prior: float | None = None          # same rival, COMBAT_DESIRE_TURNS earlier
     combat_desire_is_highest: bool = False            # among rivals on combat_desire_turn
+    grievances: tuple[Grievance, ...] = ()   # standing and negative, most negative first
 
 
 def summarize(state: GameState) -> list[RivalThreat]:
@@ -135,6 +154,7 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         combat_desire_turn=desire[1] if desire else None,
         combat_desire_prior=desire[2] if desire else None,
         combat_desire_is_highest=bool(desire and desire[3]),
+        grievances=_grievances(state, rival.id),
     )
 
 
@@ -185,6 +205,29 @@ def _combat_desire(state: GameState, rival_id: int) -> tuple[float, int, float |
     same_turn = [m.combat_desire for m in state.military
                  if m.turn == latest.turn and m.player in rival_ids]
     return latest.combat_desire, latest.turn, before, latest.combat_desire >= max(same_turn)
+
+
+def _grievances(state: GameState, rival_id: int) -> tuple[Grievance, ...]:
+    """Standing negative modifiers between the human and this rival.
+
+    Folded in turn order per (player, opponent, modifier): Activate and Update set
+    the value, Deactivate ends it. The two orderings are kept as separate ledgers
+    and never summed -- they are two opinions, and the log says which side holds
+    neither of them.
+    """
+    t = state.complete_through_turn
+    standing: dict[tuple[int, int, str], Grievance] = {}
+    pair = {state.HUMAN, rival_id}
+    for row in sorted(state.diplomacy_modifiers, key=lambda r: r.turn):
+        if row.turn > t or {row.player, row.opponent} != pair:
+            continue
+        key = (row.player, row.opponent, row.modifier)
+        if row.action == "Deactivate" or row.value is None:
+            standing.pop(key, None)
+            continue
+        standing[key] = Grievance(row.turn, row.modifier, row.value, (row.player, row.opponent))
+    return tuple(sorted((g for g in standing.values() if g.value < 0),
+                        key=lambda g: (g.value, g.turn, g.modifier)))
 
 
 def advise(state: GameState) -> list[Insight]:
@@ -240,6 +283,31 @@ def advise(state: GameState) -> list[Insight]:
                     + " This is read relative to the same turn's other rivals and to this "
                       "rival's own earlier reading — the game publishes no scale for it, so "
                       "it is not a calibrated danger level.",
+                **common,
+            ))
+
+        if r.grievances:
+            worst = r.grievances[0]
+            quoted = "; ".join(
+                f'"{g.modifier}" at {g.value:.1f} (turn {g.turn})'
+                for g in r.grievances[:GRIEVANCE_SHOWN]
+            )
+            more = len(r.grievances) - GRIEVANCE_SHOWN
+            out.append(Insight(
+                id=f"threat.grievances.{r.player}",
+                severity=Severity.ADVISE if worst.value <= GRIEVANCE_ADVISE else Severity.INFO,
+                provenance=Provenance.ORACLE,
+                title=f"Diplomatic friction between you and {r.name}",
+                recommendation="The modifiers name what is causing the friction; most can be "
+                               "acted on directly — clear the barbarian camps nearby, open a "
+                               "trade route, or stop settling toward their border. Do it before "
+                               "the grievance is old enough to be acted on.",
+                why=f"{len(r.grievances)} standing negative modifier"
+                    f"{'s' if len(r.grievances) != 1 else ''} between you and {r.name}: "
+                    f"{quoted}" + (f"; and {more} more." if more > 0 else ".")
+                    + " DiplomacyModifiers.csv records the pair a modifier stands between "
+                      "but does not record which side holds it, so these are not attributed "
+                      "to either of you.",
                 **common,
             ))
 

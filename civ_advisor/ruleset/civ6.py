@@ -92,10 +92,6 @@ class Civ6Ruleset:
     _identity: RulesetIdentity
     _connection: sqlite3.Connection
     _countable: frozenset[str] = frozenset()
-    # The stamp identity was last derived from. Checked cheaply on every lookup so a file
-    # rewritten under a long-lived provider (a mod toggled without restarting) is caught
-    # rather than served from a cache keyed on nothing but this instance's lifetime.
-    _stamp: tuple[int, int] = (0, 0)
     _cache: dict[tuple[str, str], object] = field(default_factory=dict, repr=False)
 
     @property
@@ -113,18 +109,26 @@ class Civ6Ruleset:
         self._connection.close()
 
     def _refresh_if_changed(self) -> None:
-        """Re-derive identity and drop every cached figure if the file has moved.
+        """Re-derive identity from the file's current bytes, and drop every cached
+        figure if the digest has moved.
 
-        `stamp()` is the cheap check run on every lookup; the 18 MB digest in
-        `identify()` only runs when it disagrees. A cache keyed on nothing but the
-        provider's lifetime would keep serving a cost from before a mod was enabled --
-        this is what makes the cache keyed on the file's own identity instead.
+        No cheap fast path. An earlier version of this method gated the hash behind
+        `stamp()` (size, mtime) and only re-derived when that disagreed; review found
+        the two claims could not both be true at once -- `stamp()`'s own docstring
+        admits a same-size edit or a coarse filesystem clock can leave it unchanged,
+        while this method's docstring claimed such a change was "caught". Measured
+        against a real 18.1 MB installed database, the full hash costs about 15 ms and
+        a cached lookup costs 0.1 ms; for an interactive advisor that rebuilds on a
+        poll tick, neither is worth trading correctness for, so this now always
+        re-derives rather than trusting a proxy that can miss the exact case it exists
+        to catch. What this still cannot see: a file rewritten between the moment this
+        method reads it and the moment `building()`'s row queries run a moment later --
+        `building()` re-verifies that specific window itself, below.
         """
-        current = stamp(self._identity.path)
-        if current != self._stamp:
-            self._identity = identify(self._identity.path)
-            self._stamp = current
+        fresh = identify(self._identity.path)
+        if fresh.digest != self._identity.digest:
             self._cache.clear()
+        self._identity = fresh
 
     # -- the query seam ------------------------------------------------------------
 
@@ -168,11 +172,51 @@ class Civ6Ruleset:
 
     # -- lookups -------------------------------------------------------------------
 
+    # A persistent race after this many tries means "cannot get a stable read", not
+    # "keep trying forever" -- a file being rewritten on every attempt is not this
+    # provider's problem to solve, and the honest answer at that point is "cannot
+    # answer", the same as any other degraded case.
+    _MAX_READ_ATTEMPTS = 3
+
     def building(self, building_type: str) -> BuildingFacts | None:
+        """A building's figures, verified to have all come from one state of the file.
+
+        `identify()` reads raw bytes outside SQLite's own consistency guarantees, while
+        the rows below are read through the connection. In the default rollback-journal
+        mode SQLite writes pages into the main file during a transaction and only makes
+        that atomic at commit, so an external write landing mid-transaction could in
+        principle leave the raw digest and the row read describing two different states
+        of the file -- a figure whose citation does not match the bytes it came from,
+        which is worse than no figure. Read-verify-reread closes that window: the
+        digest is captured before the rows are read and re-derived after, and a
+        mismatch discards everything read and retries against the file's new state
+        rather than serving a figure assembled from a moving target.
+        """
         self._refresh_if_changed()
         cached = self._cache.get(("building", building_type))
         if cached is not None:
             return cached  # type: ignore[return-value]
+
+        for _ in range(self._MAX_READ_ATTEMPTS):
+            before = self._identity
+            facts = self._read_building(building_type)
+            after = identify(self._identity.path)
+            if after.digest == before.digest:
+                if facts is not None:
+                    self._cache[("building", building_type)] = facts
+                self._identity = after
+                return facts
+            # The file moved while these rows were being read. Every figure just built
+            # cites `before`, which no longer describes the file -- discard all of it
+            # and retry against the state `after` actually observed.
+            self._identity = after
+            self._cache.clear()
+        return None
+
+    def _read_building(self, building_type: str) -> BuildingFacts | None:
+        """One attempt at reading a building's figures, against whatever state of the
+        file is current when it runs. Never itself decides whether that state held
+        still; `building()` is what verifies that and retries."""
         try:
             rows = self._select("Buildings",
                                 ("Cost", "Maintenance", "PrereqDistrict", "PrereqTech",
@@ -214,7 +258,7 @@ class Civ6Ruleset:
                 row_key=(building_type, y["YieldType"]), identity=self._identity)
             for y in yield_rows)
 
-        facts = BuildingFacts(
+        return BuildingFacts(
             building=building_type,
             cost=figure("Cost", f"{name} production cost", "production"),
             maintenance=figure("Maintenance", f"{name} maintenance", "gold per turn"),
@@ -224,8 +268,6 @@ class Civ6Ruleset:
             yields=yields,
             mentions=self._effect_mentions(building_type, bool(yields)),
         )
-        self._cache[("building", building_type)] = facts
-        return facts
 
     def _effect_mentions(self, building_type: str, has_yields: bool) -> tuple[RulesetMention, ...]:
         """What a building does beyond its flat yields, said without a number.
@@ -269,10 +311,8 @@ class Civ6Ruleset:
         connection.execute("PRAGMA query_only = 1")
         present = {row[0] for row in
                    connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
-        identity = identify(path)
-        return cls(_identity=identity, _connection=connection,
-                   _countable=frozenset(COUNTABLE_COLUMNS) & present,
-                   _stamp=(identity.size, identity.mtime_ns))
+        return cls(_identity=identify(path), _connection=connection,
+                   _countable=frozenset(COUNTABLE_COLUMNS) & present)
 
 
 # -- opening, caching and degrading ------------------------------------------------

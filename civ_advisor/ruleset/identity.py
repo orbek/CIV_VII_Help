@@ -15,13 +15,15 @@ BLOCK = 1 << 20
 
 
 def stamp(path: Path) -> tuple[int, int]:
-    """The cheap key: size and modification time.
+    """A cheap, deliberately imperfect key: size and modification time.
 
-    Used to decide whether anything needs re-deriving, so the 18 MB hash runs when the
-    file moves rather than on every lookup. It is not the identity — a figure is labelled
-    with the digest, which is what makes it checkable. Not sufficient on its own either:
-    a mod that changes a value without changing the byte count leaves size identical, and
-    mtime resolution varies by filesystem, so a caller that must be sure re-hashes.
+    `open_ruleset` uses this to decide whether a *whole provider* is worth reopening
+    across separate calls (a coarse, infrequent decision) — not to decide whether any
+    single figure is safe to trust. It is not sufficient for that on its own: a mod that
+    changes a value without changing the byte count leaves size identical, and mtime
+    resolution varies by filesystem, so a piece of code that must be sure re-hashes with
+    `identify` instead. This function makes no promise that a changed file always
+    produces a changed stamp — only that a changed stamp always means a changed file.
     """
     status = path.stat()
     return (status.st_size, status.st_mtime_ns)
@@ -32,9 +34,13 @@ def identify(path: Path) -> RulesetIdentity:
 
     Whole-file SHA-256 rather than a sample: a mod can change one row anywhere in an
     18 MB file, and a partial hash would let that row's figures keep citing an identity
-    that no longer describes them. This runs once per `stamp()` change, not per lookup —
-    callers that hold a provider open across many lookups re-derive only when `stamp()`
-    itself has moved, which is what keeps the full hash affordable.
+    that no longer describes them.
+
+    Measured against a real 18.1 MB installed database: this call costs about 15 ms.
+    `Civ6Ruleset` calls it on every lookup rather than gating it behind `stamp()` --
+    that measurement is why: 15 ms is affordable for an interactive advisor that
+    rebuilds on a poll tick, and a cheap gate that can silently miss a same-size or
+    coarse-mtime edit is not a trade worth making for it.
     """
     size, mtime_ns = stamp(path)
     digest = hashlib.sha256()

@@ -19,10 +19,21 @@ machine. On another machine, install it once with:
 
     ollama pull gemma4:31b-it-qat
 
+Or use the sparse mixture-of-experts alternative. It is a larger download and
+needs more memory than the default (22 GB vs 18 GB), but activates only a
+fraction of its weights per token, so it generates faster once loaded:
+
+    ollama pull qwen3.6:35b-a3b
+
 Then start the advisor in another terminal:
 
     uv sync
     uv run civ7-advisor
+
+That uses the default model. To run the advisor against the mixture-of-experts
+model you just pulled, name it on the command line:
+
+    uv run civ7-advisor --llm-model qwen3.6:35b-a3b
 
 Open http://127.0.0.1:8765 on your second screen and play. The page updates
 by itself about a second after the game finishes writing a turn.
@@ -160,10 +171,19 @@ Options: `--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
 Ollama commentary is optional. The advisor checks only the loopback service at
 `127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the
 model. If Ollama is stopped or the model is missing, one quiet notice replaces
-the commentary while every deterministic panel keeps working. To use a smaller
-installed local model, pass it explicitly, for example:
+the commentary while every deterministic panel keeps working. Any installed
+local model can be used instead of the default by passing it explicitly:
+
+    uv run civ7-advisor --llm-model qwen3.6:35b-a3b
+
+or, for a much smaller one on a constrained machine:
 
     uv run civ7-advisor --llm-model llama3.2:3b
+
+The choice of model changes only the generated prose. Every figure, threshold,
+comparison and link on the page is computed from the logs, so a different model
+cannot change what the advisor asserts — and the model that produced a piece of
+prose is displayed with it.
 
 ## Fair vs Oracle
 

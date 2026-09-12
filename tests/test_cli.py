@@ -8,7 +8,7 @@ def test_default_logs_dir_is_the_macos_civ_vii_logs_folder():
 
 
 def test_missing_logs_dir_exits_2_with_a_helpful_message(tmp_path: Path, capsys):
-    rc = cli.main(["--logs-dir", str(tmp_path / "nope")])
+    rc = cli.main(["--logs-dir", str(tmp_path / "nope"), "--game", "civ7"])
     err = capsys.readouterr().err
     assert rc == 2
     assert "not found" in err and "--logs-dir" in err and str(tmp_path / "nope") in err
@@ -22,7 +22,8 @@ def test_server_is_started_with_parsed_options(fixture_dir: Path, monkeypatch):
 
     monkeypatch.setattr(cli.uvicorn, "run", fake_run)
     # --no-archive: this calls the real create_app, and must never touch the user's home.
-    rc = cli.main(["--logs-dir", str(fixture_dir), "--port", "9000", "--host", "0.0.0.0", "--no-archive"])
+    rc = cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--port", "9000",
+                  "--host", "0.0.0.0", "--no-archive"])
     assert rc == 0
     assert calls["port"] == 9000 and calls["host"] == "0.0.0.0"
     assert calls["app"].title == "Civ VII Advisor"
@@ -37,9 +38,10 @@ def test_archive_flags_reach_create_app(fixture_dir, monkeypatch, tmp_path):
                         seen.update(root=archive_root, worker=commentary_worker,
                                     store=player_store) or
                         object.__new__(type("A", (), {"title": "x"})))
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive"])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive"])
     assert seen["root"] is None
-    cli.main(["--logs-dir", str(fixture_dir), "--archive-dir", str(tmp_path / "arc")])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7",
+             "--archive-dir", str(tmp_path / "arc")])
     assert seen["root"] == tmp_path / "arc"
 
 
@@ -51,9 +53,11 @@ def test_the_notes_file_is_configurable_and_can_be_turned_off(fixture_dir, monke
     monkeypatch.setattr(cli, "create_app", lambda *args, **kwargs:
                         seen.update(kwargs) or object.__new__(type("A", (), {"title": "x"})))
     notes = tmp_path / "notes.json"
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--context-file", str(notes)])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive",
+             "--context-file", str(notes)])
     assert seen["player_store"].path == notes
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--no-context-file"])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive",
+             "--no-context-file"])
     throwaway = seen["player_store"].path
     assert throwaway != notes and throwaway != cli.DEFAULT_STORE_PATH
     assert not throwaway.exists()      # nothing is written until something is recorded
@@ -63,11 +67,11 @@ def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):
     seen = {}
     monkeypatch.setattr(cli.uvicorn, "run", lambda app, host, port, log_level: None)
     monkeypatch.setattr(cli, "create_app", lambda *args, **kwargs: seen.update(kwargs) or object())
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--llm-model", "llama3.3:70b",
-              "--llm-timeout", "123"])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive",
+             "--llm-model", "llama3.3:70b", "--llm-timeout", "123"])
     assert seen["commentary_worker"].client.model == "llama3.3:70b"
     assert seen["commentary_worker"].client.timeout == 123
-    cli.main(["--logs-dir", str(fixture_dir), "--no-archive", "--no-llm"])
+    cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive", "--no-llm"])
     assert seen["commentary_worker"] is None
 
 
@@ -116,3 +120,20 @@ def test_unknown_game_is_refused_with_the_known_ids(capsys):
 
     assert cli.main(["--game", "civ5"]) == 2
     assert "civ7" in capsys.readouterr().err
+
+
+def test_logs_dir_without_game_is_refused(tmp_path, capsys):
+    """A logs directory belongs to one game, and the advisor cannot tell which from the
+    path. Guessing would run Civ VII's readers over a Civ VI directory: every file would
+    report "file not found" and the player would get empty advice instead of an error."""
+    rc = cli.main(["--logs-dir", str(tmp_path)])
+    err = capsys.readouterr().err
+    assert rc == 2
+    assert "--logs-dir" in err and "--game" in err
+    assert "civ6" in err and "civ7" in err       # name the choices, do not just refuse
+
+
+def test_logs_dir_with_an_explicit_game_is_accepted(fixture_dir, monkeypatch):
+    monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
+    assert cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive",
+                     "--no-llm", "--no-context-file"]) == 0

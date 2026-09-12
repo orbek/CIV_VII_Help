@@ -31,8 +31,9 @@ def main(argv: list[str] | None = None) -> int:
                     "files; never writes to them. Archives them under ~/.civ7-advisor because the "
                     "game deletes its logs on launch.",
     )
-    parser.add_argument("--game", default="civ7",
-                        help=f"which game to advise on: {', '.join(profile_ids())} (default: civ7)")
+    parser.add_argument("--game", default=None,
+                        help=f"which game to advise on: {', '.join(profile_ids())} "
+                             "(default: civ7; required with --logs-dir)")
     parser.add_argument("--logs-dir", type=Path, default=None,
                         help="log directory to read (default: the chosen game's own)")
     parser.add_argument("--host", default="127.0.0.1")
@@ -54,8 +55,17 @@ def main(argv: list[str] | None = None) -> int:
                         help="keep goals and acknowledgements for this run only")
     args = parser.parse_args(argv)
 
+    if args.logs_dir is not None and args.game is None:
+        print(
+            "--logs-dir needs --game: a log directory belongs to one game and the path "
+            "does not say which.\n"
+            f"Pass one of: {', '.join(profile_ids())}.",
+            file=sys.stderr,
+        )
+        return 2
+    game = args.game or "civ7"
     try:
-        profile = get_profile(args.game)
+        profile = get_profile(game)
     except UnknownGame as exc:
         print(str(exc), file=sys.stderr)
         return 2

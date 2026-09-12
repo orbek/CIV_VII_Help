@@ -6,7 +6,6 @@ from dataclasses import dataclass, field, fields
 from pathlib import Path
 
 from civ_advisor.games.base import GameProfile
-from civ_advisor.games.civ7 import CIV7
 
 from .csvfile import LogFormatError
 from .readers import DiplomacyRow, HappinessRow, HistorianRow, StatsRow, TargetRow, TreasuryRow, VictoryRow
@@ -67,7 +66,7 @@ class RawLogs:
     files: dict[str, FileStatus] = field(default_factory=dict)
 
 
-def load_logs(logs_dir: Path, profile: GameProfile = CIV7) -> RawLogs:
+def load_logs(logs_dir: Path, profile: GameProfile) -> RawLogs:
     """Read every log `profile` declares. A file that fails to parse is dropped for
     this load (its FileStatus says why) while every other file still contributes.
 

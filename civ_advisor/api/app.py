@@ -24,7 +24,6 @@ from civ_advisor.decisions.context import (
 )
 from civ_advisor.decisions.models import PlayerReport
 from civ_advisor.games.base import GameProfile
-from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.poller import snapshot as poll_snapshot
 from civ_advisor.ingest.poller import watch
 from civ_advisor.llm import questions
@@ -55,7 +54,7 @@ HIDDEN_MESSAGE = "Oracle off — this local commentary saw intercepted evidence.
 def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | None = None,
                commentary_worker: CommentaryWorker | None = None,
                player_store: PersistentContextStore | None = None,
-               *, profile: GameProfile = CIV7) -> FastAPI:
+               *, profile: GameProfile) -> FastAPI:
     context_store = ContextStore()
     history = change_tracking.History()
     record = player_store if player_store is not None else PersistentContextStore()

@@ -1,11 +1,12 @@
 import asyncio
 from pathlib import Path
 
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.store import SCHEMA_VERSION, Store
 
 
 def test_rebuild_publishes_one_snapshot_with_state_insights_and_coverage(fixture_dir: Path):
-    store = Store(fixture_dir)
+    store = Store(fixture_dir, profile=CIV7)
     assert store.state is None and store.insights == []
     captured = store.rebuild()
     assert captured.latest_turn == 82 and captured.analysis_turn == 81
@@ -24,7 +25,7 @@ def test_rebuild_publishes_one_snapshot_with_state_insights_and_coverage(fixture
 
 def test_publish_reaches_subscribers_and_unsubscribe_stops_it():
     async def scenario():
-        store = Store(Path("."))
+        store = Store(Path("."), profile=CIV7)
         q = store.subscribe()
         store.publish({"type": "state_changed", "turn": 5})
         assert await asyncio.wait_for(q.get(), 1) == {"type": "state_changed", "turn": 5}
@@ -41,7 +42,7 @@ def test_store_archives_under_game_and_session_and_starts_a_new_session_after_a_
     logs = tmp_path / "logs"
     shutil.copytree(fixture_dir, logs)
     root = tmp_path / "archive"
-    store = Store(logs, archive_root=root)
+    store = Store(logs, archive_root=root, profile=CIV7)
     store.rebuild()
     games = list(root.iterdir())
     assert len(games) == 1
@@ -63,7 +64,7 @@ def test_store_archives_under_the_seeds_of_the_loaded_save(tmp_path, fixture_dir
         "[2026-09-07 17:13:59]\tRandom Seeds: Game 1571231116, Map 1516997327\n"
     )
     root = tmp_path / "archive"
-    Store(logs, archive_root=root).rebuild()
+    Store(logs, archive_root=root, profile=CIV7).rebuild()
     game = root / "seeds-1571231116-1516997327"
     assert [p.name for p in root.iterdir()] == [game.name]
     sessions = list(game.iterdir())
@@ -73,7 +74,7 @@ def test_store_archives_under_the_seeds_of_the_loaded_save(tmp_path, fixture_dir
 
 def test_store_without_archive_root_writes_nothing(tmp_path, fixture_dir):
     root = tmp_path / "archive"
-    Store(fixture_dir).rebuild()
+    Store(fixture_dir, profile=CIV7).rebuild()
     assert not root.exists()
 
 
@@ -82,7 +83,7 @@ def test_archiver_failure_does_not_break_rebuild(tmp_path, fixture_dir, monkeypa
     def boom(*a, **k):
         raise OSError("disk full")
     monkeypatch.setattr(store_mod, "archive_logs", boom)
-    state = Store(fixture_dir, archive_root=tmp_path / "archive").rebuild()
+    state = Store(fixture_dir, archive_root=tmp_path / "archive", profile=CIV7).rebuild()
     assert state.latest_turn == 82
 
 
@@ -108,7 +109,7 @@ def test_coverage_tells_empty_stale_and_unreadable_apart(tmp_path, fixture_dir):
     )
     (logs / "Player_Treasury.csv").write_text("Turn, Player, Broken\n1, 0, x\n")  # malformed
 
-    captured = Store(logs).rebuild()
+    captured = Store(logs, profile=CIV7).rebuild()
     by_name = {c.name: c for c in captured.coverage}
     assert by_name["empire"].status == "ok" and by_name["empire"].required is True
     assert by_name["production"].status == "empty" and by_name["production"].rows == 0
@@ -127,7 +128,7 @@ def test_coverage_tells_empty_stale_and_unreadable_apart(tmp_path, fixture_dir):
 def test_revision_is_monotonic_and_each_snapshot_is_internally_coherent(fixture_dir):
     """Interleave reads and rebuilds: every read must see one revision whose insights and
     state came from the same rebuild, and revisions must only ever go up."""
-    store = Store(fixture_dir)
+    store = Store(fixture_dir, profile=CIV7)
     seen = []
     for _ in range(4):
         store.rebuild()
@@ -140,7 +141,7 @@ def test_revision_is_monotonic_and_each_snapshot_is_internally_coherent(fixture_
 
 
 def test_session_identity_exists_without_archiving_and_survives_a_plain_rebuild(fixture_dir):
-    store = Store(fixture_dir)          # no archive_root at all
+    store = Store(fixture_dir, profile=CIV7)          # no archive_root at all
     first = store.rebuild()
     second = store.rebuild()
     assert first.session and first.session == second.session
@@ -154,7 +155,7 @@ def test_a_log_wipe_and_reload_start_a_new_epoch(tmp_path, fixture_dir):
     import shutil
     from civ_advisor.games.civ7 import CIV7
     logs = _copy_logs(tmp_path, fixture_dir)
-    store = Store(logs)
+    store = Store(logs, profile=CIV7)
     first = store.rebuild()
     for name in CIV7.log_files:
         (logs / name).unlink(missing_ok=True)
@@ -171,7 +172,7 @@ def test_a_turn_that_moves_backwards_starts_a_new_epoch(tmp_path, fixture_dir):
     """A reload we never caught mid-wipe: the same seeds can be branched, so identical
     seeds are not evidence of the same line of play. Ambiguity resolves to a new epoch."""
     logs = _copy_logs(tmp_path, fixture_dir)
-    store = Store(logs)
+    store = Store(logs, profile=CIV7)
     first = store.rebuild()
     header, *rows = (logs / "Player_Stats.csv").read_text().splitlines()
     kept = [r for r in rows if r.split(",")[0].strip().isdigit()
@@ -186,7 +187,7 @@ def test_loading_a_different_save_starts_a_new_epoch(tmp_path, fixture_dir):
     logs = _copy_logs(tmp_path, fixture_dir)
     (logs / "GameCore.log").write_text(
         "[2026-09-07 17:13:59]\tRandom Seeds: Game 111, Map 222\n")
-    store = Store(logs)
+    store = Store(logs, profile=CIV7)
     first = store.rebuild()
     assert first.game_key == "seeds-111-222"
     (logs / "GameCore.log").write_text(
@@ -200,7 +201,7 @@ def test_a_log_written_once_per_save_is_not_reported_as_stale(fixture_v2_dir):
     """GameCore.log records identity when the save loads and never again. Grading it
     against the turn counter would report a 99-turn lag on a perfectly current file —
     exactly the kind of technical noise that makes real coverage warnings unreadable."""
-    captured = Store(fixture_v2_dir).rebuild()
+    captured = Store(fixture_v2_dir, profile=CIV7).rebuild()
     identity = captured.domain("identity")
     assert identity.turn_scoped is False
     assert identity.status == "ok" and identity.rows > 0
@@ -211,7 +212,7 @@ def test_a_log_written_once_per_save_is_not_reported_as_stale(fixture_v2_dir):
 def test_two_stores_started_in_the_same_second_get_different_sessions(fixture_dir):
     """The session id is what the player's saved acknowledgements are filed under, so a
     collision could apply one game's record to another."""
-    sessions = {Store(fixture_dir).rebuild().session for _ in range(5)}
+    sessions = {Store(fixture_dir, profile=CIV7).rebuild().session for _ in range(5)}
     assert len(sessions) == 5
 
 

@@ -6,7 +6,7 @@ from civ_advisor.ingest.production import read_build_queue
 
 
 def test_every_log_in_the_v2_fixture_parses(fixture_v2_dir):
-    raw = load_logs(fixture_v2_dir)
+    raw = load_logs(fixture_v2_dir, profile=CIV7)
     assert all(raw.files[n].ok for n in CIV7.log_files), {
         n: f.error for n, f in raw.files.items() if not f.ok
     }

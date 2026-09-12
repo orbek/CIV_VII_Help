@@ -12,6 +12,7 @@ def fixture_dir() -> Path:
     return FIXTURE_DIR
 
 
+from civ_advisor.games.civ7 import CIV7  # noqa: E402
 from civ_advisor.ingest.load import load_logs  # noqa: E402
 from civ_advisor.state.build import build_state  # noqa: E402
 
@@ -19,7 +20,7 @@ from civ_advisor.state.build import build_state  # noqa: E402
 @pytest.fixture(scope="session")
 def fixture_state(fixture_dir: Path):
     """GameState built from the live-game fixture: latest turn 82, complete turn 81."""
-    return build_state(load_logs(fixture_dir))
+    return build_state(load_logs(fixture_dir, profile=CIV7))
 
 
 @pytest.fixture(scope="session")
@@ -32,7 +33,7 @@ def fixture_v2_dir() -> Path:
 @pytest.fixture(scope="session")
 def fixture_v2_state(fixture_v2_dir: Path):
     """GameState built from the turn-100 fixture that exercises all v2 readers."""
-    return build_state(load_logs(fixture_v2_dir))
+    return build_state(load_logs(fixture_v2_dir, profile=CIV7))
 
 
 @pytest.fixture(scope="session")

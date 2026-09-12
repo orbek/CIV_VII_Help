@@ -6,6 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from civ_advisor.api.app import create_app
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
 
 APP_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "app.js"
@@ -16,7 +17,7 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since",
 
 @pytest.fixture(scope="module")
 def client(fixture_dir: Path):
-    with TestClient(create_app(fixture_dir, poll_interval=60)) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
         yield c
 
 
@@ -88,14 +89,14 @@ def test_threats_table_columns_are_split_by_provenance():
 
 
 def test_state_is_503_before_first_rebuild(fixture_dir: Path):
-    app = create_app(fixture_dir)  # no lifespan entered -> never rebuilt
+    app = create_app(fixture_dir, profile=CIV7)  # no lifespan entered -> never rebuilt
     assert TestClient(app).get("/api/state").status_code == 503
 
 
 def test_events_stream_delivers_and_drops_its_subscriber_on_disconnect(fixture_dir: Path):
     """Drive /events over raw ASGI: a published event reaches the client, and the queue is
     released when the client goes away — a leak here costs one queue per page refresh."""
-    app = create_app(fixture_dir)  # no lifespan needed: /events reads no state
+    app = create_app(fixture_dir, profile=CIV7)  # no lifespan needed: /events reads no state
     store = app.state.store
     scope = {
         "type": "http",
@@ -178,7 +179,7 @@ def _v2_dir(tmp_path: Path, fixture_dir: Path) -> Path:
 
 
 def test_intel_endpoint_filters_oracle_events_server_side(tmp_path: Path, fixture_dir: Path):
-    with TestClient(create_app(_v2_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_v2_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         events = c.get("/api/intel").json()
         kinds = {(e["kind"], e["provenance"]) for e in events}
         assert ("gossip", "fair") in kinds and ("combat", "fair") in kinds
@@ -195,7 +196,7 @@ def test_intel_endpoint_filters_oracle_events_server_side(tmp_path: Path, fixtur
 
 
 def test_intel_is_503_before_first_rebuild(fixture_dir: Path):
-    assert TestClient(create_app(fixture_dir)).get("/api/intel").status_code == 503
+    assert TestClient(create_app(fixture_dir, profile=CIV7)).get("/api/intel").status_code == 503
 
 
 def test_tactical_endpoint_is_gated_server_side(client):
@@ -207,7 +208,7 @@ def test_tactical_endpoint_is_gated_server_side(client):
 
 
 def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixture_dir):
-    with TestClient(create_app(fixture_dir, poll_interval=60)) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, profile=CIV7)) as c:
         assert c.get("/api/commentary").json()["status"] == "disabled"
 
     commentary = Commentary("local:test", "a" * 64, 81, True, "Opinion [threat.x].",
@@ -223,7 +224,7 @@ def test_commentary_endpoint_is_disabled_by_default_and_hides_oracle_output(fixt
         def close(self):
             pass
 
-    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker(), profile=CIV7)) as c:
         assert c.get("/api/commentary").json()["commentary"]["model"] == "local:test"
         # Fair mode is generated from a fair prompt, but a generation that still reports
         # having read intercepts is withheld rather than trusted.
@@ -309,7 +310,7 @@ def test_insights_endpoint_filters_by_mode_on_the_server(client):
 
 
 def test_briefing_is_503_before_the_first_rebuild(fixture_dir: Path):
-    app = create_app(fixture_dir)  # lifespan never entered -> nothing published
+    app = create_app(fixture_dir, profile=CIV7)  # lifespan never entered -> nothing published
     assert TestClient(app).get("/api/briefing").status_code == 503
     assert TestClient(app).get("/api/status").status_code == 503
 
@@ -335,7 +336,7 @@ def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir
         def close(self):
             pass
 
-    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker())) as c:
+    with TestClient(create_app(fixture_dir, poll_interval=60, commentary_worker=StubWorker(), profile=CIV7)) as c:
         body = c.get("/api/commentary").json()
         assert body["status"] == "queued" and body["commentary"] is None
         # Earlier prose travels as dated history, with the identity that dates it.
@@ -382,7 +383,7 @@ def _behind_dir(tmp_path: Path, fixture_dir: Path) -> Path:
 def test_decisions_travel_with_their_evidence_and_guides_resolved(tmp_path, fixture_dir):
     """Citations resolve on the server. A bare id the drawer cannot look up would be a
     dead link, so the resolution happens where it can fail loudly."""
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         body = c.get("/api/decisions").json()
         card = next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
         assert card["subject"] == "Culture in Test1"
@@ -408,7 +409,7 @@ def test_decisions_travel_with_their_evidence_and_guides_resolved(tmp_path, fixt
 
 
 def test_the_briefing_carries_the_decision_brief(tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         body = c.get("/api/briefing").json()
         assert body["decisions"]["cards"]
         assert body["decisions"]["context"]["snapshot_revision"] == body["status"]["revision"]
@@ -419,7 +420,7 @@ def test_the_briefing_carries_the_decision_brief(tmp_path, fixture_dir):
 
 def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         def culture_card(body):
             return next(x for x in body["cards"] if x["id"].startswith("decision.culture."))
@@ -471,7 +472,7 @@ def test_a_submitted_preview_changes_the_recommendation_and_the_context_revision
 
 def test_a_submission_from_another_session_is_refused_with_a_recoverable_conflict(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         response = c.post("/api/context", json={
             "id": "report.stale", "subject": "LOC_CITY_NAME_TEST1", "label": "objective",
             "value": "soonest_culture", "observed_turn": 81, "session": "a-previous-session",
@@ -485,7 +486,7 @@ def test_a_submission_from_another_session_is_refused_with_a_recoverable_conflic
 
 
 def test_a_field_the_panel_does_not_collect_is_refused(tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         response = c.post("/api/context", json={
             "id": "report.free", "subject": "LOC_CITY_NAME_TEST1", "label": "my_hopes",
@@ -498,7 +499,7 @@ def test_a_field_the_panel_does_not_collect_is_refused(tmp_path, fixture_dir):
 
 def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
         tmp_path, fixture_dir):
-    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60)) as c:
+    with TestClient(create_app(_behind_dir(tmp_path, fixture_dir), poll_interval=60, profile=CIV7)) as c:
         session = c.get("/api/status").json()["session"]
         c.post("/api/context", json={
             "id": "report.options", "subject": "LOC_CITY_NAME_TEST1",
@@ -526,7 +527,7 @@ def _client_with_notes(tmp_path: Path, fixture_dir: Path, worker=None):
 
     return TestClient(create_app(
         _behind_dir(tmp_path, fixture_dir), poll_interval=60, commentary_worker=worker,
-        player_store=PersistentContextStore(path=tmp_path / "notes.json")))
+        player_store=PersistentContextStore(path=tmp_path / "notes.json"), profile=CIV7))
 
 
 def test_the_first_turn_reports_no_trend_at_all(tmp_path, fixture_dir):
@@ -608,7 +609,7 @@ def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fi
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"
     first = PersistentContextStore(path=notes)
-    with TestClient(create_app(logs, poll_interval=60, player_store=first)) as c:
+    with TestClient(create_app(logs, poll_interval=60, player_store=first, profile=CIV7)) as c:
         card = next(x for x in c.get("/api/decisions").json()["cards"]
                     if x["id"].startswith("decision.culture."))
         written = c.post("/api/record", json={
@@ -624,7 +625,7 @@ def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fi
 
     # A second process is a new session, so the entries are offered rather than applied.
     second = PersistentContextStore(path=notes)
-    with TestClient(create_app(logs, poll_interval=60, player_store=second)) as c:
+    with TestClient(create_app(logs, poll_interval=60, player_store=second, profile=CIV7)) as c:
         held = c.get("/api/record").json()
         assert held["entries"] == [] and len(held["pending"]) == 1
         group = held["pending"][0]
@@ -645,10 +646,12 @@ def test_held_entries_can_be_discarded_instead(tmp_path, fixture_dir):
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"
     with TestClient(create_app(logs, poll_interval=60,
-                               player_store=PersistentContextStore(path=notes))) as c:
+                               player_store=PersistentContextStore(path=notes),
+                               profile=CIV7)) as c:
         c.post("/api/record", json={"kind": "watch", "subject": "decision.x"})
     with TestClient(create_app(logs, poll_interval=60,
-                               player_store=PersistentContextStore(path=notes))) as c:
+                               player_store=PersistentContextStore(path=notes),
+                               profile=CIV7)) as c:
         group = c.get("/api/record").json()["pending"][0]
         assert c.post("/api/record/associate", json={
             "session": group["session"], "epoch": group["epoch"],

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 from civ_advisor.advisors import economy, production, tactical, threat, victory
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.load import load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.geo import hex_distance
@@ -37,7 +38,7 @@ def analyze(root: Path) -> dict:
     sessions = session_dirs(root)
     games = {}
     for path in sessions:
-        state = build_state(load_logs(path))
+        state = build_state(load_logs(path, profile=CIV7))
         if not state.turns:
             continue
         relative = path.relative_to(root)

@@ -26,6 +26,7 @@ import uvicorn  # noqa: E402
 
 from civ_advisor.api.app import create_app  # noqa: E402
 from civ_advisor.context_store import PersistentContextStore  # noqa: E402
+from civ_advisor.games.civ7 import CIV7  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 
@@ -78,7 +79,7 @@ def server(brief_logs: Path, notes_path: Path):
     """The real app on a real port. No archive root, no commentary worker."""
     port = _free_port()
     app = create_app(brief_logs, poll_interval=60,
-                     player_store=PersistentContextStore(path=notes_path))
+                     player_store=PersistentContextStore(path=notes_path), profile=CIV7)
     config = uvicorn.Config(app, host="127.0.0.1", port=port, log_level="error")
     running = uvicorn.Server(config)
     thread = threading.Thread(target=running.run, daemon=True)
@@ -112,7 +113,7 @@ def crowded_logs(brief_logs: Path, tmp_path_factory) -> Path:
 @pytest.fixture(scope="session")
 def crowded_server(crowded_logs: Path):
     port = _free_port()
-    config = uvicorn.Config(create_app(crowded_logs, poll_interval=60),
+    config = uvicorn.Config(create_app(crowded_logs, poll_interval=60, profile=CIV7),
                             host="127.0.0.1", port=port, log_level="error")
     running = uvicorn.Server(config)
     thread = threading.Thread(target=running.run, daemon=True)
@@ -164,7 +165,7 @@ def frontier_logs(brief_logs: Path, tmp_path_factory) -> Path:
 @pytest.fixture(scope="session")
 def frontier_server(frontier_logs: Path):
     port = _free_port()
-    config = uvicorn.Config(create_app(frontier_logs, poll_interval=60),
+    config = uvicorn.Config(create_app(frontier_logs, poll_interval=60, profile=CIV7),
                             host="127.0.0.1", port=port, log_level="error")
     running = uvicorn.Server(config)
     thread = threading.Thread(target=running.run, daemon=True)

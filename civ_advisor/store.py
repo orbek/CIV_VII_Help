@@ -189,7 +189,7 @@ class Store:
     def __init__(self, logs_dir: Path, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
                  identity_provider: Callable[[Snapshot], dict] | None = None,
-                 *, profile: GameProfile = CIV7) -> None:
+                 *, profile: GameProfile) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision

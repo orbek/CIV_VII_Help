@@ -759,6 +759,30 @@ def test_status_carries_the_game_when_no_selector_is_configured(fixture_dir):
     assert body["game"]["active"]["id"] == "civ7" and body["game"]["mode"] == "pinned"
 
 
+def test_a_capability_gap_coexists_with_the_real_data_it_does_not_gate(civ6_dir):
+    """Task 10 fix round 1: maintenance and happiness are unsupported for Civ VI, but
+    they back no rendered element the app actually has -- the yield comparison and the
+    build queue are independent of them and must be real and present in the SAME
+    response as the capability gap, never hidden behind it. This is the data-layer half
+    of the guarantee app.js's rendering enforces (a table + a stated gap, not one or the
+    other); the coexistence itself is data the browser suite renders, this proves the
+    data both would draw from is there together."""
+    from civ_advisor.games.civ6 import CIV6
+
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+        body = c.get("/api/briefing").json()
+    caps = body["status"]["game"]["active"]["capabilities"]
+    assert caps["maintenance"]["supported"] is False and caps["maintenance"]["reason"]
+    assert caps["happiness"]["supported"] is False and caps["happiness"]["reason"]
+    # The yield comparison this capability gap does NOT gate is real, non-empty data --
+    # not something the gap suppressed.
+    economy_stats = {row["stat"] for row in body["state"]["economy"]}
+    assert {"gold", "production", "food"} <= economy_stats
+    assert any(row["stat"] == "gold" and row["human"] > 0 for row in body["state"]["economy"])
+    # And the build queue this tab also shows is real, not empty either.
+    assert len(body["state"]["production"]["human"]) > 0
+
+
 def test_an_idle_app_explains_itself_rather_than_erroring_blankly(tmp_path):
     """Auto mode, nothing recent on disk: the briefing is unavailable, and /api/game
     still answers so the header can say why and offer the control."""

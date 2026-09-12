@@ -461,68 +461,64 @@
     const paths = Object.keys(d.leaderboards);
     const pathCols = paths.map((p) => ({ label: PATH_LABEL[p] || p }));
 
-    // Victory paths is one capability, but a missing reader for it means the whole tab's
-    // content (which strategy each rival is following) is not something this game's logs
-    // can back -- the tab stays, its content collapses into the one honest statement.
+    // Victory paths gates ONLY the strategy-pursuit table: showing Civ VI's era/posture
+    // strategy rows under "victory path" column headers would misrepresent data the log
+    // does not claim. The output-proxy leaderboards and the advice stream are yield-based
+    // and real for any game, so they are never suppressed by this capability.
     const victoryAbsent = capabilityBlock("victory");
-    if (victoryAbsent) {
-      $("#victory").replaceChildren(victoryAbsent);
-    } else {
-      $("#victory-head").hidden = !seen();
-      $("#victory-table").replaceChildren(seen() ? table(
-        [{ label: "Rival" }, ...pathCols],
-        d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...paths.map((p) => {
-          const st = s.strategies.find((x) => x.strategy === p);
-          if (!st) return { text: "—", cls: "dim" };
-          if (!st.following) return { text: st.status, cls: "dim" };
-          const span = el("span");
-          span.append(document.createTextNode(st.status), el("span", "fig", String(st.weight)));
-          return span;
-        })])) : withheld());
+    $("#victory-head").hidden = !seen();
+    $("#victory-table").replaceChildren(victoryAbsent ? victoryAbsent : (seen() ? table(
+      [{ label: "Rival" }, ...pathCols],
+      d.standings.filter((s) => s.kind === "rival" && s.alive).map((s) => [s.name, ...paths.map((p) => {
+        const st = s.strategies.find((x) => x.strategy === p);
+        if (!st) return { text: "—", cls: "dim" };
+        if (!st.following) return { text: st.status, cls: "dim" };
+        const span = el("span");
+        span.append(document.createTextNode(st.status), el("span", "fig", String(st.weight)));
+        return span;
+      })])) : withheld()));
 
-      const depth = paths.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
-      $("#victory-boards").replaceChildren(table(
-        [{ label: "Rank", num: true }, ...pathCols],
-        Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...paths.map((p) => {
-          const entry = d.leaderboards[p][i];
-          return entry ? named(entry.name, entry.value, entry.id === d.human) : { text: "—", cls: "dim" };
-        })])));
-      $("#victory-cards").replaceChildren(stream(byAdvisor("victory"), "victory"));
-    }
+    const depth = paths.reduce((n, p) => Math.max(n, d.leaderboards[p].length), 0);
+    $("#victory-boards").replaceChildren(table(
+      [{ label: "Rank", num: true }, ...pathCols],
+      Array.from({ length: depth }, (_, i) => [ordinal(i + 1), ...paths.map((p) => {
+        const entry = d.leaderboards[p][i];
+        return entry ? named(entry.name, entry.value, entry.id === d.human) : { text: "—", cls: "dim" };
+      })])));
+    $("#victory-cards").replaceChildren(stream(byAdvisor("victory"), "victory"));
 
-    // Same for economy: maintenance and happiness back this tab's yield comparison and
-    // production reads, and a game missing either cannot fill it meaningfully.
+    // Maintenance and happiness back no rendered element on this tab today -- the yield
+    // comparison, production queues and rival-production share are all independent of
+    // them. A capability gap here is therefore a notice ALONGSIDE real data, never a
+    // reason to hide the data: Civ VI's own gold/production/food numbers and its build
+    // queue are real and must render regardless of what this tab cannot also show.
     const economyAbsent = capabilityBlock("economy");
-    if (economyAbsent) {
-      $("#economy").replaceChildren(economyAbsent);
-    } else {
-      $("#economy-table").replaceChildren(table([
-        { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
-        { label: "You vs median", num: true }, { label: "Best rival's", num: true }, { label: "Best rival" },
-      ], d.economy.map((c) => [
-        c.label, fmt(c.human), fmt(c.rival_median),
-        { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
-        fmt(c.leader_value), c.leader_name,
-      ])));
+    $("#economy-table").replaceChildren(table([
+      { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
+      { label: "You vs median", num: true }, { label: "Best rival's", num: true }, { label: "Best rival" },
+    ], d.economy.map((c) => [
+      c.label, fmt(c.human), fmt(c.rival_median),
+      { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
+      fmt(c.leader_value), c.leader_name,
+    ])), ...(economyAbsent ? [economyAbsent] : []));
 
-      const turnsCell = (c) => c.item === "" ? dim("idle")
-        : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
-      const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
-        .replace(/\b\w/g, (ch) => ch.toUpperCase());
-      const prod = d.production;
-      $("#production-table").replaceChildren(prod.human.length
-        ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
-          prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
-        : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
-          ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
-      $("#rival-production-head").hidden = !seen() || prod.rivals === null;
-      $("#rival-production-table").replaceChildren(!seen() || prod.rivals === null ? withheld()
-        : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
-          prod.rivals.map((r) => [r.name, Math.round((r.military_share || 0) * r.cities.length),
-            `${Math.round((r.military_share || 0) * 100)}%`])));
+    const turnsCell = (c) => c.item === "" ? dim("idle")
+      : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
+    const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
+      .replace(/\b\w/g, (ch) => ch.toUpperCase());
+    const prod = d.production;
+    $("#production-table").replaceChildren(prod.human.length
+      ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
+        prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
+      : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
+        ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
+    $("#rival-production-head").hidden = !seen() || prod.rivals === null;
+    $("#rival-production-table").replaceChildren(!seen() || prod.rivals === null ? withheld()
+      : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],
+        prod.rivals.map((r) => [r.name, Math.round((r.military_share || 0) * r.cities.length),
+          `${Math.round((r.military_share || 0) * 100)}%`])));
 
-      $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
-    }
+    $("#economy-cards").replaceChildren(stream(byAdvisor("economy"), "economy"));
 
     renderTactical();
 

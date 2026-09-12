@@ -60,7 +60,10 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--poll-interval", type=float, default=1.0,
                         help="seconds between checks of the log files (default 1.0)")
     parser.add_argument("--archive-dir", type=Path, default=None,
-                        help=f"where to mirror the logs (default: {DEFAULT_ROOT}/<game>/archive)")
+                        help="a single destination every game's logs are mirrored into "
+                             "directly, with no per-game subfolder -- NOT the same meaning "
+                             "as 'archive list's own --archive-dir, which names the base "
+                             f"holding every game's own archive (default: {DEFAULT_ROOT}/<game>/archive)")
     parser.add_argument("--no-archive", action="store_true", help="do not mirror the logs anywhere")
     parser.add_argument("--llm-model", default=DEFAULT_MODEL,
                         help=f"local Ollama model for commentary (default: {DEFAULT_MODEL})")
@@ -170,8 +173,10 @@ def _archive_command(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="civ-advisor archive")
     parser.add_argument("action", choices=["list"])
     parser.add_argument("--archive-dir", type=Path, default=None,
-                        help=f"the base directory holding every game's archive "
-                             f"(default: {DEFAULT_ROOT})")
+                        help="the BASE directory holding every game's own archive "
+                             "subfolder -- NOT the same meaning as the top-level "
+                             "civ-advisor command's own --archive-dir, which names a "
+                             f"single flat destination (default: {DEFAULT_ROOT})")
     args = parser.parse_args(argv)
     roots: list[tuple[Path, str]] = []
     base = args.archive_dir or DEFAULT_ROOT

@@ -1,7 +1,7 @@
 # Multi-Game Advisor — Civilization VI alongside Civilization VII
 
 **Date:** 2026-09-12
-**Status:** Phase 1 (neutral core) implemented on `feature/multi-game-advisor`; phases 2–4 not yet planned
+**Status:** Phases 1, 2a and 2b implemented on `feature/multi-game-advisor`; phases 3–4 not yet planned
 **Builds on:** `2026-09-07-civ7-advisor-v2-design.md` (v2, shipped on `main`)
 **Delivery:** four phases, **one implementation plan per phase**, each
 shippable on its own. Phase 1 is planned first; later phases are planned

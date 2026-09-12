@@ -365,10 +365,15 @@
     const said = DETECTION_WORDS[game.detection.reason] || (() => game.detection.reason);
     const gap = pinnedGameGap(game);
     if (game.mode === "pinned") {
-      const parts = [`pinned to ${names[game.pinned]}`];
-      if (gap) parts.push(gap);
-      if (game.disagrees) parts.push(said(detected));
-      mode.textContent = parts.join(" — ");
+      // Up to three independent facts can apply at once (pinned / why it's empty /
+      // detection disagrees); concatenating all three with " — " reads as one run-on
+      // dash chain that is dense at a glance, which matters for a line whose whole job
+      // is being read at a glance. The disagreement, when it also applies, is set off
+      // in parentheses instead so it stays visually distinct from the gap.
+      let text = `pinned to ${names[game.pinned]}`;
+      if (gap) text += ` — ${gap}`;
+      if (game.disagrees) text += gap ? ` (${said(detected)})` : `, though ${said(detected)}`;
+      mode.textContent = text;
       mode.className = (gap || game.disagrees) ? "game-mode game-disagrees" : "game-mode";
     } else if (game.active) {
       mode.textContent = `following detection — ${names[game.active.id]}`;

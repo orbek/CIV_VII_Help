@@ -1,10 +1,12 @@
-# Civ VII Turn Advisor
+# Civ Advisor
 
-A second-screen dashboard for single-player Civilization VII. It tails the
-game's own log files (`~/Library/Application Support/Civilization VII/Logs`)
-and, every turn, shows where each rival stands, who is a threat and why, who
-is emphasizing each strategic category, how broad outputs compare, how your economy compares, and a
-ranked checklist of things to do — each with the evidence behind it.
+A second-screen dashboard for single-player Civilization VI and Civilization VII.
+It tails the running game's own log files and, every turn, shows where each
+rival stands, who is a threat and why, who is emphasizing each strategic
+category, how broad outputs compare, how your economy compares, and a ranked
+checklist of things to do — each with the evidence behind it. It detects which
+game you are playing from the logs themselves, or you can pin one from the
+header.
 
 It never writes to the game. Everything runs locally and offline.
 
@@ -28,12 +30,12 @@ fraction of its weights per token, so it generates faster once loaded:
 Then start the advisor in another terminal:
 
     uv sync
-    uv run civ7-advisor
+    uv run civ-advisor
 
 That uses the default model. To run the advisor against the mixture-of-experts
 model you just pulled, name it on the command line:
 
-    uv run civ7-advisor --llm-model qwen3.6:35b-a3b
+    uv run civ-advisor --llm-model qwen3.6:35b-a3b
 
 Open http://127.0.0.1:8765 on your second screen and play. The page updates
 by itself about a second after the game finishes writing a turn.
@@ -74,7 +76,10 @@ The header says whether the advisor is connected, when it last got an answer,
 which turn the advice was computed on, and which capabilities this game's logs
 do not support. "Readable but empty", "nothing recent enough" and "cannot be
 read" are reported as what they are, because none of them means the thing being
-measured is quiet.
+measured is quiet. It also says which game is being advised on, whether that
+was pinned by you or detected from the logs, and — when pinned — whether
+detection currently disagrees, so the numbers on screen are never silently
+attributed to a game you are not actually looking at.
 
 ### Since last turn
 
@@ -113,7 +118,7 @@ Monument here" is recorded as a plan, never as an observation that a Monument ex
 ### Your own notes
 
 **Acknowledge** and **Pin** are kept in a small local JSON file
-(`~/.civ7-advisor/player-context.json` by default; use `--context-file` to move it or
+(`~/.civ-advisor/<game>/player-context.json` by default; use `--context-file` to move it or
 `--no-context-file` to keep nothing). Goals and watchlist entries live there too. It is
 written atomically, so a crash cannot leave a half-file, and a damaged one is moved aside
 and reported rather than silently replaced.
@@ -164,10 +169,12 @@ appears as dated history instead, never as an explanation of what is now on
 screen. Fair mode gets its own generation from a fair prompt rather than hiding
 every result that ever read an intercept.
 
-Options: `--game civ7` (the only game this build advises on so far),
-`--logs-dir PATH` (if your logs live elsewhere), `--port`, `--host`,
-`--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`, `--no-llm`,
-`--context-file PATH`, and `--no-context-file`.
+Options: `--game auto|civ6|civ7` (default `auto`: the advisor detects which game
+is being played from the games' own logs each poll, and you can override it from
+the header at any time), `--logs-dir PATH` (requires `--game`, because a log
+directory belongs to one game and the path does not say which), `--port`,
+`--host`, `--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`,
+`--no-llm`, `--context-file PATH`, and `--no-context-file`.
 
 Ollama commentary is optional. The advisor checks only the loopback service at
 `127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the
@@ -175,11 +182,11 @@ model. If Ollama is stopped or the model is missing, one quiet notice replaces
 the commentary while every deterministic panel keeps working. Any installed
 local model can be used instead of the default by passing it explicitly:
 
-    uv run civ7-advisor --llm-model qwen3.6:35b-a3b
+    uv run civ-advisor --llm-model qwen3.6:35b-a3b
 
 or, for a much smaller one on a constrained machine:
 
-    uv run civ7-advisor --llm-model llama3.2:3b
+    uv run civ-advisor --llm-model llama3.2:3b
 
 The choice of model changes only the generated prose. Every figure, threshold,
 comparison and link on the page is computed from the logs, so a different model
@@ -212,10 +219,30 @@ Oracle is off.
 
 Civ VII empties its `Logs/` folder every time it starts and rewrites it from
 the turn your save is on. The advisor therefore mirrors every log file in the
-folder to `~/.civ7-advisor/archive/<game>/<session>/` on every rebuild. Turn it
-off with `--no-archive`, point it elsewhere with `--archive-dir PATH`, and list
-what is kept with `civ7-advisor archive list`. Nothing is ever written under
-the game's own folders.
+folder to `~/.civ-advisor/<game>/archive/<save-key>/<session>/` on every
+rebuild. Turn it off with `--no-archive`, point it elsewhere with
+`--archive-dir PATH`, and list what is kept with `civ-advisor archive list`.
+Nothing is ever written under the game's own folders.
+
+`--archive-dir` means two different things depending on which subcommand it is
+given to, and that difference is deliberate rather than an oversight, so it is
+spelled out here rather than left implicit: for `civ-advisor` itself it names
+one destination — every game archives directly under that path, no `<game>`
+segment appended. For `civ-advisor archive list` it instead names the BASE that
+holds every game's own subdirectory, because listing has to look across every
+game to show anything. If you pass the same path to both, `civ-advisor`'s
+own run writes flat into it while `list` expects a `<game>/archive/...` layout
+beneath it — pass `list` the parent of what you gave the running advisor, not
+the same path, unless you intend one game's archive to be treated as the base.
+
+Storage is per game: Civilization VI and Civilization VII keep separate archives
+and separate goals, acknowledgements and watchlists. An acknowledgement made in
+one game is never offered in the other.
+
+**Upgrading from an earlier version?** Your existing archive and notes are still
+at `~/.civ7-advisor/`. Nothing has been moved or deleted. `civ-advisor archive
+list` still shows them, labelled `pre-2b`, and the advisor prints the one-line
+`mv` that would adopt them the first time it starts without them.
 
 ## What is verified, and what isn't
 
@@ -253,7 +280,7 @@ are snapshots of real 82-turn and 100-turn sessions, so the whole pipeline is
 exercised against genuine Civ VII output. Try the dashboard against the newer
 fixture without the game running:
 
-    uv run civ7-advisor --logs-dir tests/fixtures/logs_v2 --no-archive
+    uv run civ-advisor --logs-dir tests/fixtures/logs_v2 --game civ7 --no-archive
 
 The dashboard's own rules — which response may paint, how coverage is worded,
 how decisions group, when generated prose may be shown — are executed under

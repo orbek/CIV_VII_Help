@@ -241,6 +241,12 @@ class Store:
         self.profile = profile
         self.archive_root = archive_root
         self._pending_switch = False   # a game switch forces the next snapshot to a new epoch
+        # Bumped on every ACTUAL switch_to (not a no-op one). `profile`/`logs_dir` alone
+        # cannot detect an A->B->A sequence: profile objects are per-game singletons, so
+        # a rebuild started in the first A period and a switch back to A later would look
+        # identical on those two fields even though a whole B sitting happened in between.
+        # A stale in-flight rebuild from that first A period must still be discarded.
+        self._generation = 0
         self.snapshot: Snapshot | None = None
         self._lock = threading.Lock()
         self._subscribers: set[asyncio.Queue] = set()
@@ -294,6 +300,7 @@ class Store:
             self._pending_reason = None
             # Activating an idle store is not a switch; it is this store's first load.
             self._pending_switch = had_game
+            self._generation += 1
 
     def rebuild(self) -> Snapshot | None:
         """Re-read every log, archive it, and recompute advice. Safe to call from a
@@ -307,8 +314,15 @@ class Store:
         or (if switched back) misattribute it to a game it was never read for. Such a
         rebuild is discarded rather than published; the next scheduled rebuild picks
         up whichever game is actually active by then.
+
+        `profile`/`logs_dir` alone cannot catch every such case: an A->B->A sequence
+        (a player pinning away and back before this read finishes) restores the same
+        profile object and directory, so those two fields match again even though this
+        read belongs to a sitting that already ended. `generation`, bumped on every
+        real `switch_to`, catches that: it can only equal the current value if no
+        switch happened at all while this read was in flight.
         """
-        profile, logs_dir = self.profile, self.logs_dir
+        profile, logs_dir, generation = self.profile, self.logs_dir, self._generation
         if profile is None or logs_dir is None:
             return None
         raw = load_logs(logs_dir, profile)
@@ -316,11 +330,19 @@ class Store:
         insights = run_all(state, profile)
         key = game_key(logs_dir)
         with self._lock:
-            if self.profile is not profile or self.logs_dir != logs_dir:
+            if self.profile is not profile or self.logs_dir != logs_dir \
+                    or self._generation != generation:
                 return None
             snapshot = self._capture_locked(raw, state, insights, key, profile)
             self.snapshot = snapshot
-        self._archive(raw, snapshot.session)
+            # Captured under the same lock as the snapshot itself: a switch_to landing
+            # in the gap between releasing this lock and _archive() running must not be
+            # able to mirror one game's logs into another's archive root under a session
+            # id that belongs to neither -- the same hazard this method's own docstring
+            # already guards the snapshot against, applied to archiving too.
+            archive_root = self.archive_root
+            observed_key = self._observed_key
+        self._archive(raw, snapshot.session, logs_dir, archive_root, observed_key)
         if self.commentary_worker is not None:
             self.commentary_worker.schedule(snapshot, revisions=self.revisions(snapshot))
         return snapshot
@@ -398,15 +420,25 @@ class Store:
                 return TURN_WENT_BACKWARDS
         return None
 
-    def _archive(self, raw: RawLogs, session: str) -> None:
-        if self.archive_root is None or self.logs_dir is None:
+    def _archive(self, raw: RawLogs, session: str, logs_dir: Path,
+                archive_root: Path | None, observed_key: str | None) -> None:
+        """Mirror this rebuild's own logs under this rebuild's own archive root.
+
+        `logs_dir`/`archive_root`/`observed_key` are the caller's locked-section
+        snapshot of `self.logs_dir`/`self.archive_root`/`self._observed_key`, not a
+        fresh read of the live attributes: by the time this runs the lock is released,
+        and a `switch_to` that landed in that gap must not redirect an in-flight
+        rebuild's own logs into the archive root (or under the game_key) of whatever
+        the store has moved on to.
+        """
+        if archive_root is None:
             return
         if not raw.stats:
             return
         try:
-            key = self._observed_key or UNKNOWN_GAME
-            names = sorted(p.name for p in self.logs_dir.iterdir() if p.suffix in ARCHIVE_SUFFIXES)
-            archive_logs(self.logs_dir, self.archive_root / key / session, names)
+            key = observed_key or UNKNOWN_GAME
+            names = sorted(p.name for p in logs_dir.iterdir() if p.suffix in ARCHIVE_SUFFIXES)
+            archive_logs(logs_dir, archive_root / key / session, names)
         except Exception:            # archiving must never cost the player their advice
             log.exception("archiving failed; continuing without it")
 

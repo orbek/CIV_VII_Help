@@ -1016,3 +1016,139 @@ def test_the_watcher_keeps_working_after_pinning_via_post(tmp_path, fixture_dir,
 
     assert after["revision"] > revision_at_pin
     assert after["game_id"] == "civ6"
+
+
+def test_the_briefing_never_labels_one_game_s_data_with_the_other_game_s_identity(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """CRITICAL (whole-phase review): `game_now()` used to call `selector.resolve()`
+    fresh on every request, independent of `activate()` and of the snapshot `current()`
+    actually returns. With a long poll interval, civ6 can become the fresher detection
+    candidate well before `supervise()` next ticks -- the OLD code would then label
+    civ7's still-active snapshot, coverage and capabilities with `game.active == civ6`,
+    while every number on screen was still civ7's. The label must always agree with the
+    snapshot actually being served; this asserts that agreement can never be broken,
+    not merely that it holds in the ordinary case."""
+    import shutil
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    # A long poll interval: supervise() will not tick again during this test.
+    app = create_app(civ7, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=storage)
+    with TestClient(app) as c:
+        before = c.get("/api/status").json()
+        assert before["game_id"] == "civ7" and before["game"]["active"]["id"] == "civ7"
+
+        # Make civ6 the fresher candidate -- a fresh selector.resolve() right now would
+        # say civ6 -- without waiting for supervise() to actually act on it.
+        clock[0] += 20_000
+        _age_declared_logs(civ6, "civ6", clock[0])
+
+        after = c.get("/api/status").json()
+
+    # supervise() has not ticked (poll_interval=60), so the store is still civ7's --
+    # and its label must say so too. The false output this fix removes: a response
+    # whose own game_id and game.active.id disagree.
+    assert after["game_id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ7"
+    assert after["game_id"] == after["game"]["active"]["id"]
+
+
+def test_losing_detection_does_not_blank_the_capabilities_of_the_game_still_on_screen(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """IMPORTANT 2 (whole-phase review): `activate()` used to overwrite `resolution`
+    with a None-profile `Resolution` the instant detection could no longer confirm ANY
+    game, even though a None-profile resolution is a no-op for `activate()` -- the store
+    itself never switches away from its last active game. The dashboard kept showing
+    civ7's real, live data, but the game label would say "no active game," which blanks
+    every capability declaration on the browser side (`capabilityNotices(null, ...)`
+    returns nothing). An unsupported panel would then render as an unexplained blank
+    grid instead of the correct "not available" notice -- absence inferred from a
+    transient detection gap, over data that is still genuinely on screen."""
+    import shutil
+    import time
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(logs_dirs={"civ7": civ7, "civ6": civ6}, clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        r = None
+        for _ in range(5):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        assert poll_status(c)["game_id"] == "civ7"
+
+        # Both games now read as stale: a fresh resolve() would say "cannot tell,"
+        # even though civ7's snapshot is still the one on screen.
+        clock[0] += 20_000
+
+        deadline = time.monotonic() + 3.0
+        after = poll_status(c)
+        while (time.monotonic() < deadline
+               and after["game"]["detection"]["reason"] != "all_stale"):
+            time.sleep(0.05)
+            after = poll_status(c)
+        assert after["game"]["detection"]["reason"] == "all_stale"
+
+    # The snapshot never moved off civ7 (a None resolution is a no-op for activate()).
+    assert after["game_id"] == "civ7"
+    # Its label and capabilities must not have been blanked by the transient "cannot
+    # tell": the game the dashboard is still describing is exactly the one on screen.
+    assert after["game"]["active"] is not None
+    assert after["game"]["active"]["id"] == "civ7"
+    assert after["game"]["active"]["capabilities"]["victory_paths"]["supported"] is True
+
+
+def test_posting_a_pin_publishes_a_game_changed_event_like_a_detected_switch_does(
+    fixture_dir, civ6_dir, tmp_path
+):
+    """IMPORTANT 6 (whole-phase review): `supervise()`'s own detected switch publishes
+    `game_changed`; the `POST /api/game` path activated and restarted the watcher but
+    never published anything, and the rebuild it awaits bypasses `on_change` (which is
+    what publishes `state_changed`) -- so a second open browser tab kept showing the
+    old game until that game's own logs next happened to change. Both paths now share
+    `apply_selection()`, which publishes unconditionally on a successful activation."""
+    from civ_advisor.games.selection import GameSelector
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": fixture_dir, "civ6": civ6_dir})
+    app = create_app(fixture_dir, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=tmp_path)
+    with TestClient(app) as c:
+        store = app.state.store
+        queue = store.subscribe()
+        response = c.post("/api/game", json={"game": "civ6"})
+        assert response.status_code == 200
+        event = queue.get_nowait()
+
+    assert event["type"] == "game_changed" and event["game"] == "civ6"

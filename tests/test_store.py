@@ -88,6 +88,41 @@ def test_archiver_failure_does_not_break_rebuild(tmp_path, fixture_dir, monkeypa
     assert state.latest_turn == 82
 
 
+def test_archive_uses_the_rebuild_s_own_locked_snapshot_not_live_attributes(
+    tmp_path, fixture_dir, civ6_dir, monkeypatch,
+):
+    """Whole-phase review, IMPORTANT 3: `_archive` runs after `rebuild()`'s own lock has
+    released, so a switch_to landing in that exact gap must not be able to redirect an
+    in-flight rebuild's own logs into the wrong archive root, game_key or session. This
+    is a white-box test of `_archive`'s own contract: called with the values a rebuild
+    captured under its lock, it must use exactly those and never re-read `self.logs_dir`
+    /`self.archive_root`/`self._observed_key`, whatever they say by the time it runs."""
+    import civ_advisor.store as store_mod
+
+    store = Store(fixture_dir, archive_root=tmp_path / "arc7", profile=CIV7)
+    raw = store_mod.load_logs(fixture_dir, CIV7)
+
+    # Simulate the store having already moved on to civ6 by the time _archive runs --
+    # exactly the state a concurrent switch_to would leave behind in the real race.
+    store.logs_dir = civ6_dir
+    store.archive_root = tmp_path / "arc6"
+    store._observed_key = "civ6-seeds"
+
+    calls = []
+    monkeypatch.setattr(store_mod, "archive_logs",
+                        lambda logs_dir, dest, names: calls.append((logs_dir, dest)))
+
+    # The values a real rebuild() would have captured, under its own lock, BEFORE the
+    # (simulated) switch -- its own record of "where and whose read this was."
+    store._archive(raw, "session-1", fixture_dir, tmp_path / "arc7", "civ7-seeds")
+
+    assert len(calls) == 1
+    logs_dir, dest = calls[0]
+    assert logs_dir == fixture_dir                        # not civ6_dir
+    assert str(dest).startswith(str(tmp_path / "arc7"))    # not arc6
+    assert "civ7-seeds" in str(dest)                       # not civ6-seeds
+
+
 def _copy_logs(tmp_path: Path, fixture_dir: Path, name: str = "logs") -> Path:
     import shutil
     logs = tmp_path / name
@@ -411,3 +446,41 @@ def test_a_switch_mid_rebuild_discards_the_stale_read_rather_than_publishing_it(
     monkeypatch.setattr(store_mod, "load_logs", real_load_logs)
     second = store.rebuild()              # a normal rebuild now correctly serves civ6
     assert second.game_id == "civ6"
+
+
+def test_a_switch_back_to_the_same_game_still_discards_a_stale_in_flight_rebuild(
+    fixture_dir, civ6_dir, monkeypatch,
+):
+    """Whole-phase review, IMPORTANT 7: profile objects are per-game singletons and an
+    A->B->A sequence restores both `profile` and `logs_dir` to what they were when this
+    rebuild started, even though an entire B sitting happened in between. Without a
+    generation check that survives being restored to the same value, this stale read
+    would pass the identity guard and publish an old capture at a newer revision,
+    overwriting the real civ7 snapshot that already landed during B->A."""
+    import civ_advisor.store as store_mod
+
+    store = Store(fixture_dir, profile=CIV7)
+    first = store.rebuild()                        # a real, current civ7 snapshot
+    assert first is not None
+
+    real_load_logs = store_mod.load_logs
+
+    def switching_load_logs(logs_dir, profile):
+        raw = real_load_logs(logs_dir, profile)
+        store.switch_to(CIV6, civ6_dir)             # A -> B
+        store_mod.load_logs = real_load_logs        # un-patch for this inner, real rebuild
+        try:
+            landed = store.rebuild()                # a real, fresh civ6 read lands
+        finally:
+            store_mod.load_logs = switching_load_logs
+        assert landed is not None and landed.game_id == "civ6"
+        store.switch_to(CIV7, fixture_dir)          # B -> A: same profile object, same dir
+        return raw
+
+    monkeypatch.setattr(store_mod, "load_logs", switching_load_logs)
+    stale = store.rebuild()   # started under civ7 before A->B->A; profile/logs_dir alone
+                              # would look unchanged by the time this reaches its lock
+    assert stale is None
+    # The genuine B->A switch left the store idle (switch_to always clears snapshot);
+    # the stale rebuild above must not have resurrected an old capture over that.
+    assert store.snapshot is None

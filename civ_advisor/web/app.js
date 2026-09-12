@@ -401,11 +401,25 @@
      optional one that the game simply has not written disables its capability and says
      so once. "Empty but readable" and "no rows recent enough" are stated as what they
      are, because neither one means the situation they describe is quiet. */
+  // Only Civ VII empties its Logs/ folder on launch; Civ VI's logs accumulate. An
+  // "empire unavailable" reading has a different true cause per game, so the notice
+  // must say the right one rather than assert Civ VII's mechanism for whichever game
+  // is actually active -- exactly the kind of hardcoded, wrong-for-the-other-game
+  // claim this phase exists to remove.
+  const EMPIRE_UNAVAILABLE_TEXT = {
+    civ7: "Civ VII clears its logs when it starts — advice resumes once a game is loaded.",
+    civ6: "Civ VI has not written its stats log yet — advice resumes once a game is loaded.",
+  };
+  const EMPIRE_UNAVAILABLE_DEFAULT =
+    "This game has not written its stats log yet — advice resumes once a game is loaded.";
+
   function renderCoverage() {
     const lines = coverageLines(state.status && state.status.coverage);
     $("#files").replaceChildren(...lines.map((l) => el("p", l.cls, l.text)));
     const coverage = (state.status && state.status.coverage) || [];
     const empire = coverage.find((c) => c.name === "empire");
+    const activeId = state.game && state.game.active ? state.game.active.id : null;
+    $("#wipe").textContent = EMPIRE_UNAVAILABLE_TEXT[activeId] || EMPIRE_UNAVAILABLE_DEFAULT;
     $("#wipe").hidden = !(empire && empire.status === "unavailable");
   }
 
@@ -512,11 +526,22 @@
     const cityName = (key) => key.replace(/^LOC_CITY_NAME_/, "").replace(/_/g, " ").toLowerCase()
       .replace(/\b\w/g, (ch) => ch.toUpperCase());
     const prod = d.production;
+    // Which file backs the build queue is per-game (Civ VII's is CityBuildQueue.csv,
+    // Civ VI's is City_BuildQueue.csv); naming one game's filename to a player of the
+    // other would be the same false-reason defect the server-side coverage already
+    // resolves through reader attrs, so read the real name(s) from coverage instead
+    // of hardcoding either.
+    const productionCoverage = ((state.status && state.status.coverage) || [])
+      .find((c) => c.name === "production");
+    const productionReadable = !productionCoverage
+      || !["unavailable", "not_applicable"].includes(productionCoverage.status);
+    const productionFiles = productionCoverage && productionCoverage.files.length
+      ? productionCoverage.files.join(", ") : "the build queue log";
     $("#production-table").replaceChildren(prod.human.length
       ? table([{ label: "City" }, { label: "Building" }, { label: "Turns left", num: true }],
         prod.human.map((c) => [cityName(c.city), c.item ? itemName(c.item) : dim("nothing"), turnsCell(c)]))
-      : el("p", "empty", d.files["CityBuildQueue.csv"] && d.files["CityBuildQueue.csv"].ok
-        ? "No cities yet." : "No production data — CityBuildQueue.csv is not readable yet."));
+      : el("p", "empty", productionReadable
+        ? "No cities yet." : `No production data — ${productionFiles} is not readable yet.`));
     $("#rival-production-head").hidden = !seen() || prod.rivals === null;
     $("#rival-production-table").replaceChildren(!seen() || prod.rivals === null ? withheld()
       : table([{ label: "Rival" }, { label: "Cities building military", num: true }, { label: "Share", num: true }],

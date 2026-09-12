@@ -6,6 +6,7 @@ import hashlib
 import json
 import logging
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
@@ -117,10 +118,25 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
     def activate(new: Resolution) -> bool:
         """Point everything at `new`'s game. Returns whether anything changed."""
         nonlocal resolution, record
-        resolution = new
         active = new.profile
         if active is None or new.logs_dir is None:
+            # AUTO mode losing track ("cannot tell") must not blank the label for a
+            # game whose data is still exactly what `current()` returns: the store has
+            # not switched away from it (nothing below this point runs), so `active`
+            # and its capabilities must not either -- they must stay declared, not
+            # silently vanish because detection had one quiet tick. What DOES update is
+            # the live detection facts themselves (why, and what candidates it saw):
+            # those are honestly "cannot tell right now" and saying so is not the same
+            # mistake as blanking the game whose data is still on screen. Only genuine
+            # idle (no game has ever been activated) may show as "no active game."
+            if store.profile is None:
+                resolution = new
+            else:
+                resolution = replace(resolution, detected_id=new.detected_id,
+                                     detection_reason=new.detection_reason,
+                                     candidates=new.candidates)
             return False
+        resolution = new
         store.archive_root = archive_for(active)   # set before the early return: the
         # fixed-profile path activates the game it was already constructed with
         if store.profile is not None and store.profile.id == active.id \
@@ -183,6 +199,26 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             watcher.cancel()
         watcher = await start_watching()
 
+    async def apply_selection(new: Resolution) -> bool:
+        """Activate `new`, restart the watcher, and tell every connected browser tab.
+
+        One function both `supervise()`'s detected switches and `POST /api/game`'s
+        explicit pin call, so neither path can do only part of a switch: a POST that
+        activated and restarted the watcher but never published left a second open tab
+        showing the old game until its logs happened to change next -- the watcher
+        restart fix without this half is the same bug moved one step later.
+        """
+        if not activate(new):
+            return False
+        await restart_watcher()
+        captured = store.snapshot
+        store.publish({
+            "type": "game_changed", "game": store.profile.id,
+            "session": None if captured is None else captured.session,
+            "epoch": None if captured is None else captured.epoch,
+        })
+        return True
+
     async def supervise() -> None:
         """Re-resolve the selection every poll and swap games when it changes.
 
@@ -195,15 +231,7 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             try:
                 async with selection_lock:
                     new = await asyncio.to_thread(selector.resolve)
-                    if not activate(new):
-                        continue
-                    await restart_watcher()
-                    captured = store.snapshot
-                    store.publish({
-                        "type": "game_changed", "game": store.profile.id,
-                        "session": None if captured is None else captured.session,
-                        "epoch": None if captured is None else captured.epoch,
-                    })
+                    await apply_selection(new)
             except Exception:
                 log.exception("game selection failed; keeping the current game")
 
@@ -240,7 +268,15 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         return captured
 
     def game_now() -> dict:
-        return game_to_dict(selector.resolve() if supervise_selection else resolution)
+        """The game label for whatever `current()` would return right now.
+
+        Deliberately NOT a fresh `selector.resolve()`: detection can flip between one
+        request and the next tick of `supervise()`, and a fresh resolve here would label
+        the snapshot actually on screen with a game it does not belong to -- the exact
+        failure this phase exists to prevent. `resolution` is the same object `activate()`
+        last set, which is only ever updated together with the store it describes.
+        """
+        return game_to_dict(resolution)
 
     def commentary_result(captured: Snapshot, oracle: bool) -> CommentaryResult:
         if store.commentary_worker is None:
@@ -509,8 +545,7 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                     selector.pin(choice)
             except UnknownGame as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
-            if activate(selector.resolve()):
-                await restart_watcher()
+            await apply_selection(selector.resolve())
         return game_to_dict(resolution)
 
     @app.get("/api/state")

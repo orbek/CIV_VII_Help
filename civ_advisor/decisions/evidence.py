@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 
 from civ_advisor.advisors import economy, production, tactical
 from civ_advisor.advisors.base import Provenance
+from civ_advisor.ruleset.base import RulesetFigure
 from civ_advisor.state.models import GameState
 
 from .models import EvidenceFact, SourceKind
@@ -347,6 +348,31 @@ def human_identity_fact(ledger: EvidenceLedger, state: GameState) -> EvidenceFac
         unit=None, source_file=IDENTITY_FILE, record_key=(IDENTITY_FILE, state.HUMAN),
         subject_id=str(state.HUMAN),
         note="Recorded when the save loaded; it carries no turn of its own.",
+    ))
+
+
+# ---- the installed ruleset -------------------------------------------------------
+
+def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
+    """One figure read from the player's installed ruleset, cited to its row.
+
+    Undated on purpose. A ruleset figure is not something that happened on a turn; it is
+    what the installed files say, and dating it to the analysis turn would imply the game
+    reported it this turn. The one honest "when" — when the game last wrote that file —
+    lives in the note, together with the digest that makes the claim checkable.
+    """
+    return ledger.add(EvidenceFact(
+        id=f"ruleset.{figure.table}.{'.'.join(figure.row_key)}.{figure.column}",
+        label=figure.label,
+        source_kind=SourceKind.INSTALLED_RULESET,
+        provenance=Provenance.FAIR,
+        observed_turn=None,
+        value=figure.value, unit=figure.unit,
+        source_file=figure.identity.path.name,
+        record_key=(figure.table, figure.column) + figure.row_key,
+        subject_id=figure.subject,
+        note=(f"Read from {figure.identity.describe()}. That file records no game build, "
+              "no expansion list and no mod list, so none is claimed here."),
     ))
 
 

@@ -21,6 +21,11 @@ class SourceKind(Enum):
     # a derivation from one: it is this advisor's own choice. Giving it its own kind keeps
     # it citable without letting it masquerade as something the game reported.
     RULE = "rule"
+    # A fifth kind. A cost read out of the installed game files is not an observation of
+    # this game, not a derivation from one, not this advisor's rule, and not something the
+    # player typed in. Badging it as any of those would misstate where the number is
+    # checkable: this one is checkable against a file on the player's own disk.
+    INSTALLED_RULESET = "installed_ruleset"
 
 
 class Applicability(Enum):
@@ -72,6 +77,12 @@ class EvidenceFact:
             raise ValueError(f"derived fact {self.id} must cite the facts it came from")
         if self.source_kind is SourceKind.LOG and not self.source_file:
             raise ValueError(f"log fact {self.id} must name its source file")
+        if self.source_kind is SourceKind.INSTALLED_RULESET:
+            if not self.source_file:
+                raise ValueError(f"ruleset fact {self.id} must name its source file")
+            if len(self.record_key) < 3:
+                raise ValueError(f"ruleset fact {self.id} must cite a table, a column "
+                                 "and the row key that selects the row")
 
     @property
     def freshness(self) -> str:

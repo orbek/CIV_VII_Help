@@ -1144,7 +1144,8 @@
     const label = el("p", "fact-label");
     label.append(document.createTextNode(fact.label + " "),
       el("span", "fact-kind", fact.kind === "player_report" ? "you told us"
-        : fact.kind === "derived" ? "computed" : fact.kind === "rule" ? "advisor rule" : "log"));
+        : fact.kind === "derived" ? "computed" : fact.kind === "rule" ? "advisor rule"
+        : fact.kind === "installed_ruleset" ? "your installed ruleset" : "log"));
     if (fact.provenance === "oracle") label.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     node.append(label);
     const value = fact.value === null || fact.value === undefined ? "—" : String(fact.value);

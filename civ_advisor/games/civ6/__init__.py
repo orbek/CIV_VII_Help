@@ -16,7 +16,7 @@ from civ_advisor.ingest.textlogs import read_player_identities
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
-from .readers import read_player_stats_civ6, read_unit_operations_civ6
+from .readers import read_build_queue_civ6, read_player_stats_civ6, read_unit_operations_civ6
 
 DEFAULT_LOGS_DIR = (
     Path.home()
@@ -34,7 +34,7 @@ READERS: tuple[LogReader, ...] = (
     LogReader("GameCore.log", "player_identities", simple(read_player_identities)),
     LogReader("Player_Stats.csv", "stats", read_player_stats_civ6),
     LogReader("UnitOperations.log", "unit_operations", read_unit_operations_civ6),
-    # Task 5 adds the build queue's cross-file join here.
+    LogReader("City_BuildQueue.csv", "build_queue", read_build_queue_civ6),
 )
 
 CIV6 = GameProfile(

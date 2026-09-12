@@ -118,3 +118,51 @@ def test_unit_operations_still_raises_on_an_unrecognised_short_row(tmp_path):
     )
     with pytest.raises((LogFormatError, ValueError, IndexError)):
         read_unit_operations_civ6(tmp_path, path)
+
+
+def test_build_queue_attributes_cities_via_the_sibling_file(civ6_dir):
+    """City_BuildQueue has no Player column; ownership comes from
+    AI_CityBuild. Rome is the human's city in this capture."""
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+
+    rows = read_build_queue_civ6(civ6_dir, civ6_dir / "City_BuildQueue.csv")
+    rome = [r for r in rows if r.city == "LOC_CITY_NAME_ROME"]
+    assert rome
+    assert {r.player for r in rome} == {0}
+
+
+def test_build_queue_carries_ownership_forward_rather_than_requiring_same_turn(civ6_dir):
+    """AI_CityBuild logs only 25% of (turn, city) pairs. Requiring a same-turn
+    match would discard three quarters of the queue."""
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+
+    rows = read_build_queue_civ6(civ6_dir, civ6_dir / "City_BuildQueue.csv")
+    attributed = [r for r in rows if r.player is not None and r.player >= 0]
+    assert len(attributed) > len(rows) * 0.9
+
+
+def test_build_queue_ignores_the_purchase_sentinel(civ6_dir):
+    """AI_CityBuild's City column sometimes reads PURCHASE. Treating it as a
+    city name would invent a city and attribute real queues to it."""
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+
+    rows = read_build_queue_civ6(civ6_dir, civ6_dir / "City_BuildQueue.csv")
+    assert all(r.city != "PURCHASE" for r in rows)
+
+
+def test_a_queue_row_with_no_owner_anywhere_is_not_attributed_to_the_human(tmp_path):
+    """Defaulting an unknown owner to player 0 would put a rival's production
+    on the player's own Economy tab."""
+    from civ_advisor.games.civ6.readers import read_build_queue_civ6
+
+    (tmp_path / "City_BuildQueue.csv").write_text(
+        "Game Turn, City, Production Added, Current Item, Current Production, "
+        "Production Needed, Overflow\n"
+        "5, LOC_CITY_NAME_NOWHERE, 6.0, UNIT_BUILDER, 6.0, 50, 0.0\n"
+    )
+    (tmp_path / "AI_CityBuild.csv").write_text(
+        "Game Turn, Player, City, Food Adv., Prod. Adv., Construct, Order Source\n"
+    )
+    rows = read_build_queue_civ6(tmp_path, tmp_path / "City_BuildQueue.csv")
+    assert len(rows) == 1
+    assert rows[0].player is None

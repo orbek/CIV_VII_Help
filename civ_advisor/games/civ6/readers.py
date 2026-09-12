@@ -12,6 +12,7 @@ from pathlib import Path
 log = logging.getLogger(__name__)
 
 from civ_advisor.ingest.csvfile import LogFormatError, latest_game_segment, read_table
+from civ_advisor.ingest.production import BuildQueueRow
 from civ_advisor.ingest.readers import StatsRow
 from civ_advisor.ingest.tactical import UnitOperationRow, _unit
 from civ_advisor.ingest.textlogs import read_player_identities
@@ -92,4 +93,78 @@ def read_unit_operations_civ6(logs_dir: Path, path: Path) -> list[UnitOperationR
             )
         unit_type, unit_id = _unit(row[3])
         out.append(UnitOperationRow(int(row[0]), row[1], int(row[2]), unit_type, unit_id, row[4]))
+    return out
+
+
+OWNERSHIP_FILE = "AI_CityBuild.csv"
+# AI_CityBuild's City column carries this instead of a city name on some rows.
+PURCHASE_SENTINEL = "PURCHASE"
+
+
+def _ownership_by_turn(logs_dir: Path) -> dict[str, list[tuple[int, int]]]:
+    """city -> [(turn, player), ...] ascending, from AI_CityBuild.csv.
+
+    Missing or unreadable: returns {}, so every queue row is reported
+    unattributed rather than attributed wrongly.
+    """
+    path = logs_dir / OWNERSHIP_FILE
+    if not path.is_file():
+        return {}
+    try:
+        table = read_table(path)
+    except (LogFormatError, ValueError, IndexError):
+        return {}
+    seen: dict[str, list[tuple[int, int]]] = {}
+    for row in table.rows:
+        if len(row) < 3:
+            continue
+        city = row[2].strip()
+        if not city or city == PURCHASE_SENTINEL:
+            continue
+        try:
+            turn, player = int(row[0]), int(row[1])
+        except ValueError:
+            continue
+        seen.setdefault(city, []).append((turn, player))
+    for entries in seen.values():
+        entries.sort()
+    return seen
+
+
+def _owner_at(entries: list[tuple[int, int]], turn: int) -> int | None:
+    """The most recent owner observed at or before `turn`.
+
+    Carried forward rather than matched exactly: AI_CityBuild logs only about
+    a quarter of (turn, city) pairs. Carrying forward is also what makes a
+    capture read correctly -- ownership changes at the turn the file next
+    reports a different player, and earlier rows keep the previous owner.
+    """
+    owner = None
+    for entry_turn, player in entries:
+        if entry_turn > turn:
+            break
+        owner = player
+    return owner
+
+
+def read_build_queue_civ6(logs_dir: Path, path: Path) -> list[BuildQueueRow]:
+    ownership = _ownership_by_turn(logs_dir)
+    table = read_table(path)
+    out: list[BuildQueueRow] = []
+    for row in latest_game_segment(table.rows, turn_col=0):
+        if len(row) != 7:
+            raise LogFormatError(
+                f"{path.name}: expected 7 columns but a row has {len(row)}: {row!r}"
+            )
+        turn, city = int(row[0]), row[1]
+        out.append(BuildQueueRow(
+            turn=turn,
+            player=_owner_at(ownership.get(city, []), turn),
+            city=city,
+            added=float(row[2]),
+            item=row[3],
+            current=float(row[4]),
+            needed=float(row[5]),
+            overflow=float(row[6]),
+        ))
     return out

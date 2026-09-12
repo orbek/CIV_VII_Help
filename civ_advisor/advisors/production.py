@@ -94,6 +94,11 @@ def queues(state: GameState) -> dict[int, list[CityQueue]]:
     """
     latest: dict[tuple[int, str], BuildQueueRow] = {}
     for q in state.build_queues:
+        if q.player is None:
+            # Unattributed: Civ VI's sibling ownership log never resolved this city's
+            # owner. Cannot be filed under anyone, human included, and must not sort
+            # alongside real ids below (None < int raises).
+            continue
         cutoff = state.latest_turn if q.player == state.HUMAN else state.complete_through_turn
         if not cutoff - QUEUE_STALE_TURNS <= q.turn <= cutoff:
             continue

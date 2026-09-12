@@ -16,7 +16,7 @@ BUILD_QUEUE_HEADER = [
 @dataclass(frozen=True)
 class BuildQueueRow:
     turn: int
-    player: int
+    player: int | None  # None when Civ VI's sibling ownership log never resolves a city's owner
     city: str        # LOC_CITY_NAME_* key exactly as logged
     added: float     # production added this turn
     item: str        # BUILDING_*, UNIT_*, ...; "" when the city is idle

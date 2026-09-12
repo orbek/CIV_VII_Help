@@ -1,8 +1,9 @@
 import asyncio
 from pathlib import Path
 
+from civ_advisor.games.civ6 import CIV6
 from civ_advisor.games.civ7 import CIV7
-from civ_advisor.store import SCHEMA_VERSION, Store
+from civ_advisor.store import GAME_SWITCHED, SCHEMA_VERSION, Store
 
 
 def test_rebuild_publishes_one_snapshot_with_state_insights_and_coverage(fixture_dir: Path):
@@ -257,3 +258,101 @@ def test_coverage_is_profile_aware_for_civ6(civ6_dir):
     # the concept does not exist for this game, it did not merely fail to read.
     assert by_name["happiness"].status == "not_applicable"
     assert by_name["strategy"].status == "not_applicable"
+
+
+def test_a_snapshot_records_which_game_produced_it(fixture_dir):
+    captured = Store(fixture_dir, profile=CIV7).rebuild()
+    assert captured.game_id == "civ7"
+
+
+def test_switching_games_starts_a_new_sitting(fixture_dir, civ6_dir):
+    """Spec 8.1: nothing computed under the previous game may survive the switch. The
+    session id is what acknowledgements are filed under, so it must change."""
+    store = Store(fixture_dir, profile=CIV7)
+    first = store.rebuild()
+    store.switch_to(CIV6, civ6_dir)
+    second = store.rebuild()
+
+    assert second.game_id == "civ6"
+    assert second.epoch == first.epoch + 1
+    assert second.epoch_reason == GAME_SWITCHED
+    assert second.session != first.session
+    assert second.revision > first.revision      # revision stays monotonic across a switch
+
+
+def test_a_switch_does_not_inherit_the_previous_game_s_save_key(tmp_path, fixture_dir, civ6_dir):
+    """Neither committed fixture's GameCore.log happens to record a "Random Seeds" line
+    (the v1 fixture predates GameCore.log entirely; the civ6 capture's format doesn't
+    include one either), so both copies get one written in here -- deterministically,
+    rather than relying on what the fixtures happen to contain."""
+    import shutil
+    civ7_logs, civ6_logs = tmp_path / "civ7", tmp_path / "civ6"
+    shutil.copytree(fixture_dir, civ7_logs)
+    shutil.copytree(civ6_dir, civ6_logs)
+    with open(civ7_logs / "GameCore.log", "a") as f:
+        f.write("[2026-09-07 17:13:59]\tRandom Seeds: Game 111, Map 222\n")
+    with open(civ6_logs / "GameCore.log", "a") as f:
+        f.write("[2026-09-07 17:13:59]\tRandom Seeds: Game 333, Map 444\n")
+
+    store = Store(civ7_logs, profile=CIV7)
+    first = store.rebuild()
+    store.switch_to(CIV6, civ6_logs)
+    second = store.rebuild()
+    assert first.game_key == "seeds-111-222"
+    assert second.game_key == "seeds-333-444"
+    assert first.game_key != second.game_key
+
+
+def test_switching_back_does_not_resume_the_earlier_sitting(fixture_dir, civ6_dir):
+    """Returning to Civ VII is a third sitting, not the first one continued: the logs
+    were rewritten while we were not watching them."""
+    store = Store(fixture_dir, profile=CIV7)
+    first = store.rebuild()
+    store.switch_to(CIV6, civ6_dir)
+    store.rebuild()
+    store.switch_to(CIV7, fixture_dir)
+    third = store.rebuild()
+    assert third.session != first.session and third.epoch == first.epoch + 2
+
+
+def test_an_idle_store_has_no_snapshot_and_does_not_invent_one():
+    """Auto mode with nothing recent on disk. 'I cannot tell which game is running' is a
+    supported answer; a snapshot built from no logs would be an assertion."""
+    store = Store(None, profile=None)
+    assert store.active is False
+    assert store.rebuild() is None
+    assert store.snapshot is None
+
+
+def test_activating_an_idle_store_is_the_first_load_not_a_switch(civ6_dir):
+    store = Store(None, profile=None)
+    store.switch_to(CIV6, civ6_dir)
+    captured = store.rebuild()
+    assert captured is not None
+    assert captured.epoch == 1 and captured.epoch_reason == "first_load"
+
+
+def test_a_switch_mid_rebuild_discards_the_stale_read_rather_than_publishing_it(
+    fixture_dir, civ6_dir, monkeypatch,
+):
+    """load_logs runs outside the lock, so switch_to can land while a rebuild for the
+    PREVIOUS game is still in flight. Publishing that read would attribute the old
+    game's content to whatever the store just switched to. It must be discarded."""
+    import civ_advisor.store as store_mod
+
+    store = Store(fixture_dir, profile=CIV7)
+    real_load_logs = store_mod.load_logs
+
+    def switching_load_logs(logs_dir, profile):
+        raw = real_load_logs(logs_dir, profile)
+        store.switch_to(CIV6, civ6_dir)   # simulate a switch landing mid-read
+        return raw
+
+    monkeypatch.setattr(store_mod, "load_logs", switching_load_logs)
+    stale = store.rebuild()               # this call's own read is for CIV7
+    assert stale is None                  # discarded: the store had already moved to civ6
+    assert store.snapshot is None         # nothing was published from the stale civ7 read
+
+    monkeypatch.setattr(store_mod, "load_logs", real_load_logs)
+    second = store.rebuild()              # a normal rebuild now correctly serves civ6
+    assert second.game_id == "civ6"

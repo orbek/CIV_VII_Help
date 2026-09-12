@@ -109,14 +109,14 @@ def deal(turn: int, from_player: int, to_player: int, kind: str = "Peace") -> De
 
 def snapshot(
     state: GameState, insights=None, session: str = "session-1", epoch: int = 1,
-    revision: int = 1, captured_at: float = 0.0,
+    revision: int = 1, captured_at: float = 0.0, game_id: str = "civ7",
 ) -> Snapshot:
     """A published snapshot around a hand-made state, for worker and serializer tests."""
     from civ_advisor.advisors import run_all
 
     ranked = run_all(state) if insights is None else list(insights)
     return Snapshot(
-        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        schema_version=SCHEMA_VERSION, game_id=game_id, session=session, epoch=epoch,
         epoch_reason="first_load", game_key=None, revision=revision,
         captured_at=captured_at, latest_turn=state.latest_turn,
         analysis_turn=state.complete_through_turn, state=state, insights=tuple(ranked),

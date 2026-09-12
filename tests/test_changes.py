@@ -27,7 +27,7 @@ def snapshot(turn: int, insights: tuple, *, session: str = "s1", epoch: int = 1,
              revision: int = 1, **statuses: str) -> Snapshot:
     state = game_state(turn=turn)
     return Snapshot(
-        schema_version=SCHEMA_VERSION, session=session, epoch=epoch,
+        schema_version=SCHEMA_VERSION, game_id="civ7", session=session, epoch=epoch,
         epoch_reason="first_load", game_key=None, revision=revision, captured_at=0.0,
         latest_turn=turn + 1, analysis_turn=turn, state=state, insights=insights,
         coverage=coverage(**statuses),

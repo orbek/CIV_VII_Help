@@ -70,6 +70,7 @@ FIRST_LOAD = "first_load"
 LOGS_WIPED = "logs_wiped"
 DIFFERENT_SAVE = "different_save"
 TURN_WENT_BACKWARDS = "turn_went_backwards"
+GAME_SWITCHED = "game_switched"
 
 
 @dataclass(frozen=True)
@@ -114,6 +115,7 @@ class Snapshot:
     """One coherent capture. Never mutated after publication."""
 
     schema_version: int
+    game_id: str            # which game's readers produced this; never inferred downstream
     session: str            # this epoch's id; changes whenever we may be looking at another game
     epoch: int              # how many epochs this process has seen, 1-based
     epoch_reason: str       # why this epoch started
@@ -186,10 +188,10 @@ def _coverage(state: GameState, analysis_turn: int, profile: GameProfile = CIV7)
 
 
 class Store:
-    def __init__(self, logs_dir: Path, archive_root: Path | None = None,
+    def __init__(self, logs_dir: Path | None, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
                  identity_provider: Callable[[Snapshot], dict] | None = None,
-                 *, profile: GameProfile) -> None:
+                 *, profile: GameProfile | None) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision
@@ -198,6 +200,7 @@ class Store:
         self.logs_dir = logs_dir
         self.profile = profile
         self.archive_root = archive_root
+        self._pending_switch = False   # a game switch forces the next snapshot to a new epoch
         self.snapshot: Snapshot | None = None
         self._lock = threading.Lock()
         self._subscribers: set[asyncio.Queue] = set()
@@ -223,14 +226,59 @@ class Store:
         snapshot = self.snapshot
         return list(snapshot.insights) if snapshot is not None else []
 
-    def rebuild(self) -> Snapshot:
-        """Re-read every log, archive it, and recompute advice. Safe to call from a worker thread."""
-        raw = load_logs(self.logs_dir, self.profile)
+    @property
+    def active(self) -> bool:
+        """Whether a game is selected at all. False is a real state, not a failure."""
+        return self.profile is not None and self.logs_dir is not None
+
+    def switch_to(self, profile: GameProfile, logs_dir: Path) -> None:
+        """Point the store at another game.
+
+        Everything computed under the previous game is dropped here rather than
+        left to expire: the reader table, the capability matrix and the context
+        namespace all change at once, so the previous snapshot is not this game's
+        past in any sense. Subscribers survive -- the browser is still connected --
+        but the next snapshot starts a new epoch, which is what makes the change
+        tracker and the player's record treat this as another sitting.
+        """
+        with self._lock:
+            if self.profile is not None and self.profile.id == profile.id \
+                    and self.logs_dir == logs_dir:
+                return
+            had_game = self.profile is not None
+            self.profile = profile
+            self.logs_dir = logs_dir
+            self.snapshot = None
+            self._observed_key = None
+            self._session_has_data = False
+            self._pending_reason = None
+            # Activating an idle store is not a switch; it is this store's first load.
+            self._pending_switch = had_game
+
+    def rebuild(self) -> Snapshot | None:
+        """Re-read every log, archive it, and recompute advice. Safe to call from a
+        worker thread. Returns None while no game is selected.
+
+        Reading the logs happens outside the lock, so `switch_to` can run while this
+        read is in flight. If it does, `self.profile`/`self.logs_dir` will have moved
+        on by the time this rebuild reaches the lock, and the raw/state/insights
+        already computed belong to the game just switched away from -- publishing
+        them would either resurrect that game's content under the new game's epoch,
+        or (if switched back) misattribute it to a game it was never read for. Such a
+        rebuild is discarded rather than published; the next scheduled rebuild picks
+        up whichever game is actually active by then.
+        """
+        profile, logs_dir = self.profile, self.logs_dir
+        if profile is None or logs_dir is None:
+            return None
+        raw = load_logs(logs_dir, profile)
         state = build_state(raw)
         insights = run_all(state)
-        key = game_key(self.logs_dir)
+        key = game_key(logs_dir)
         with self._lock:
-            snapshot = self._capture_locked(raw, state, insights, key)
+            if self.profile is not profile or self.logs_dir != logs_dir:
+                return None
+            snapshot = self._capture_locked(raw, state, insights, key, profile)
             self.snapshot = snapshot
         self._archive(raw, snapshot.session)
         if self.commentary_worker is not None:
@@ -248,7 +296,7 @@ class Store:
             return {}
 
     def _capture_locked(self, raw: RawLogs, state: GameState, insights: list[Insight],
-                        key: str | None) -> Snapshot:
+                        key: str | None, profile: GameProfile) -> Snapshot:
         self._revision += 1
         reason = self._session_reason_locked(raw, key)  # compares `key` against the session's own
         if reason is not None:
@@ -270,11 +318,12 @@ class Store:
         assert self._session is not None
         return Snapshot(
             schema_version=SCHEMA_VERSION,
+            game_id=profile.id,
             session=self._session, epoch=self._epoch, epoch_reason=self._session_reason,
             game_key=self._observed_key, revision=self._revision, captured_at=time.time(),
             latest_turn=state.latest_turn, analysis_turn=state.complete_through_turn,
             state=state, insights=tuple(insights),
-            coverage=_coverage(state, state.complete_through_turn, self.profile),
+            coverage=_coverage(state, state.complete_through_turn, profile),
         )
 
     def _session_reason_locked(self, raw: RawLogs, key: str | None) -> str | None:
@@ -287,6 +336,9 @@ class Store:
         Ambiguity resolves towards a new epoch: silently carrying acknowledgements across
         a reload is worse than asking for them again.
         """
+        if self._pending_switch:
+            self._pending_switch = False
+            return GAME_SWITCHED
         if not raw.stats:
             if self._session is None:
                 return FIRST_LOAD          # provisional session so every snapshot has an id
@@ -307,7 +359,7 @@ class Store:
         return None
 
     def _archive(self, raw: RawLogs, session: str) -> None:
-        if self.archive_root is None:
+        if self.archive_root is None or self.logs_dir is None:
             return
         if not raw.stats:
             return

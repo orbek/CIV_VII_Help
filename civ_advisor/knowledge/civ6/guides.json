@@ -1,0 +1,11 @@
+{
+    "schema_version": 1,
+    "catalog_revision": "2026-09-12.1",
+    "note": "No Civilization VI guide has been reviewed yet. This catalog is intentionally empty rather than a copy of Civ VII's: Civ VII's navigation describes Civ VII's screens, not Civ VI's, and reusing it would attach the wrong instructions to the wrong game. Populate this file only with guides reviewed against Civilization VI itself.",
+    "review_statuses": {
+        "navigation_reviewed": "The article was retrieved and read, and the inspection steps below were written from it. They describe where to look, not what any option is worth. Effects, prerequisites and unlocks are NOT established for any ruleset unless supported_rulesets says otherwise, and even then only the workflow is covered — never a figure.",
+        "link_only": "The URL is recorded but its content has not been reviewed for this catalog. Usable as a reference the player may read; never as the basis of an instruction.",
+        "unreachable": "Retrieval failed during review. Kept so the gap is visible; must not back any instruction."
+    },
+    "entries": []
+}

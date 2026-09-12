@@ -85,7 +85,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--game", default="civ7", help="which game's catalog to audit")
     args = parser.parse_args(argv)
 
-    catalog = load_catalog(package=get_profile(args.game).knowledge_package)
+    profile = get_profile(args.game)
+    catalog = load_catalog(package=profile.knowledge_package, game=profile.id)
     results: list[Result] = []
     with httpx.Client(timeout=args.timeout, follow_redirects=True,
                       headers={"User-Agent": USER_AGENT}) as client:

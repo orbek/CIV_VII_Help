@@ -46,12 +46,15 @@ CIV6 = GameProfile(
     # What Civ VI's logs cannot support, and therefore what this build must
     # not claim for it. AI_Victories exists but records era strategies, not
     # victory paths (spec §3.2); there is no amenities, maintenance, deal or
-    # combat-odds log at all (spec §3.5).
+    # combat-odds log at all (spec §3.5). TOURISM and DIPLOMATIC_FAVOR are
+    # NOT declared here even though Player_Stats_2.csv presumably carries
+    # them: no reader for that file exists yet, and a capability is a promise
+    # to fill a panel -- declaring one with nothing behind it is the exact
+    # defect this phase exists to prevent. Add them back only alongside a
+    # Player_Stats_2.csv reader and the canonical fields it would populate.
     capabilities=frozenset({
         Capability.FAITH,
         Capability.CIVICS,
-        Capability.TOURISM,
-        Capability.DIPLOMATIC_FAVOR,
     }),
 )
 

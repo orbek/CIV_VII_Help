@@ -138,13 +138,17 @@ def _require(row: dict, field: str, entry_id: str):
     return row[field]
 
 
-def _check_url(url: str, entry_id: str) -> None:
+def _check_url(url: str, entry_id: str, expected_game: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme != "https":
         raise CatalogError(f"guide {entry_id}: {url} is not https")
     markers = ALLOWED_HOSTS.get(parsed.netloc)
     if markers is None:
         raise CatalogError(f"guide {entry_id}: {parsed.netloc} is not an allowed publisher")
+    if expected_game != "civ7":
+        # No per-game path marker convention is defined for any game but Civ VII yet;
+        # inventing one for civ6 now, before it has a single entry, would be a guess.
+        return
     path = unquote(parsed.path).casefold()
     if not any(marker in path for marker in markers):
         # The wiki covers every game in the series under one host, so an article without
@@ -152,20 +156,20 @@ def _check_url(url: str, entry_id: str) -> None:
         raise CatalogError(f"guide {entry_id}: {url} is not identifiable as a Civ VII page")
 
 
-def _entry(row: dict) -> GuideEntry:
+def _entry(row: dict, expected_game: str) -> GuideEntry:
     entry_id = row.get("id", "<no id>")
     for field in ("game", "title", "publisher", "url", "kind", "review_status",
                   "reviewed_at", "notes", "attribution"):
         _require(row, field, entry_id)
-    if row["game"] != "civ7":
-        raise CatalogError(f"guide {entry_id}: game {row['game']!r} is not civ7")
+    if row["game"] != expected_game:
+        raise CatalogError(f"guide {entry_id}: game {row['game']!r} is not {expected_game}")
     if row["review_status"] not in REVIEW_STATUSES:
         raise CatalogError(f"guide {entry_id}: unknown review status {row['review_status']!r}")
     if row["kind"] not in ("mechanic", "item"):
         raise CatalogError(f"guide {entry_id}: unknown kind {row['kind']!r}")
-    _check_url(row["url"], entry_id)
+    _check_url(row["url"], entry_id, expected_game)
     if row.get("reviewed_url"):
-        _check_url(row["reviewed_url"], entry_id)
+        _check_url(row["reviewed_url"], entry_id, expected_game)
     entry = GuideEntry(
         id=entry_id, game=row["game"], title=row["title"], publisher=row["publisher"],
         url=row["url"], reviewed_url=row.get("reviewed_url"), section=row.get("section"),
@@ -193,8 +197,18 @@ def _entry(row: dict) -> GuideEntry:
     return entry
 
 
-def load_catalog(raw: str | None = None, package: str = DEFAULT_CATALOG_PACKAGE) -> Catalog:
-    """The packaged catalog. Offline; raises `CatalogError` if it is not usable."""
+def load_catalog(raw: str | None = None, package: str = DEFAULT_CATALOG_PACKAGE,
+                  game: str | None = None) -> Catalog:
+    """The packaged catalog. Offline; raises `CatalogError` if it is not usable.
+
+    `game` names which game's entries are expected; `None` means "civ7", for every
+    caller that predates other games. A catalog with no entries is valid ONLY when
+    loading a package other than Civ VII's own: Civ VII must always ship at least
+    one reviewed guide, but a brand-new game (Civ VI) legitimately has none yet, and
+    an empty catalog is the honest way to say so rather than copying another game's
+    guides.
+    """
+    expected_game = game if game is not None else "civ7"
     if raw is None:
         raw = resources.files(package).joinpath(CATALOG_FILE).read_text(encoding="utf-8")
     try:
@@ -207,12 +221,12 @@ def load_catalog(raw: str | None = None, package: str = DEFAULT_CATALOG_PACKAGE)
     revision = data.get("catalog_revision")
     if not revision:
         raise CatalogError("guide catalog has no catalog_revision")
-    entries = tuple(_entry(row) for row in data.get("entries", ()))
+    entries = tuple(_entry(row, expected_game) for row in data.get("entries", ()))
     ids = [e.id for e in entries]
     duplicates = {i for i in ids if ids.count(i) > 1}
     if duplicates:
         raise CatalogError(f"duplicate guide ids: {', '.join(sorted(duplicates))}")
-    if not entries:
+    if not entries and package == DEFAULT_CATALOG_PACKAGE:
         raise CatalogError("guide catalog is empty")
     return Catalog(revision=revision, entries=entries)
 

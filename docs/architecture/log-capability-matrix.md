@@ -1,9 +1,39 @@
 # What the game's logs can and cannot tell us
 
-**Game:** Civilization VII. Civilization VI has a different log set and a
-different set of things it cannot know; see
-[the multi-game design](../superpowers/specs/2026-09-12-multi-game-advisor-design.md)
-§3, and this document gains a Civ VI column in phase 2.
+This document's body (below) was audited against Civilization VII's logs. Everything
+in it applies to Civilization VII only, unless the Civ VI section immediately below
+says otherwise.
+
+## Civilization VI
+
+Civ VI has a different log set than Civ VII and cannot support everything the advisor
+models. What it declares is enforced by `CIV6.capabilities`
+(`civ_advisor/games/civ6/__init__.py`) and checked against its reader table by
+`tests/test_profile_conformance.py`, not left to review.
+
+**Unavailable, and why:**
+
+| Capability | Why Civ VI cannot support it |
+| --- | --- |
+| Victory paths | `AI_Victories.csv` exists, but its rows record era-strategy postures (e.g. `STRATEGY_DARKAGE`), not victory-path pursuit. Populating `GameState.strategies` from it would misreport an era posture as a victory strategy, so Civ VI declares no reader for this file at all. |
+| Happiness / amenities | No log records amenities or an empire happiness total; there is no `Player_Happiness.csv` equivalent. |
+| Maintenance / net gold | No log records unit, building or total maintenance; there is no `Player_Treasury.csv` equivalent. |
+| Peace deals | No log records diplomatic deals; there is no `DiplomacyDeals.log` equivalent. |
+| Combat odds | No log records pre-combat odds estimates. |
+| Settlement cap / urban-rural split | Civ VI has no settlement-cap or urban/rural-population concept in its stats log; `Player_Stats.csv`'s columns carry no such fields (see `civ_advisor/games/civ6/columns.py`). |
+| Tourism / diplomatic favor | Not currently declared. Civ VI's `Player_Stats_2.csv` is expected to carry these (see the multi-game design spec §3.2), but no reader for that file exists yet — declaring the capability without a reader behind it would promise a panel this build cannot fill. Add it back only alongside a `Player_Stats_2.csv` reader and the canonical fields it would populate. |
+
+**Available, and new relative to Civ VII's own field set:**
+
+| Capability | Source |
+| --- | --- |
+| Faith | `Player_Stats.csv` (`StatsRow.faith`, `StatsRow.faith_balance`), read positionally — `Faith` is the header name of two different columns. |
+| Civics | `Player_Stats.csv` (`StatsRow.civics`). |
+
+See [the multi-game design](../superpowers/specs/2026-09-12-multi-game-advisor-design.md)
+§3 for the full spec this is drawn from.
+
+## Civilization VII
 
 Audited 2026-09-08 against `tests/fixtures/logs_v2` (a real session, turns 1–100) and
 `tests/fixtures/logs_82turns`. This is the reference for what may be asserted in a
@@ -11,7 +41,7 @@ recommendation. A field marked **unknown** has no parser and must not acquire on
 real sample rows support a contract: an empty file is not a data source, and the absence
 of a record is not evidence that the thing it would record is absent.
 
-## Available
+### Available
 
 | Field | Source | Contract | Caveat that must travel with it |
 | --- | --- | --- | --- |
@@ -26,7 +56,7 @@ of a record is not evidence that the thing it would record is absent.
 | Rival unit sightings, unit-efficiency ratings, operation odds, commander promotions | the `AI_*` logs | `advisors/tactical.py` | Oracle. AI estimates, not win probabilities. |
 | Rival diplomatic intent, war score, deals, gossip, combat results | `AI_DiplomaticActions.csv`, `DiplomacySummary.csv`, `DiplomacyDeals.log`, `Game_Gossip.csv`, `CombatLog.csv` | `advisors/threat.py`, `advisors/intel.py` | Mixed provenance; the intent and score rows are Oracle. |
 
-## Unknown — no source found, no parser added
+### Unknown — no source found, no parser added
 
 | Field | Why it is unknown | What a recommendation must do instead |
 | --- | --- | --- |
@@ -39,7 +69,7 @@ of a record is not evidence that the thing it would record is absent.
 | Per-city yield, maintenance and overbuilding effects | Not logged at settlement level. | Ask for the placement preview, which the publisher documents as showing exactly these. |
 | Rival settlement names | Not recorded; only `LOC_CITY_NAME_*` keys for the human's own queues. | Do not invent names. |
 
-## Consequences for the decision layer
+### Consequences for the decision layer
 
 1. **No numeric effect for any build item is available from any source we ship.** The guide
    catalog carries none, and the logs carry none. Every figure in a comparison has to come

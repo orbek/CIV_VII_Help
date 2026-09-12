@@ -112,10 +112,26 @@ def test_a_profile_declares_what_it_supports():
     assert not profile.supports(Capability.VICTORY_PATHS)
 
 
-def test_civ7_supports_everything_it_did_before():
-    """Phase 1 changed no behaviour, so civ7 must declare every capability;
-    a missing one here would silently switch off a working Civ VII panel."""
+def test_civ7_declares_only_what_its_logs_carry():
+    """Civ VII's own Player_Stats.csv header has no Faith, no Civics, no
+    Tourism, no Diplomatic Favor column: `Game Turn, Player, Cities, Towns,
+    Settlement Cap, Settlements Over Cap, Urban Pop, Rural Pop, Techs, Land
+    Units, Naval Units, TILES: Owned, Improved, BALANCE: Gold, YIELDS:
+    Science, Culture, Gold, Production, Food, Happiness, Diplomacy, BY TYPE:
+    Buildings`. Declaring `frozenset(Capability)` (every member) claimed four
+    capabilities Civ VII's logs do not carry — the exact defect this phase
+    exists to prevent, in Civ VII's own profile."""
     from civ_advisor.games.base import Capability
     from civ_advisor.games.civ7 import CIV7
 
-    assert set(CIV7.capabilities) == set(Capability)
+    assert CIV7.capabilities == frozenset({
+        Capability.VICTORY_PATHS,        # AI_Victories.csv: real victory-path pursuit for Civ VII
+        Capability.HAPPINESS,            # Player_Happiness.csv
+        Capability.MAINTENANCE,          # Player_Treasury.csv
+        Capability.PEACE_DEALS,          # DiplomacyDeals.log
+        Capability.COMBAT_ODDS,          # AI_Operation_Eval.csv has an Odds column
+        Capability.SETTLEMENT_CAP,       # Player_Stats.csv: Settlement Cap, Settlements Over Cap
+        Capability.URBAN_RURAL_SPLIT,    # Player_Stats.csv: Urban Pop, Rural Pop
+        # NOT FAITH, CIVICS, TOURISM or DIPLOMATIC_FAVOR: no reader Civ VII
+        # declares carries any of the four, in any file.
+    })

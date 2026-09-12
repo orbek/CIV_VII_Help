@@ -45,15 +45,11 @@ def test_every_declared_capability_is_backed_by_a_declared_reader(profile):
         assert "DiplomacyDeals.log" in profile.log_files
     # The other direction, which is the one that actually bites: a capability
     # declared with no reader able to produce it promises a panel that cannot
-    # be filled. Civ VI declares FAITH/CIVICS from Player_Stats and (once it
-    # exists) would declare TOURISM/DIPLOMATIC_FAVOR from Player_Stats_2. Civ
-    # VII carries every one of these off its single Player_Stats.csv instead
-    # of splitting them across two files, so the check accepts either file
-    # rather than insisting on the Civ-VI-specific split.
+    # be filled. Civ VI declares FAITH/CIVICS from Player_Stats and
+    # TOURISM/DIPLOMATIC_FAVOR from Player_Stats_2.
     stats_backed = {Capability.FAITH, Capability.CIVICS}
     stats2_backed = {Capability.TOURISM, Capability.DIPLOMATIC_FAVOR}
     if stats_backed & set(profile.capabilities):
         assert "Player_Stats.csv" in profile.log_files
     if stats2_backed & set(profile.capabilities):
-        assert ("Player_Stats.csv" in profile.log_files
-                or "Player_Stats_2.csv" in profile.log_files)
+        assert "Player_Stats_2.csv" in profile.log_files

@@ -50,7 +50,19 @@ CIV7 = GameProfile(
     default_logs_dir=DEFAULT_LOGS_DIR,
     readers=READERS,
     knowledge_package="civ_advisor.knowledge.civ7",
-    capabilities=frozenset(Capability),   # Civ VII supports every capability this build models
+    # Civ VII's own Player_Stats.csv has no Faith, Civics, Tourism or
+    # Diplomatic Favor column at all -- declaring every Capability here
+    # (as this build once did) claimed four capabilities Civ VII's logs
+    # do not carry. Only what a declared reader actually backs:
+    capabilities=frozenset({
+        Capability.VICTORY_PATHS,        # AI_Victories.csv
+        Capability.HAPPINESS,            # Player_Happiness.csv
+        Capability.MAINTENANCE,          # Player_Treasury.csv
+        Capability.PEACE_DEALS,          # DiplomacyDeals.log
+        Capability.COMBAT_ODDS,          # AI_Operation_Eval.csv (Odds column)
+        Capability.SETTLEMENT_CAP,       # Player_Stats.csv (Settlement Cap, Settlements Over Cap)
+        Capability.URBAN_RURAL_SPLIT,    # Player_Stats.csv (Urban Pop, Rural Pop)
+    }),
 )
 
 register(CIV7)

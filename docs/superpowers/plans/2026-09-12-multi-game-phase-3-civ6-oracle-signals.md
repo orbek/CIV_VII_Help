@@ -1533,6 +1533,17 @@ attribution."
 
 ### Task 6: Research and policy scores in the intel feed
 
+**Fixture limitation, measured in Task 2.** The committed `AI_Research.csv`
+covers only turns 1-2 and `AI_GovtPolicies.csv` only turns 1-3 — both were
+trimmed to 400 lines in phase 2a to keep the repo small. So any insight
+whose logic depends on a trend, a rise, or a comparison across more than a
+couple of turns CANNOT be exercised by this fixture. Either keep the
+insights within what two or three turns can demonstrate, or build a
+synthetic multi-turn log in `tmp_path` for the trend tests and say in the
+report which parts rest on synthetic data rather than a real capture. Do
+not write a test that appears to prove a trend over a range the fixture
+does not contain.
+
 **Files:**
 - Modify: `civ_advisor/advisors/intel.py`
 - Test: `tests/test_intel_ai_scores.py`

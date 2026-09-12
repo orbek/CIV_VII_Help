@@ -1,7 +1,7 @@
 # Multi-Game Advisor — Civilization VI alongside Civilization VII
 
 **Date:** 2026-09-12
-**Status:** Designed; not yet planned
+**Status:** Phase 1 (neutral core) implemented on `feature/multi-game-advisor`; phases 2–4 not yet planned
 **Builds on:** `2026-09-07-civ7-advisor-v2-design.md` (v2, shipped on `main`)
 **Delivery:** four phases, **one implementation plan per phase**, each
 shippable on its own. Phase 1 is planned first; later phases are planned
@@ -281,6 +281,21 @@ correct behaviour.
    (§8), fixtures and conformance tests (§10). Parity on the overlapping
    signals; the capability matrix honest about amenities, maintenance,
    deals, combat odds.
+
+   `--logs-dir` must be made to imply that `--game` is explicit. Phase 1
+   left the two flags decoupled because enforcing it then would have
+   changed an error message a pre-existing test asserts on, and the
+   hazard cannot arise while only one profile is registered. Once Civ VI
+   is registered, a `--logs-dir` pointed at one game's directory while
+   the profile is the other's would run the wrong readers and produce
+   silently empty advice rather than an error — exactly the failure mode
+   this project exists to avoid.
+
+   Every game's profile module must be imported by
+   `civ_advisor/games/__init__.py`. Registration happens as an import
+   side effect, so a profile whose module nothing imports exists in the
+   source but is absent from `profile_ids()`, from `--game`'s help text,
+   and from the "this build knows:" error — silently unavailable.
 3. **VI-only signals into existing advisors.** Combat desire and
    diplomatic modifiers into the threat advisor; research and policy
    scores into intel. All ORACLE-badged.

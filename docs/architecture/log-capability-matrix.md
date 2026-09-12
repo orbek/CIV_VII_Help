@@ -1,5 +1,10 @@
 # What the game's logs can and cannot tell us
 
+**Game:** Civilization VII. Civilization VI has a different log set and a
+different set of things it cannot know; see
+[the multi-game design](../superpowers/specs/2026-09-12-multi-game-advisor-design.md)
+§3, and this document gains a Civ VI column in phase 2.
+
 Audited 2026-09-08 against `tests/fixtures/logs_v2` (a real session, turns 1–100) and
 `tests/fixtures/logs_82turns`. This is the reference for what may be asserted in a
 recommendation. A field marked **unknown** has no parser and must not acquire one until

@@ -779,7 +779,11 @@ _DIAGNOSTIC = re.compile(r"^Unit operation handler [0-9a-f]+$")
 def read_unit_operations_civ6(logs_dir: Path, path: Path) -> list[UnitOperationRow]:
     table = read_table(path)
     out: list[UnitOperationRow] = []
-    for row in table.rows:
+    # Civ VI never truncates this log, so it spans every game ever played.
+    # latest_game_segment finds the last point the turn column drops back.
+    # It skips rows whose turn cell will not parse, so the engine-diagnostic
+    # lines below do not disturb the segment boundary.
+    for row in latest_game_segment(table.rows, turn_col=0):
         if len(row) == 2 and _DIAGNOSTIC.match(row[0]):
             continue
         if len(row) != 5:

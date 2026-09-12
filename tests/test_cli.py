@@ -75,9 +75,14 @@ def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):
     assert seen["commentary_worker"] is None
 
 
-def test_archive_list_prints_sessions(tmp_path, capsys):
-    from civ_advisor.archive import MANIFEST
-    session = tmp_path / "arc" / "abc123def456" / "20260907T171100"
+def test_archive_list_prints_sessions(tmp_path, capsys, monkeypatch):
+    """--archive-dir is now the BASE holding every game's own archive (spec §11), and
+    the real LEGACY_ARCHIVE_ROOT must not leak this machine's own pre-2b archives into
+    the test -- it is monkeypatched aside for the same reason the Step 1 test does."""
+    from civ_advisor.archive import MANIFEST, archive_root_for
+
+    monkeypatch.setattr(cli, "LEGACY_ARCHIVE_ROOT", tmp_path / "no-legacy-here")
+    session = archive_root_for("civ7", base=tmp_path / "arc") / "abc123def456" / "20260907T171100"
     session.mkdir(parents=True)
     (session / MANIFEST).write_text('{"updated": "2026-09-07T17:11:00", "files": ["Player_Stats.csv"]}')
     assert cli.main(["archive", "list", "--archive-dir", str(tmp_path / "arc")]) == 0
@@ -85,7 +90,10 @@ def test_archive_list_prints_sessions(tmp_path, capsys):
     assert "abc123def456" in out and "20260907T171100" in out and "1 file" in out
 
 
-def test_archive_list_with_no_archive_is_quiet(tmp_path, capsys):
+def test_archive_list_with_no_archive_is_quiet(tmp_path, capsys, monkeypatch):
+    """The real LEGACY_ARCHIVE_ROOT must not leak this machine's own pre-2b archives
+    into what should be an empty result -- monkeypatched aside, same as the sibling test."""
+    monkeypatch.setattr(cli, "LEGACY_ARCHIVE_ROOT", tmp_path / "no-legacy-here")
     assert cli.main(["archive", "list", "--archive-dir", str(tmp_path / "none")]) == 0
     assert "No archive" in capsys.readouterr().out
 
@@ -137,3 +145,17 @@ def test_logs_dir_with_an_explicit_game_is_accepted(fixture_dir, monkeypatch):
     monkeypatch.setattr(cli.uvicorn, "run", lambda *a, **k: None)
     assert cli.main(["--logs-dir", str(fixture_dir), "--game", "civ7", "--no-archive",
                      "--no-llm", "--no-context-file"]) == 0
+
+
+def test_archive_list_shows_pre_2b_archives_under_a_label(tmp_path, capsys, monkeypatch):
+    """An existing archive must stay visible from the tool that exists to see it."""
+    import civ_advisor.cli as cli
+
+    legacy = tmp_path / ".civ7-advisor" / "archive" / "seeds-1-2" / "20260101T000000-1-abc"
+    legacy.mkdir(parents=True)
+    (legacy / "archived.json").write_text('{"files": ["Player_Stats.csv"], "updated": "x"}')
+    monkeypatch.setattr(cli, "LEGACY_ARCHIVE_ROOT", tmp_path / ".civ7-advisor" / "archive")
+
+    assert cli.main(["archive", "list", "--archive-dir", str(tmp_path / ".civ-advisor")]) == 0
+    out = capsys.readouterr().out
+    assert "pre-2b" in out and "seeds-1-2" in out

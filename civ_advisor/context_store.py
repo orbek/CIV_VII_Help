@@ -27,10 +27,19 @@ import time
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 
+from civ_advisor.archive import DEFAULT_ROOT
+
 log = logging.getLogger(__name__)
 
-DEFAULT_STORE_PATH = Path.home() / ".civ7-advisor" / "player-context.json"
+LEGACY_STORE_PATH = Path.home() / ".civ7-advisor" / "player-context.json"
+DEFAULT_STORE_PATH = LEGACY_STORE_PATH           # retained: existing imports and tests
 SCHEMA_VERSION = 1
+
+
+def store_path_for(game_id: str, base: Path = DEFAULT_ROOT) -> Path:
+    """Where this game's goals, acknowledgements and watchlist live. Per game: an
+    acknowledgement made in Civ VII is not an acknowledgement in Civ VI."""
+    return base / game_id / "player-context.json"
 
 GOAL = "goal"              # something the player intends to do
 WATCH = "watch"            # something they want kept in view
@@ -300,4 +309,5 @@ def _association_reason(entries: list[Entry], game_key: str | None,
 
 
 __all__ = ["ACKNOWLEDGED", "Association", "DEFAULT_STORE_PATH", "Entry", "GOAL", "KINDS",
-           "PersistentContextStore", "SCHEMA_VERSION", "StoreError", "WATCH"]
+           "LEGACY_STORE_PATH", "PersistentContextStore", "SCHEMA_VERSION", "StoreError",
+           "WATCH", "store_path_for"]

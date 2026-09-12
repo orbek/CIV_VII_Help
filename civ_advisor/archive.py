@@ -13,9 +13,24 @@ import time
 from pathlib import Path
 from typing import Iterable
 
-DEFAULT_ARCHIVE_ROOT = Path.home() / ".civ7-advisor" / "archive"  # our own directory, never the game's
+DEFAULT_ROOT = Path.home() / ".civ-advisor"      # our own directory, never the game's
+# Where a pre-2b install kept everything. Still named, and still readable: the tooling
+# lists it, and --archive-dir accepts it. Nothing here moves a user's files.
+LEGACY_ARCHIVE_ROOT = Path.home() / ".civ7-advisor" / "archive"
+DEFAULT_ARCHIVE_ROOT = LEGACY_ARCHIVE_ROOT       # retained: existing imports and tests
 MANIFEST = "archived.json"     # written in each session directory: what is mirrored there, and when
-UNKNOWN_GAME = "unknown-game"  # archive dir for a logs directory whose GameCore.log has no seeds line
+# Archive dir for a logs directory whose GameCore.log has no seeds line. Civ VI's
+# GameCore.log never carries one at all (checked the real capture and the committed
+# fixture: zero matches) -- every Civ VI archive lands here. Namespacing this per game
+# (see `archive_root_for`) is what keeps Civ VI's unknown-game bucket from colliding
+# with Civ VII's, since Civ VII usually DOES have a real seeds-keyed directory instead.
+UNKNOWN_GAME = "unknown-game"
+
+
+def archive_root_for(game_id: str, base: Path = DEFAULT_ROOT) -> Path:
+    """Where this game's logs are mirrored. `game_id` is the TITLE (civ6/civ7); the
+    save-seeds key is a directory deeper, under this root."""
+    return base / game_id / "archive"
 
 # The engine writes this once per save load, e.g. "Random Seeds: Game 1571231116, Map 1516997327".
 _SEEDS = re.compile(r"Random Seeds: Game (\d+), Map (\d+)")

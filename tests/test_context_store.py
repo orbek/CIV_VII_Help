@@ -201,3 +201,10 @@ def test_adopting_the_same_sitting_twice_keeps_what_is_held(tmp_path):
     for _ in range(3):
         second.adopt("s2", 2, None)
     assert len(second.pending) == 1
+
+
+def test_the_context_path_is_namespaced_per_game(tmp_path):
+    from civ_advisor.context_store import store_path_for
+
+    assert store_path_for("civ7", base=tmp_path) == tmp_path / "civ7" / "player-context.json"
+    assert store_path_for("civ6", base=tmp_path) != store_path_for("civ7", base=tmp_path)

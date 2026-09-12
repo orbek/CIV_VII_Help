@@ -88,3 +88,18 @@ def test_archive_logs_refuses_destination_symlinks(tmp_path: Path, name: str):
     with pytest.raises(ValueError, match="symlink"):
         archive_logs(logs, dest, ["Player_Stats.csv"])
     assert outside.read_text() == "keep"
+
+
+def test_the_archive_root_is_namespaced_per_game(tmp_path):
+    from civ_advisor.archive import archive_root_for
+
+    assert archive_root_for("civ6", base=tmp_path) == tmp_path / "civ6" / "archive"
+    assert archive_root_for("civ7", base=tmp_path) != archive_root_for("civ6", base=tmp_path)
+
+
+def test_the_legacy_archive_root_is_still_named(tmp_path):
+    """A user's existing archives are not orphaned by being renamed out of the code."""
+    from civ_advisor.archive import LEGACY_ARCHIVE_ROOT
+
+    assert LEGACY_ARCHIVE_ROOT.name == "archive"
+    assert LEGACY_ARCHIVE_ROOT.parent.name == ".civ7-advisor"

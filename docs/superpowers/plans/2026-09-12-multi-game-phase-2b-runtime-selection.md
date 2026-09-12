@@ -1978,6 +1978,30 @@ exactly as before: one game, no detection."
 
 ### Task 8: Coverage and capabilities that are honest about a second game
 
+**A live defect this task must fix, found by phase 2a's re-review.**
+`DomainCoverage.status` can now be `partial` for two different reasons, and
+the UI cannot tell them apart. Before 2a, `partial` meant *some declared
+file is missing or unreadable*, and `civ_advisor/web/briefing.js`'s
+`coverageLines()` renders it as `"<label> incomplete — N of M logs
+unreadable"`. After 2a, `partial` is ALSO produced when a domain has
+`unbacked` reader attrs — meaning this game has no reader for part of that
+domain at all. For Civ VI's `diplomacy` domain, `missing` is empty and
+`files` holds the one readable file, so the dashboard currently renders:
+
+    Rival diplomatic intent is incomplete — 0 of 1 logs unreadable
+
+Nothing is unreadable. The message states a false reason for missing data,
+which is the one thing this advisor may not do, and "0 of 1" reads as a
+glitch besides. Civ VII is unaffected — it declares every attr, so
+`unbacked` is always empty there.
+
+Fix: `DomainCoverage` must carry the unbacked count (or the unbacked attr
+names) so the renderer can distinguish the two causes, and
+`coverageLines()` must say which applies — *some logs could not be read*
+versus *this game does not log part of this*. A test must pin both
+renderings, and one must assert the "0 of N unreadable" string can no
+longer be produced.
+
 Two defects surface as soon as Civ VI reaches the UI. `store.DOMAINS` is Civ
 VII's file list, so a Civ VI game reports eleven domains "unavailable" — an
 alarm about files that game never writes. And `capability_report` says *whether*

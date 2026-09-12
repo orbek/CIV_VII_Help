@@ -88,6 +88,11 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
 
         def on_change() -> None:  # runs in a worker thread
             captured = store.rebuild()
+            if captured is None:
+                # Idle (no game selected), or a switch_to landed mid-rebuild and this
+                # read was discarded as stale. Either way there is no snapshot to
+                # publish an event about; the next poll tick tries again.
+                return
             loop.call_soon_threadsafe(store.publish, {
                 "type": "state_changed", "turn": captured.analysis_turn,
                 "latest_turn": captured.latest_turn, "revision": captured.revision,

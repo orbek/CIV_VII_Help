@@ -666,3 +666,31 @@ def test_the_briefing_carries_changes_and_the_record(tmp_path, fixture_dir):
         assert body["changes"]["turn"] == 81
         assert body["record"]["session"] == body["status"]["session"]
         assert body["record"]["entries"] == [] and body["record"]["error"] is None
+
+
+def test_on_change_skips_publishing_when_rebuild_returns_none(tmp_path, fixture_dir, monkeypatch, caplog):
+    """Store.rebuild() can return None: idle (no game selected), or a switch_to that
+    landed mid-rebuild discarded this exact read. on_change must skip publishing
+    rather than crash -- a crash here is silently swallowed by the poller's broad
+    except, which has already advanced its own change-tracking before awaiting
+    on_change, so nothing reschedules and the dashboard is stuck on a stale or
+    absent snapshot until the game happens to write again."""
+    import logging
+    import shutil
+    import time
+
+    logs = tmp_path / "logs"
+    shutil.copytree(fixture_dir, logs)
+    app = create_app(logs, poll_interval=0.05, profile=CIV7)
+    with TestClient(app):
+        store = app.state.store
+        published = []
+        monkeypatch.setattr(store, "publish", lambda event: published.append(event))
+        monkeypatch.setattr(store, "rebuild", lambda: None)
+        with caplog.at_level(logging.ERROR, logger="civ_advisor.ingest.poller"):
+            (logs / "Player_Stats.csv").touch()
+            time.sleep(0.3)   # several poll intervals: seen, confirmed stable, on_change fires
+        # Nothing raised out of on_change: the poller's own "poll failed" log line,
+        # which fires only when on_change escapes with an exception, never appears.
+        assert not any("poll failed" in r.message for r in caplog.records)
+        assert published == []

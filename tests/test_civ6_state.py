@@ -5,7 +5,7 @@ from civ_advisor.state.models import PlayerKind
 
 
 def _state(civ6_dir):
-    return build_state(load_logs(civ6_dir, profile=CIV6), profile=CIV6)
+    return build_state(load_logs(civ6_dir, profile=CIV6))
 
 
 def test_stats_rows_arrive_under_real_player_ids(civ6_dir):

@@ -83,18 +83,22 @@ def advise(state: GameState) -> list[Insight]:
             subject_player=state.HUMAN, **common,
         ))
 
-    slack = human.settlement_cap - human.settlements
-    if slack >= 1:
-        out.append(Insight(
-            id="economy.settlement_slack", severity=Severity.ADVISE, provenance=Provenance.FAIR,
-            title="You have room to expand",
-            recommendation="Consider a Settler only if you have a strong site and can absorb its happiness "
-                           "and economic costs; cap room alone does not make expansion optimal.",
-            why=f"Turn {t}: {slack} of {human.settlement_cap} settlement slots unused "
-                f"({human.settlements} settlements).",
-            subject_player=state.HUMAN, **common,
-        ))
-    if human.settlements_over_cap > 0:
+    # Civ VI has no settlement cap concept at all (Capability.SETTLEMENT_CAP); both
+    # fields are None there, and this whole comparison must say nothing rather than
+    # guess at a cap or a slack figure the game never logged.
+    if human.settlement_cap is not None and human.settlements is not None:
+        slack = human.settlement_cap - human.settlements
+        if slack >= 1:
+            out.append(Insight(
+                id="economy.settlement_slack", severity=Severity.ADVISE, provenance=Provenance.FAIR,
+                title="You have room to expand",
+                recommendation="Consider a Settler only if you have a strong site and can absorb its "
+                               "happiness and economic costs; cap room alone does not make expansion optimal.",
+                why=f"Turn {t}: {slack} of {human.settlement_cap} settlement slots unused "
+                    f"({human.settlements} settlements).",
+                subject_player=state.HUMAN, **common,
+            ))
+    if human.settlements_over_cap is not None and human.settlements_over_cap > 0:
         out.append(Insight(
             id="economy.over_cap", severity=Severity.WARN, provenance=Provenance.FAIR,
             title="You are over your settlement cap",

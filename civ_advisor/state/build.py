@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from civ_advisor.games.base import GameProfile
 from civ_advisor.ingest.load import RawLogs
 
 from .models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
@@ -63,7 +62,7 @@ def _civilization_name(key: str) -> str:
     return key.removeprefix("CIVILIZATION_").replace("_", " ").title()
 
 
-def build_state(raw: RawLogs, profile: GameProfile | None = None) -> GameState:
+def build_state(raw: RawLogs) -> GameState:
     state = GameState(files=dict(raw.files))
     if not raw.stats:
         return state

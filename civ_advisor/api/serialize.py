@@ -14,6 +14,7 @@ from civ_advisor.advisors.base import visible
 from civ_advisor.decisions.context import DecisionContext
 from civ_advisor.decisions.evidence import EvidenceLedger
 from civ_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
+from civ_advisor.games.base import Capability, GameProfile
 from civ_advisor.knowledge.catalog import GuideEntry
 from civ_advisor.llm.models import Commentary, CommentaryResult
 from civ_advisor.state.models import GameState, PlayerKind, PlayerTurn
@@ -28,6 +29,16 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_
                         "city_tiles_targeted", "units_targeted", "target_box")
 
 SCHEMA_VERSION = 1
+
+
+def capability_report(profile: GameProfile) -> dict[str, bool]:
+    """Every capability this build models, and whether this game supports it.
+
+    Exhaustive on purpose: the UI must be able to say "this game does not
+    support X" rather than simply omitting X, which would be indistinguishable
+    from X being quiet.
+    """
+    return {c.value: profile.supports(c) for c in Capability}
 
 
 def insight_to_dict(i: Insight) -> dict:

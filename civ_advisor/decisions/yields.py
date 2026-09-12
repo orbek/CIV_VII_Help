@@ -123,7 +123,7 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
         else:
             lines.append(
                 f"{_title(context, quickest[0])} is both quicker and no worse on "
-                f"{family.label} among the figures you supplied.")
+                f"{family.label} among these figures.")
 
     upkeeps = {i: p.gold_upkeep for i, p in usable.items() if p.gold_upkeep is not None}
     if upkeeps and context.net_gold is not None and isinstance(context.net_gold.value, (int, float)):
@@ -131,7 +131,7 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
         if len(set(upkeeps.values())) == 1:
             cost = next(iter(upkeeps.values()))
             lines.append(
-                f"Either option's reported {_n(cost)} gold upkeep would take your net gold "
+                f"Either option's stated {_n(cost)} gold upkeep would take your net gold "
                 f"from {_n(net)} to {_n(net - cost)} per turn, all else equal — a scenario "
                 "estimate from these figures, not a forecast of your income.")
         else:
@@ -238,8 +238,12 @@ def _rank(context: DecisionContext, target, why_now: str, family_options: tuple[
             if other is not None:
                 built.append(other)
         objective_text = OBJECTIVES[comparison.objective].format(yield_label=family.label)
-        reason = (f"You confirmed both options are offered in {target.name} and supplied "
-                  f"their previews, and you stated {objective_text}; "
+        # "figures are available for both" rather than "you supplied their previews": a
+        # figure here may be the player's own reading or one read from their installed
+        # ruleset (Civ VI only) -- see `_source_note`, which states which for each line
+        # above. This sentence must not claim the player typed what the ruleset filled.
+        reason = (f"You confirmed both options are offered in {target.name}, figures are "
+                  f"available for both, and you stated {objective_text}; "
                   "that objective and the shorter completion estimate decide it.")
     elif family_options:
         # Options confirmed, but not enough preview figures to compare them. Ask for

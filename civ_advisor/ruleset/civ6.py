@@ -123,13 +123,29 @@ BOOST_OBJECT_LABELS = {
 
 
 def _absent(value) -> bool:
-    """Whether a column value says nothing.
+    """Whether a column value says nothing at all.
 
-    An empty prerequisite means "none" and a zero combat strength means "cannot fight".
-    Both are absence. Turning either into a figure would put "0" in front of a player as
-    though the ruleset had asserted it.
+    `None` means the row has no such column value; an empty string is how this
+    database spells "no prerequisite". Neither is a number to state.
+
+    Deliberately does NOT treat 0 as absence here. Review found that it used to: a
+    building with `Maintenance = 0` produced no figure, so `gold_upkeep` stayed
+    unstated and a later comparison could say "either option costs 1 gold" when the
+    ruleset said one of them cost nothing. A stated zero -- free upkeep, a zero
+    production cost -- is a real fact and must be stated as one, not suppressed as
+    though the row said nothing.
     """
-    return value is None or value == "" or value == 0
+    return value is None or value == ""
+
+
+def _zero_is_absent(value) -> bool:
+    """For `Units.RangedCombat` only: a melee unit's row genuinely stores 0 there, and
+    that 0 means "this unit has no ranged attack", not "attacks at zero strength" --
+    the schema has no other way to spell "not applicable" for a combat-strength column.
+    This is the narrow, named exception to `_absent` above, not a general rule; nothing
+    else in this module calls it.
+    """
+    return _absent(value) or value == 0
 
 
 @dataclass
@@ -326,9 +342,10 @@ class Civ6Ruleset:
         """One row's figures, each naming that row. Shared so every lookup cannot drift
         into slightly different ideas of what counts as absent."""
 
-        def make(column: str, label: str, unit: str | None) -> RulesetFigure | None:
+        def make(column: str, label: str, unit: str | None,
+                *, zero_is_absent: bool = False) -> RulesetFigure | None:
             value = row[column]
-            if _absent(value):
+            if (_zero_is_absent(value) if zero_is_absent else _absent(value)):
                 return None
             return RulesetFigure(subject=subject, label=label, value=value, unit=unit,
                                  table=table, column=column, row_key=row_key,
@@ -572,7 +589,7 @@ class Civ6Ruleset:
             maintenance=make("Maintenance", f"{name} maintenance", "gold per turn"),
             combat=make("Combat", f"{name} combat strength", "combat strength"),
             ranged_combat=make("RangedCombat", f"{name} ranged strength",
-                               "combat strength"),
+                               "combat strength", zero_is_absent=True),
             prereq_tech=make("PrereqTech", f"{name} requires technology", None),
             prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
             strategic_resource=make("StrategicResource", f"{name} requires resource", None),

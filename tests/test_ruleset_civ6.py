@@ -170,12 +170,19 @@ def test_a_civic_states_its_cost_and_inspiration(ruleset):
 
 
 def test_a_unit_states_its_cost_strength_and_upgrade_target(ruleset):
+    """Whole-phase review, Important #2: a stated zero is a real fact, not silence. The
+    Warrior's Maintenance = 0 means it genuinely costs no gold upkeep, and that must be
+    stated as a figure (value 0), not suppressed as though the row said nothing --
+    suppressing it is what let a later comparison claim both options in a pair cost the
+    same nonzero upkeep when the ruleset actually said one was free. RangedCombat = 0
+    stays the one deliberate exception: for a combat-strength column specifically, the
+    schema has no other way to spell "this unit cannot make this kind of attack"."""
     facts = ruleset.unit("UNIT_WARRIOR")
 
     assert (facts.cost.value, facts.cost.unit) == (40, "production")
     assert (facts.combat.value, facts.combat.unit) == (20, "combat strength")
     assert facts.ranged_combat is None            # 0 means no ranged attack, not "0 strength"
-    assert facts.maintenance is None              # 0 gold is no maintenance
+    assert (facts.maintenance.value, facts.maintenance.unit) == (0, "gold per turn")
     assert facts.upgrades_to.value == "UNIT_SWORDSMAN"
     assert facts.strategic_resource is None
 

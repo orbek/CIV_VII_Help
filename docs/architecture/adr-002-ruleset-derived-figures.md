@@ -60,9 +60,24 @@ nowhere for one to be added by accident.
 
 ## Trade-offs and consequences
 
+- **This capability does not reach a player yet.** Every candidate-producing path
+  in the decision layer — naming a specific building, inspecting a settlement's
+  options, asking what a requirement is — requires a reviewed guide entry from
+  `Catalog`, and Civ VI's guide catalog has zero entries. The ruleset code is
+  built and tested against a real install, and `DecisionContext.previews` will
+  fill a figure the moment it is asked to, but nothing in this phase asks it to
+  for a real Civ VI session, because nothing downstream can name an item without
+  a guide behind it. This is not a bug to fix in the ruleset package; it lands
+  the moment a Civ VI guide is reviewed and added, and not before. Whole-phase
+  review confirmed this the hard way: both the reviewer and the implementer
+  verified the ruleset itself repeatedly, entirely through fixtures and direct
+  provider calls, and neither exercised the real decision path until asked to
+  specifically — which is exactly how a real capability gap hides behind
+  passing tests.
 - Civ VI recommendations get better figures than Civ VII ones, and the two games
-  will visibly differ. That is a real capability divergence, and the UI says
-  which source each figure came from rather than hiding it.
+  will visibly differ, once a Civ VI guide exists. That is a real capability
+  divergence, and the UI says which source each figure came from rather than
+  hiding it.
 - A number the player can see in game — a policy card's effect, a government
   bonus, a wonder ability — will not be quoted here. Saying "the ruleset does
   not state this" about something visible on screen looks like a gap. It is the

@@ -316,6 +316,14 @@ def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...])
                  "reported_at": r.reported_at, "base_revision": r.base_revision}
                 for r in context.player.reports
             ],
+            # Runtime availability, not the game's static declaration: `capability_report`
+            # says a game like Civ VI CAN have a ruleset, which stays true even the one
+            # turn its database is missing or unreadable. This is whether THIS session's
+            # provider is actually usable right now, and why not when it is not -- the
+            # explanation `Civ6Ruleset`/`NullRuleset` already compute and, until this
+            # field existed, no caller ever read.
+            "ruleset": {"available": context.ruleset.available,
+                       "reason": context.ruleset.reason},
         },
     }
 

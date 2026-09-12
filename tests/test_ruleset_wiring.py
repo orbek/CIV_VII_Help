@@ -212,3 +212,59 @@ def test_the_comparison_text_names_the_ruleset_when_it_filled_a_figure():
     mixed = Previews(item=AMPHITHEATER, yield_delta=2, gold_upkeep=1, observed_turn=10,
                      ruleset_filled=frozenset({"gold_upkeep"}))
     assert _source_note(mixed) == "your installed ruleset and your own figures, read on turn 10"
+
+
+def test_a_zero_maintenance_building_fills_gold_upkeep_as_zero_not_unstated(snap, tmp_path):
+    """Whole-phase review, Important #2: a building the ruleset says costs no gold
+    upkeep must fill `gold_upkeep` as 0.0, not leave it None -- the exact defect that let
+    a comparison claim "either option costs 1 gold" when the ruleset said one was free."""
+    free = "BUILDING_FREE_UPKEEP"
+    ruleset = open_ruleset(make_ruleset(tmp_path, rows={"Buildings": [
+        (free, "LOC_X", 100, 0, "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0)]}))
+    context = build_context(snap, ruleset=ruleset)
+
+    preview = context.previews(CITY, free, stat="culture")
+
+    assert preview.gold_upkeep == 0.0
+    assert "gold_upkeep" in preview.ruleset_filled
+
+
+def test_the_api_surfaces_whether_the_ruleset_is_actually_usable_right_now(snap, tmp_path):
+    """Whole-phase review, Important #4: `available`/`reason` reached no caller outside
+    tests. A player whose ruleset is missing must be told why, somewhere -- not just
+    have it computed and discarded. Checks both directions: a working provider reports
+    available, a missing database reports the reason `NullRuleset` already wrote."""
+    from civ_advisor.api.serialize import decisions_to_dict
+    from civ_advisor.decisions import decide_all
+    from civ_advisor.ruleset.civ6 import open_ruleset as _open
+
+    working = build_context(snap, ruleset=_ruleset(tmp_path))
+    payload = decisions_to_dict(working, decide_all(working))
+    assert payload["context"]["ruleset"] == {"available": True, "reason": None}
+
+    missing = _open(tmp_path / "nothing-here.sqlite")
+    context = build_context(snap, ruleset=missing)
+    payload = decisions_to_dict(context, decide_all(context))
+    assert payload["context"]["ruleset"]["available"] is False
+    assert "nothing-here.sqlite" in payload["context"]["ruleset"]["reason"]
+
+
+def test_civ6s_empty_catalog_means_no_recommendation_names_a_building_yet(snap, tmp_path):
+    """The whole-phase review's Critical: every candidate-producing path in the decision
+    layer (`named_build`, `inspect_options`, `inspect_requirement`, `compare_specialist`)
+    requires a reviewed guide entry from the catalog, and Civ VI's guide catalog has
+    none. Populating `family_options` from the ruleset (Building_YieldChanges genuinely
+    knows which yield a building serves) would not change this: every one of those
+    functions independently returns `None` on an empty catalog before it would ever
+    reach the ruleset. This records today's argued limitation as a test rather than an
+    assumption. It should start failing, in a good way, the moment a real Civ VI guide
+    is reviewed and added -- update this test then, rather than treating that as a
+    regression."""
+    from civ_advisor.decisions import decide_all
+    from civ_advisor.knowledge.catalog import load_catalog
+
+    catalog = load_catalog(package="civ_advisor.knowledge.civ6")
+    assert catalog.entries == (), "this test's premise no longer holds -- a Civ VI guide exists now"
+
+    context = build_context(snap, catalog=catalog, ruleset=_ruleset(tmp_path))
+    assert decide_all(context) == ()

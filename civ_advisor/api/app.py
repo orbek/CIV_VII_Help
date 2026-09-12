@@ -124,17 +124,18 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             # game whose data is still exactly what `current()` returns: the store has
             # not switched away from it (nothing below this point runs), so `active`
             # and its capabilities must not either -- they must stay declared, not
-            # silently vanish because detection had one quiet tick. What DOES update is
-            # the live detection facts themselves (why, and what candidates it saw):
-            # those are honestly "cannot tell right now" and saying so is not the same
-            # mistake as blanking the game whose data is still on screen. Only genuine
-            # idle (no game has ever been activated) may show as "no active game."
+            # silently vanish because detection had one quiet tick. Every SELECTION
+            # fact (mode, pinned id, disagreement, detection reason/candidates) comes
+            # from `new`, because `new` IS the current selection -- an unpin, a pin, or
+            # detection's own current verdict must be reported immediately, never held
+            # back a tick. Only `profile`/`logs_dir`, which describe the snapshot still
+            # on screen, are kept from the retained resolution. Only genuine idle (no
+            # game has ever been activated) may show as "no active game" at all.
             if store.profile is None:
                 resolution = new
             else:
-                resolution = replace(resolution, detected_id=new.detected_id,
-                                     detection_reason=new.detection_reason,
-                                     candidates=new.candidates)
+                resolution = replace(new, profile=resolution.profile,
+                                     logs_dir=resolution.logs_dir)
             return False
         resolution = new
         store.archive_root = archive_for(active)   # set before the early return: the

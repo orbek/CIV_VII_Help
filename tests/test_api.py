@@ -1152,3 +1152,50 @@ def test_posting_a_pin_publishes_a_game_changed_event_like_a_detected_switch_doe
         event = queue.get_nowait()
 
     assert event["type"] == "game_changed" and event["game"] == "civ6"
+
+
+def test_unpinning_while_detection_cannot_tell_reports_auto_not_the_stale_pin(
+    tmp_path, fixture_dir, civ6_dir
+):
+    """Whole-phase re-review: activate()'s fix for the null-active case carried
+    mode/pinned_id/disagrees over from the STALE resolution, so unpinning while
+    detection could not confirm any game left the API still reporting mode="pinned"
+    and the old pinned id -- the header would tell the player they were pinned to a
+    game they had just unpinned from. Every selection fact must come from the CURRENT
+    selection (`new`); only the still-on-screen game's profile/logs_dir may be kept."""
+    import shutil
+
+    from civ_advisor.games.selection import GameSelector
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    clock = [1_000_000.0]
+    _age_declared_logs(civ7, "civ7", clock[0])
+    _age_declared_logs(civ6, "civ6", clock[0] - 10_000)
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": civ7, "civ6": civ6},
+                           clock=lambda: clock[0])
+    app = create_app(civ7, poll_interval=60, profile=CIV7,
+                      selector=selector, storage_base=storage)
+    with TestClient(app) as c:
+        before = c.get("/api/status").json()
+        assert before["game_id"] == "civ7" and before["game"]["active"]["id"] == "civ7"
+
+        # Detection can no longer confirm anything, and the player unpins in the same
+        # moment -- both facts must be reported immediately, not held back a tick.
+        clock[0] += 20_000
+        assert c.post("/api/game", json={"game": "auto"}).status_code == 200
+
+        after = c.get("/api/status").json()
+
+    assert after["game"]["mode"] == "auto"
+    assert after["game"]["pinned"] is None
+    assert after["game"]["disagrees"] is False
+    # The store never switched away (a None resolution is a no-op for activate()) --
+    # the game whose data is still on screen must still be named.
+    assert after["game_id"] == "civ7"
+    assert after["game"]["active"]["id"] == "civ7"

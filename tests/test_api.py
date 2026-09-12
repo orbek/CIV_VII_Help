@@ -783,6 +783,29 @@ def test_a_capability_gap_coexists_with_the_real_data_it_does_not_gate(civ6_dir)
     assert len(body["state"]["production"]["human"]) > 0
 
 
+def test_the_victory_tab_s_leaderboards_coexist_with_its_strategy_gap(civ6_dir):
+    """The same rule as economy, for the victory tab: `victory_paths` describes only the
+    strategy/standings table (Civ VI has no AI_Victories reader, so state.strategies is
+    legitimately empty and that table alone collapses) -- it does not gate the
+    output-proxy leaderboards or the advice stream, both computed straight from
+    Player_Stats.csv and real for Civ VI. Losing four populated leaderboards and real
+    insights behind a notice that only explains the strategy table would be the same
+    defect as economy's, just on the other tab."""
+    from civ_advisor.games.civ6 import CIV6
+
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+        body = c.get("/api/briefing").json()
+    caps = body["status"]["game"]["active"]["capabilities"]
+    assert caps["victory_paths"]["supported"] is False and caps["victory_paths"]["reason"]
+    # The leaderboards this capability gap does NOT gate are real, non-empty data for
+    # every proxy path -- not something the gap suppressed.
+    leaderboards = body["state"]["leaderboards"]
+    assert set(leaderboards) == {"SCIENCE", "CULTURAL", "ECONOMIC", "MILITARY"}
+    assert all(len(board) > 1 for board in leaderboards.values())
+    # And real advice about those leaderboards still comes through.
+    assert any(i["advisor"] == "victory" for i in body["insights"])
+
+
 def test_an_idle_app_explains_itself_rather_than_erroring_blankly(tmp_path):
     """Auto mode, nothing recent on disk: the briefing is unavailable, and /api/game
     still answers so the header can say why and offer the control."""

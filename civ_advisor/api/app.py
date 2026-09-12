@@ -135,60 +135,82 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     activate(resolution)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI):
-        loop = asyncio.get_running_loop()
-        watcher: asyncio.Task | None = None
+    # The whole "decide the selection, activate it, restart the watcher" sequence has to
+    # happen as one unit: supervise()'s tick and a player's POST both read `selector`,
+    # call `activate()` (which reassigns `resolution`/`record` and `store.archive_root`)
+    # and then restart the watcher. Interleaved, one path's stale `Resolution` -- read
+    # before the other path's pin landed -- can activate and undo the other's switch.
+    # This lock does NOT cover: `Store._lock`, which already guards `switch_to`/
+    # `rebuild`'s own internals and is unaffected; or a GET handler's read of `resolution`
+    # or `store.snapshot`, which takes one already-published, self-consistent object and
+    # needs no lock of its own.
+    selection_lock = asyncio.Lock()
+    watcher: asyncio.Task | None = None
+    loop: asyncio.AbstractEventLoop | None = None
 
-        def on_change() -> None:  # runs in a worker thread
-            captured = store.rebuild()
-            if captured is None:
-                # Idle (no game selected), or a switch_to landed mid-rebuild and this
-                # read was discarded as stale. Either way there is no snapshot to
-                # publish an event about; the next poll tick tries again.
-                return
-            loop.call_soon_threadsafe(store.publish, {
-                "type": "state_changed", "turn": captured.analysis_turn,
-                "latest_turn": captured.latest_turn, "revision": captured.revision,
-                "session": captured.session, "epoch": captured.epoch,
-                "game": captured.game_id,
-            })
+    def on_change() -> None:  # runs in a worker thread
+        captured = store.rebuild()
+        if captured is None:
+            # Idle (no game selected), or a switch_to landed mid-rebuild and this
+            # read was discarded as stale. Either way there is no snapshot to
+            # publish an event about; the next poll tick tries again.
+            return
+        assert loop is not None
+        loop.call_soon_threadsafe(store.publish, {
+            "type": "state_changed", "turn": captured.analysis_turn,
+            "latest_turn": captured.latest_turn, "revision": captured.revision,
+            "session": captured.session, "epoch": captured.epoch,
+            "game": captured.game_id,
+        })
 
-        async def start_watching() -> asyncio.Task | None:
-            if not store.active:
-                return None
-            assert store.logs_dir is not None and store.profile is not None
-            initial = poll_snapshot(store.logs_dir, store.profile.log_files)
-            await asyncio.to_thread(store.rebuild)
-            return asyncio.create_task(watch(store.logs_dir, store.profile.log_files,
-                                             on_change, poll_interval, initial))
+    async def start_watching() -> asyncio.Task | None:
+        if not store.active:
+            return None
+        assert store.logs_dir is not None and store.profile is not None
+        initial = poll_snapshot(store.logs_dir, store.profile.log_files)
+        await asyncio.to_thread(store.rebuild)
+        return asyncio.create_task(watch(store.logs_dir, store.profile.log_files,
+                                         on_change, poll_interval, initial))
 
-        async def supervise() -> None:
-            """Re-resolve the selection every poll and swap games when it changes.
+    async def restart_watcher() -> None:
+        """Retire the old watcher, if any, and start a fresh one against whatever game
+        `store` now names. Called after EVERY successful `activate()` -- a detected
+        switch in `supervise()` and a player's explicit pin via `POST /api/game` alike --
+        so neither path can leave the poller watching the game just switched away from.
+        """
+        nonlocal watcher
+        if watcher is not None:
+            watcher.cancel()
+        watcher = await start_watching()
 
-            Never ends on an exception: it is not awaited, so an escape would freeze the
-            advisor on one game for the rest of the session with nothing on screen saying
-            so. CancelledError is a BaseException, so shutdown still works.
-            """
-            nonlocal watcher
-            while True:
-                await asyncio.sleep(poll_interval)
-                try:
+    async def supervise() -> None:
+        """Re-resolve the selection every poll and swap games when it changes.
+
+        Never ends on an exception: it is not awaited, so an escape would freeze the
+        advisor on one game for the rest of the session with nothing on screen saying
+        so. CancelledError is a BaseException, so shutdown still works.
+        """
+        while True:
+            await asyncio.sleep(poll_interval)
+            try:
+                async with selection_lock:
                     new = await asyncio.to_thread(selector.resolve)
                     if not activate(new):
                         continue
-                    if watcher is not None:
-                        watcher.cancel()
-                    watcher = await start_watching()
+                    await restart_watcher()
                     captured = store.snapshot
                     store.publish({
                         "type": "game_changed", "game": store.profile.id,
                         "session": None if captured is None else captured.session,
                         "epoch": None if captured is None else captured.epoch,
                     })
-                except Exception:
-                    log.exception("game selection failed; keeping the current game")
+            except Exception:
+                log.exception("game selection failed; keeping the current game")
 
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        nonlocal watcher, loop
+        loop = asyncio.get_running_loop()
         watcher = await start_watching()
         supervisor = asyncio.create_task(supervise()) if supervise_selection else None
         try:
@@ -469,23 +491,26 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         return game_to_dict(selector.resolve() if supervise_selection else resolution)
 
     @app.post("/api/game", response_model=None)
-    def api_set_game(body: dict = Body(...)) -> dict:
+    async def api_set_game(body: dict = Body(...)) -> dict:
         """Pin the session to one game, or return to detection.
 
-        The override wins immediately rather than at the next poll: the player has just
-        told the advisor which game they are looking at, and a dashboard that keeps
-        showing the other one for a second is a dashboard that was wrong on purpose.
+        The override wins immediately, not just for the one rebuild this request waits
+        for: the watcher is retired and a fresh one started against the new game's own
+        directory before this returns, exactly as a detected switch does, so live
+        updates keep coming rather than silently stopping on whatever directory the old
+        watcher was still polling.
         """
         choice = str(body.get("game", ""))
-        try:
-            if choice == AUTO:
-                selector.unpin()
-            else:
-                selector.pin(choice)
-        except UnknownGame as exc:
-            raise HTTPException(status_code=422, detail=str(exc)) from exc
-        if activate(selector.resolve()):
-            store.rebuild()
+        async with selection_lock:
+            try:
+                if choice == AUTO:
+                    selector.unpin()
+                else:
+                    selector.pin(choice)
+            except UnknownGame as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            if activate(selector.resolve()):
+                await restart_watcher()
         return game_to_dict(resolution)
 
     @app.get("/api/state")

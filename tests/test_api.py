@@ -913,3 +913,59 @@ def test_the_watcher_keeps_working_on_the_new_game_after_a_detected_switch(
 
     assert after["revision"] > revision_at_switch
     assert after["game_id"] == "civ6"
+
+
+def test_the_watcher_keeps_working_after_pinning_via_post(tmp_path, fixture_dir, civ6_dir):
+    """CRITICAL fix (Task 7 fix round 1): `POST /api/game` used to switch the store and
+    rebuild once but never retire the old watcher or start a new one, so the header
+    control appeared to work -- one switch -- and then the dashboard silently stopped
+    updating for the rest of the session, still polling the OLD game's directory.
+    This mirrors the detected-switch landmine test above for the PINNED path: pin via
+    POST, then write a real change to the new game's log, and confirm the revision
+    still advances. A short poll interval so the watcher actually gets a chance to
+    fire; removing the watcher restart in api_set_game must fail this test."""
+    import shutil
+    import time
+
+    from civ_advisor.games.selection import GameSelector
+
+    civ7 = tmp_path / "logs_civ7"
+    civ6 = tmp_path / "logs_civ6"
+    storage = tmp_path / "storage"
+    shutil.copytree(fixture_dir, civ7)
+    shutil.copytree(civ6_dir, civ6)
+
+    selector = GameSelector(pinned="civ7", logs_dirs={"civ7": civ7, "civ6": civ6})
+    app = create_app(civ7, poll_interval=0.05, profile=CIV7,
+                      selector=selector, storage_base=storage)
+
+    def poll_status(c) -> dict:
+        r = None
+        for _ in range(5):
+            r = c.get("/api/status")
+            if r.status_code == 200:
+                return r.json()
+            time.sleep(0.02)
+        return r.json()
+
+    with TestClient(app) as c:
+        before = poll_status(c)
+        assert before["game_id"] == "civ7"
+
+        pinned = c.post("/api/game", json={"game": "civ6"}).json()
+        assert pinned["active"]["id"] == "civ6"
+        revision_at_pin = poll_status(c)["revision"]
+
+        # A real content change to civ6's own log, well after the pin -- if the watcher
+        # was never restarted against civ6's directory, this is never noticed.
+        with open(civ6 / "Player_Stats.csv", "a") as f:
+            f.write("\n")
+
+        deadline = time.monotonic() + 3.0
+        after = poll_status(c)
+        while time.monotonic() < deadline and after["revision"] <= revision_at_pin:
+            time.sleep(0.05)
+            after = poll_status(c)
+
+    assert after["revision"] > revision_at_pin
+    assert after["game_id"] == "civ6"

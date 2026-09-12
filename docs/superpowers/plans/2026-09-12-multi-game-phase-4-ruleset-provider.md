@@ -2363,6 +2363,25 @@ which is the Civ VII behaviour unchanged."
 
 ### Task 8: The boundary tests, and writing down why the boundary is where it is
 
+**One conflation this task should resolve or record.** `building()` returns
+`None` for three genuinely different situations: this subject has no row in
+the ruleset; the provider is closed; and read-verify-reread exhausted its
+retries because the file kept moving. The first is a fact about the
+player's ruleset. The other two are facts about our ability to read it.
+
+This project fixed exactly this conflation once before — phase 2a split
+coverage into *not applicable* / *unavailable* / *partial* because "this
+game does not log that" and "that log could not be read" are different
+facts with different remedies. The same argument applies here: telling a
+player a building has no recorded yield, when really the file was being
+rewritten mid-read, is a false statement about their install.
+
+Either give the caller a way to tell the three apart, or — if you judge
+that unnecessary because the two failure paths are vanishingly rare in
+practice — write down that reasoning explicitly, so the next person finds
+an argued decision rather than an oversight. Do not leave it unaddressed
+and unexplained.
+
 The tests that would fail if someone later added `Modifiers` to the allowlist
 because a number was needed, and the document that tells them why not to.
 

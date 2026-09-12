@@ -2363,6 +2363,14 @@ which is the Civ VII behaviour unchanged."
 
 ### Task 8: The boundary tests, and writing down why the boundary is where it is
 
+**One rough label to fix.** Boost figures embed raw column names, so a real
+lookup produces `"Writing boost Unit1Type = UNIT_SCOUT"`. That is not a
+localisation key and not a wrong figure, but `Unit1Type` is the database's
+internal column name reaching the player as though it were a label. Either
+give those columns readable labels or drop the ones that cannot be stated
+plainly. The rest of this phase is careful that what reaches the player is
+a fact rather than a row; this line is the exception.
+
 **One conflation this task should resolve or record.** `building()` returns
 `None` for three genuinely different situations: this subject has no row in
 the ruleset; the provider is closed; and read-verify-reread exhausted its

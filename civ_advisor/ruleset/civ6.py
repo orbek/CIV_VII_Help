@@ -29,12 +29,14 @@ Two different kinds of "cannot answer" are told apart on purpose:
 from __future__ import annotations
 
 import sqlite3
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Sequence
 
 from .base import (
-    BuildingFacts, RulesetFigure, RulesetIdentity, RulesetMention, RulesetOutOfScope,
+    BuildingFacts, NullRuleset, RulesetFigure, RulesetIdentity, RulesetMention,
+    RulesetOutOfScope, RulesetProvider,
 )
 from .identity import identify, stamp
 
@@ -271,3 +273,86 @@ class Civ6Ruleset:
         return cls(_identity=identity, _connection=connection,
                    _countable=frozenset(COUNTABLE_COLUMNS) & present,
                    _stamp=(identity.size, identity.mtime_ns))
+
+
+# -- opening, caching and degrading ------------------------------------------------
+
+# Every table this provider reads, and the columns it reads from each, must be present
+# exactly as named. A patch that renames a column is the case this guards: the advisor
+# must stop quoting figures rather than quote the wrong ones.
+REQUIRED_TABLES = READABLE_COLUMNS
+
+_OPEN: dict[Path, tuple[tuple[int, int], Civ6Ruleset]] = {}
+_LOCK = threading.Lock()
+
+
+def _schema_complaint(connection: sqlite3.Connection) -> str | None:
+    """What the database is missing, or None if it has everything this module reads."""
+    present = {row[0] for row in
+               connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'")}
+    for table, columns in sorted(REQUIRED_TABLES.items()):
+        if table not in present:
+            return f"it has no {table} table"
+        found = {row["name"] for row in connection.execute(f"PRAGMA table_info({table})")}
+        missing = sorted(columns - found)
+        if missing:
+            return f"{table} has no {', '.join(missing)} column"
+    return None
+
+
+def clear_cache() -> None:
+    """Close and forget every open ruleset. For tests, and for a game switch."""
+    with _LOCK:
+        for _, provider in _OPEN.values():
+            provider.close()
+        _OPEN.clear()
+
+
+def open_ruleset(path: Path | None = None) -> RulesetProvider:
+    """The provider for this database, reused while the file has not changed.
+
+    Keyed on the file's identity rather than on its path: a mod or a patch that rewrites
+    the ruleset changes its size and modification time, and everything derived from the
+    previous one is dropped rather than served stale.
+
+    Never raises. Absent, unreadable, or shaped differently than expected all produce a
+    `NullRuleset` carrying a reason — which is exactly the Civilization VII behaviour, so
+    a failure here degrades to asking the player rather than to an error in front of one.
+    """
+    path = (path or DEFAULT_DATABASE).expanduser()
+    with _LOCK:
+        try:
+            current = stamp(path)
+        except OSError as exc:
+            _forget(path)
+            return NullRuleset(
+                f"{path.name} was not readable at {path} ({exc.strerror or exc}), so no "
+                "figure is taken from your installed ruleset; the advisor will ask you "
+                "for the game's own preview instead.")
+        cached = _OPEN.get(path)
+        if cached is not None and cached[0] == current:
+            return cached[1]
+        _forget(path)
+        try:
+            provider = Civ6Ruleset.open(path)
+        except (sqlite3.DatabaseError, OSError) as exc:
+            return NullRuleset(
+                f"{path.name} could not be read as a database ({exc}), so no figure is "
+                "taken from your installed ruleset; the advisor will ask you for the "
+                "game's own preview instead.")
+        complaint = _schema_complaint(provider._connection)
+        if complaint is not None:
+            provider.close()
+            return NullRuleset(
+                f"{path.name} is not shaped the way this advisor knows how to read — "
+                f"{complaint}. No figure is taken from it; the advisor will ask you for "
+                "the game's own preview instead.")
+        _OPEN[path] = (current, provider)
+        return provider
+
+
+def _forget(path: Path) -> None:
+    """Drop a cached provider. Caller holds `_LOCK`."""
+    previous = _OPEN.pop(path, None)
+    if previous is not None:
+        previous[1].close()

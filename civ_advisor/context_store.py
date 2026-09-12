@@ -66,6 +66,7 @@ class Entry:
     text: str = ""             # the player's own words, for a goal
     fingerprint: str = ""
     game_key: str | None = None  # the save's seeds when known, for association
+    game: str = ""              # "" means recorded before games were distinguished
 
     def to_json(self) -> dict:
         return asdict(self)
@@ -98,6 +99,7 @@ class PersistentContextStore:
     path: Path = DEFAULT_STORE_PATH
     revision: int = 0
     entries: dict[str, Entry] = field(default_factory=dict)
+    game: str = ""             # "" means not yet adopted for a game-aware sitting
     session: str | None = None
     epoch: int = 0
     game_key: str | None = None
@@ -105,6 +107,11 @@ class PersistentContextStore:
     pending: tuple[Association, ...] = ()
     last_error: str | None = None
     _lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
+    # Entries recorded under a DIFFERENT, named game (only reachable when --context-file
+    # points two games at one file). Never applied, never offered -- but still kept and
+    # still saved, so adopting a different game here does not erase the other game's
+    # record from disk the next time anything else triggers a save.
+    _foreign: tuple[Entry, ...] = field(default_factory=tuple, repr=False)
 
     # ---- loading -----------------------------------------------------------------
 
@@ -148,27 +155,45 @@ class PersistentContextStore:
     # ---- session association -----------------------------------------------------
 
     def adopt(self, session: str, epoch: int, game_key: str | None,
-              epoch_reason: str = "") -> None:
+              epoch_reason: str = "", *, game: str = "") -> None:
         """Point the store at the current sitting.
 
-        Entries made in this exact session apply immediately. Entries from any other are
-        held in `pending` for the player to associate or discard: after a reload the
-        advisor cannot tell whether this is the same line of play, and the same seeds do
-        not settle it because a save can be branched.
+        Entries made in this exact game AND session apply immediately. Entries from
+        any other sitting of the SAME game are held in `pending` for the player to
+        associate or discard: after a reload the advisor cannot tell whether this is
+        the same line of play, and the same seeds do not settle it because a save can
+        be branched. Entries from a DIFFERENT, named game are not held at all --
+        "is this the same Civ VI game" is genuinely uncertain and worth asking about;
+        "is a Civ VII acknowledgement about my Civ VI game" is not, and offering it
+        would pose a question with no sensible yes.
         """
         with self._lock:
-            if (self.session, self.epoch) == (session, epoch):
+            if (self.game, self.session, self.epoch) == (game, session, epoch):
                 return   # already pointed here; recomputing would discard what is held
             held = getattr(self, "_loaded", ())
-            self.session, self.epoch, self.game_key = session, epoch, game_key
-            mine = {e.id: e for e in list(held) + list(self.entries.values())
-                    if e.session == session and e.epoch == epoch}
-            others = [e for e in list(held) + list(self.entries.values())
-                      if not (e.session == session and e.epoch == epoch)]
+
+            def mine_p(e: Entry) -> bool:
+                return e.game == game and e.session == session and e.epoch == epoch
+
+            self.game, self.session, self.epoch, self.game_key = game, session, epoch, game_key
+            # Re-include the CURRENTLY held foreign entries too: they must be reconsidered
+            # every adopt (a later switch back to their game should offer them again),
+            # and never simply dropped because they were foreign under a PREVIOUS game.
+            candidates = list(held) + list(self.entries.values()) + list(self._foreign)
+            mine = {e.id: e for e in candidates if mine_p(e)}
+            others = [e for e in candidates if not mine_p(e)]
             self.entries = mine
             groups: dict[tuple[str, int], list[Entry]] = {}
+            foreign: list[Entry] = []
             for entry in others:
+                if entry.game and entry.game != game:
+                    # Another game's record. Not ours to apply, not ours to offer -- but
+                    # still kept, so it survives the next save rather than being silently
+                    # erased just because this adopt happened to run under a different game.
+                    foreign.append(entry)
+                    continue
                 groups.setdefault((entry.session, entry.epoch), []).append(entry)
+            self._foreign = tuple(foreign)
             self.pending = tuple(
                 Association(
                     session=key[0], epoch=key[1],
@@ -217,7 +242,7 @@ class PersistentContextStore:
     # ---- writing -----------------------------------------------------------------
 
     def record(self, kind: str, subject: str, turn: int, *, text: str = "",
-               fingerprint: str = "", entry_id: str | None = None) -> Entry:
+               fingerprint: str = "", entry_id: str | None = None, game: str = "") -> Entry:
         with self._lock:
             if kind not in KINDS:
                 raise StoreError(f"{kind!r} is not one of {', '.join(KINDS)}")
@@ -228,6 +253,7 @@ class PersistentContextStore:
                 kind=kind, subject=subject, session=self.session, epoch=self.epoch,
                 turn=turn, created_at=time.strftime("%Y-%m-%dT%H:%M:%S"),
                 text=text, fingerprint=fingerprint, game_key=self.game_key,
+                game=game or self.game,
             )
             self.entries[entry.id] = entry
             self.revision += 1
@@ -263,7 +289,8 @@ class PersistentContextStore:
             "updated": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "entries": [e.to_json() for e in
                         sorted(list(self.entries.values())
-                               + [x for a in self.pending for x in a.entries],
+                               + [x for a in self.pending for x in a.entries]
+                               + list(self._foreign),
                                key=lambda e: (e.session, e.epoch, e.id))],
         }
         try:

@@ -208,3 +208,77 @@ def test_the_context_path_is_namespaced_per_game(tmp_path):
 
     assert store_path_for("civ7", base=tmp_path) == tmp_path / "civ7" / "player-context.json"
     assert store_path_for("civ6", base=tmp_path) != store_path_for("civ7", base=tmp_path)
+
+
+def test_an_entry_records_the_game_it_was_made_in(tmp_path):
+    store = PersistentContextStore(path=tmp_path / "notes.json")
+    store.load()
+    store.adopt("s1", 1, None, game="civ7")
+    entry = store.record(kind="acknowledged", subject="x", turn=10, game="civ7")
+    assert entry.game == "civ7"
+    raw = json.loads((tmp_path / "notes.json").read_text())
+    assert raw["entries"][0]["game"] == "civ7"
+
+
+def test_another_game_s_entries_are_neither_applied_nor_offered(tmp_path):
+    """Spec 8.1: offering an acknowledgement across the boundary would repeat exactly
+    the mistake the reload logic exists to prevent."""
+    store = PersistentContextStore(path=tmp_path / "notes.json")
+    store.load()
+    store.adopt("s1", 1, None, game="civ7")
+    store.record(kind="acknowledged", subject="x", turn=10, game="civ7")
+
+    store.adopt("s2", 2, None, game="civ6")
+    assert store.of_kind("acknowledged") == ()
+    assert all(a.session != "s1" for a in store.pending)
+
+
+def test_the_same_game_in_another_sitting_is_still_offered(tmp_path):
+    """The reload flow is unchanged WITHIN a game; only the cross-game case is closed."""
+    store = PersistentContextStore(path=tmp_path / "notes.json")
+    store.load()
+    store.adopt("s1", 1, None, game="civ7")
+    store.record(kind="acknowledged", subject="x", turn=10, game="civ7")
+
+    store.adopt("s2", 2, None, game="civ7")
+    assert [a.session for a in store.pending] == ["s1"]
+
+
+def test_an_entry_from_before_namespacing_is_offered_not_applied(tmp_path):
+    """A pre-2b file records no game. It cannot be attributed, so it is shown to the
+    player to accept rather than silently treated as this game's."""
+    (tmp_path / "notes.json").write_text(json.dumps({
+        "schema_version": SCHEMA_VERSION, "revision": 1,
+        "entries": [{"id": "e1", "kind": "acknowledged", "subject": "x", "turn": 3,
+                     "session": "old", "epoch": 1, "text": "", "fingerprint": "",
+                     "game_key": None, "created_at": "2026-01-01T00:00:00"}]}))
+    store = PersistentContextStore(path=tmp_path / "notes.json")
+    store.load()
+    store.adopt("s1", 1, None, game="civ7")
+    assert store.of_kind("acknowledged") == ()
+    assert [a.session for a in store.pending] == ["old"]
+
+
+def test_a_foreign_game_s_entry_survives_a_save_made_under_this_game(tmp_path):
+    """Not offering another game's entries must not mean silently erasing them: a
+    later record()/save() under this game must not drop the other game's data from
+    disk just because a shared --context-file happened to be adopted under a
+    different game in between."""
+    store = PersistentContextStore(path=tmp_path / "notes.json")
+    store.load()
+    store.adopt("s1", 1, None, game="civ7")
+    store.record(kind="acknowledged", subject="x", turn=10, game="civ7")
+
+    store.adopt("s2", 2, None, game="civ6")
+    store.record(kind="acknowledged", subject="y", turn=1, game="civ6")  # triggers a save
+
+    raw = json.loads((tmp_path / "notes.json").read_text())
+    games = {e["game"] for e in raw["entries"]}
+    assert games == {"civ7", "civ6"}
+
+    # And switching back to civ7 offers the civ7 entry again -- it was neither lost
+    # nor silently merged into civ6's own record.
+    third = PersistentContextStore(path=tmp_path / "notes.json")
+    third.load()
+    third.adopt("s3", 3, None, game="civ7")
+    assert [a.session for a in third.pending] == ["s1"]

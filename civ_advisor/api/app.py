@@ -140,7 +140,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         """
         context_store.adopt(captured)
         record.adopt(captured.session, captured.epoch, captured.game_key,
-                     captured.epoch_reason)
+                     captured.epoch_reason, game=captured.game_id)
         context = build_context(captured, context_store.context(), oracle=oracle)
         return context, decide_all(context)
 
@@ -194,20 +194,21 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
         from another sitting waiting to be associated."""
         captured = current()
         record.adopt(captured.session, captured.epoch, captured.game_key,
-                     captured.epoch_reason)
+                     captured.epoch_reason, game=captured.game_id)
         return player_record_to_dict(record)
 
     @app.post("/api/record", response_model=None)
     def api_write_record(body: dict = Body(...)):
         captured = current()
         record.adopt(captured.session, captured.epoch, captured.game_key,
-                     captured.epoch_reason)
+                     captured.epoch_reason, game=captured.game_id)
         try:
             entry = record.record(
                 kind=str(body["kind"]), subject=str(body["subject"]),
                 turn=int(body.get("turn", captured.analysis_turn)),
                 text=str(body.get("text") or ""),
                 fingerprint=str(body.get("fingerprint") or ""),
+                game=captured.game_id,
             )
         except (KeyError, TypeError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=f"malformed entry: {exc}") from exc

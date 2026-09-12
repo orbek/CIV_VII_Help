@@ -65,6 +65,16 @@ def executed_war(turn: int, actor: int, target: int | None = 0) -> DiplomacyRow:
     return DiplomacyRow(turn, actor, "DECLARE_WAR", target, IntentKind.EXECUTED, None)
 
 
+def military_row(turn: int, player: int, combat_desire: float, **overrides):
+    from civ_advisor.ingest.aiscores import MilitaryRow
+
+    return MilitaryRow(**{
+        "turn": turn, "player": player, "regional_strength": 50,
+        "enemy_strength": 50, "other_strength": 0, "fav_tech": "TECH_ARCHERY",
+        "combat_desire": combat_desire, **overrides,
+    })
+
+
 def kill(turn: int, victim: int, killer: int, unit: str = "Warrior", x: int = 10, y: int = 10) -> HistorianRow:
     return HistorianRow("UNIT_KILLED", "AGE_ANTIQUITY", turn, x, y, victim, killer, unit, None)
 

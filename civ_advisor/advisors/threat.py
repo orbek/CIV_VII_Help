@@ -13,6 +13,9 @@ RECENT_TURNS = 10            # window in which executed actions and kills count 
 MILITARY_RATIO_ADVISE = 1.5  # rival land units / human land units at/above which we advise
 ARMY_GROWTH_TURNS = 10       # window over which army growth is compared
 ARMY_GROWTH_DELTA = 3        # rival must have gained this many more land units than the human
+COMBAT_DESIRE_TURNS = 10     # window the rival's own reading is compared over
+COMBAT_DESIRE_MIN = 0.5      # noise floor, not a danger level: below this, say nothing
+COMBAT_DESIRE_RISE = 0.5     # rise over the window at/above which the change is worth saying
 
 KILL_EVENTS = ("UNIT_KILLED", "SHIP_SUNK")
 CITY_TARGET = "TARGET_ENEMY_CITY"
@@ -41,6 +44,12 @@ class RivalThreat:
     fights_won: int                # ... in which the rival's combatant was destroyed
     fights_lost: int               # ... in which the human's combatant was destroyed
     latest_combat: tuple[int, int, int, str, str] | None  # (turn, x, y, your unit kind, their unit kind)
+    # Civ VI only (AI_Military.csv). None everywhere else: a game that does not
+    # log the AI's appetite for a fight has no reading, which is not a zero.
+    combat_desire: float | None = None
+    combat_desire_turn: int | None = None
+    combat_desire_prior: float | None = None          # same rival, COMBAT_DESIRE_TURNS earlier
+    combat_desire_is_highest: bool = False            # among rivals on combat_desire_turn
 
 
 def summarize(state: GameState) -> list[RivalThreat]:
@@ -108,6 +117,8 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         ys = [g.y for g in cities + units]
         box = (min(xs), max(xs), min(ys), max(ys))
 
+    desire = _combat_desire(state, rival.id)
+
     return RivalThreat(
         player=rival.id, name=rival.name, land_units=land, human_land_units=human_land,
         military_ratio=land / max(human_land, 1), war_score=war_score, war_score_since=war_since,
@@ -120,6 +131,10 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         fights_won=sum(c.loser() == rival.id for c in combats),
         fights_lost=sum(c.loser() == state.HUMAN for c in combats),
         latest_combat=latest_combat,
+        combat_desire=desire[0] if desire else None,
+        combat_desire_turn=desire[1] if desire else None,
+        combat_desire_prior=desire[2] if desire else None,
+        combat_desire_is_highest=bool(desire and desire[3]),
     )
 
 
@@ -145,6 +160,31 @@ def _army_growth(state: GameState, rival_id: int) -> tuple[list[float], list[flo
     if len(rs) < 2:
         return None
     return rs, hs
+
+
+def _combat_desire(state: GameState, rival_id: int) -> tuple[float, int, float | None, bool] | None:
+    """The rival's latest combat-desire reading, what it was earlier, and whether it
+    leads the field. None when this game logs no such thing at all.
+
+    Only the newest reading at or before the complete turn counts, and only if it is
+    no more than one turn stale -- the AI logs lag the human by up to a turn, exactly
+    as the DECLARE_WAR scoring above does. `is_highest` compares only rows from the
+    SAME turn: the score is a within-turn priority and comparing two turns' numbers
+    would be comparing two different scales.
+    """
+    t = state.complete_through_turn
+    rows = [m for m in state.military if m.player == rival_id and m.turn <= t]
+    if not rows:
+        return None
+    latest = max(rows, key=lambda m: m.turn)
+    if latest.turn < t - 1:
+        return None
+    prior = [m for m in rows if m.turn <= latest.turn - COMBAT_DESIRE_TURNS + 1]
+    before = max(prior, key=lambda m: m.turn).combat_desire if prior else None
+    rival_ids = {p.id for p in state.rivals()}
+    same_turn = [m.combat_desire for m in state.military
+                 if m.turn == latest.turn and m.player in rival_ids]
+    return latest.combat_desire, latest.turn, before, latest.combat_desire >= max(same_turn)
 
 
 def advise(state: GameState) -> list[Insight]:
@@ -175,6 +215,31 @@ def advise(state: GameState) -> list[Insight]:
                 why=f"{r.name}'s AI scores declaring war on you at {r.war_score:.0f} "
                     f"(warn threshold {WAR_INTENT_WARN:.0f}), held for {held} "
                     f"turn{'s' if held != 1 else ''} since turn {r.war_score_since}.",
+                **common,
+            ))
+
+        if (r.combat_desire is not None and r.combat_desire >= COMBAT_DESIRE_MIN
+                and r.combat_desire_prior is not None
+                and r.combat_desire - r.combat_desire_prior >= COMBAT_DESIRE_RISE):
+            rose = r.combat_desire - r.combat_desire_prior
+            out.append(Insight(
+                id=f"threat.combat_desire.{r.player}",
+                # Never above ADVISE: the scale has no established danger level, so this
+                # may not outrank an executed declaration or a scored DECLARE_WAR.
+                severity=Severity.ADVISE if r.combat_desire_is_highest else Severity.INFO,
+                provenance=Provenance.ORACLE,
+                title=f"{r.name}'s appetite for a fight is rising",
+                recommendation="Treat this as time to prepare, not as a prediction: garrison "
+                               "the border settlement, keep a healthy unit on the approach, "
+                               "and check whether a grievance can be defused before it is acted on.",
+                why=f"{r.name}'s AI logged a combat desire of {r.combat_desire:.1f} on turn "
+                    f"{r.combat_desire_turn}, up {rose:.1f} from {r.combat_desire_prior:.1f} "
+                    f"{COMBAT_DESIRE_TURNS} turns earlier"
+                    + (", the highest of any rival that turn." if r.combat_desire_is_highest
+                       else ", though another rival scored higher.")
+                    + " This is read relative to the same turn's other rivals and to this "
+                      "rival's own earlier reading — the game publishes no scale for it, so "
+                      "it is not a calibrated danger level.",
                 **common,
             ))
 

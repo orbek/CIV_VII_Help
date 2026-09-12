@@ -27,7 +27,9 @@ INTEL_LIMIT = 300  # newest events returned by /api/intel
 # RivalThreat fields read from the AI's own logs (AI_DiplomaticActions, AI_Targets).
 # `peace_since` stays fair: a Peace deal is something the player signed and can see.
 ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_turn",
-                        "city_tiles_targeted", "units_targeted", "target_box")
+                        "city_tiles_targeted", "units_targeted", "target_box",
+                        "combat_desire", "combat_desire_turn", "combat_desire_prior",
+                        "combat_desire_is_highest")
 
 SCHEMA_VERSION = 1
 

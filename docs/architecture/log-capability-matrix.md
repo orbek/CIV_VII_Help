@@ -29,6 +29,7 @@ models. What it declares is enforced by `CIV6.capabilities`
 | --- | --- |
 | Faith | `Player_Stats.csv` (`StatsRow.faith`, `StatsRow.faith_balance`), read positionally — `Faith` is the header name of two different columns. |
 | Civics | `Player_Stats.csv` (`StatsRow.civics`). |
+| Installed ruleset figures (cost, prereqs, flat yields) | `Cache/DebugGameplay.sqlite`, plain indexed rows only. Civ VII has nothing to query — no packaged guide asserts a figure verified against an installed ruleset, so every figure there is `your report`, typed in by the player. Conditional effects (a policy card, a government or wonder ability) are not derivable even here; see [ADR-002](adr-002-ruleset-derived-figures.md) for why. |
 
 See [the multi-game design](../superpowers/specs/2026-09-12-multi-game-advisor-design.md)
 §3 for the full spec this is drawn from.

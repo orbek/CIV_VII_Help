@@ -108,6 +108,19 @@ def _yield_label(yield_type: str) -> str:
 # what kind of trigger a boost has; there is no single "trigger value" column.
 BOOST_OBJECT_COLUMNS = ("Unit1Type", "BuildingType", "DistrictType", "NumItems")
 
+# Readable labels for those columns. Without this, a boost's object figure carries the
+# database's own column name as its label -- "Writing boost Unit1Type = UNIT_SCOUT" --
+# which is not a localisation key and not a wrong figure, but is the database's internal
+# name reaching a player as though it were one. The rest of this phase is careful that
+# what reaches a player is a fact stated in words, not a row; this dict is what keeps
+# this one corner from being the exception.
+BOOST_OBJECT_LABELS = {
+    "Unit1Type": "unit",
+    "BuildingType": "building",
+    "DistrictType": "district",
+    "NumItems": "count",
+}
+
 
 def _absent(value) -> bool:
     """Whether a column value says nothing.
@@ -253,6 +266,37 @@ class Civ6Ruleset:
         Returns `None` immediately, touching neither the connection nor the file, if
         this provider has been closed out from under its caller -- see the class
         docstring.
+
+        THE THREE-WAY `None`, ARGUED RATHER THAN LEFT UNEXAMINED. Every lookup built on
+        this returns `None` for three different situations: (1) this subject has no row
+        in the ruleset, a fact about the player's install; (2) `self._closed`, a fact
+        about this provider's own lifecycle; (3) `_MAX_READ_ATTEMPTS` exhausted because
+        the file would not hold still, a fact about this one read. Phase 2a split log
+        coverage into not-applicable / unavailable / partial for exactly this reason --
+        "this game does not log that" and "that log could not be read" are different
+        facts with different remedies -- and the same argument applies here on its face.
+
+        It is not applied the same way, for a reason specific to this case rather than a
+        shortcut: (2) is already distinguishable BEFORE calling a lookup at all, via
+        `available`/`reason` on the provider itself -- the project's existing
+        per-provider degradation signal, not a new one invented for this method. A
+        caller that checks `available` first already has "my own read failed" separated
+        from "the ruleset has nothing to say", without any of `BuildingFacts`,
+        `DistrictFacts`, `TechnologyFacts`, `CivicFacts` or `UnitFacts` needing a fourth
+        state bolted on. What is left conflated is narrower: (1) versus (3) alone.
+
+        That narrower case is judged not worth a fourth state, and here is why: (3)
+        requires the SAME file to be rewritten enough times to exhaust every attempt
+        within the few milliseconds one lookup takes -- unlike phase 2a's log files,
+        which can stay unreadable indefinitely (a missing reader, a permissions error,
+        a game that never writes that log at all), this is a race that resolves itself.
+        The very next lookup for the same subject, moments later, almost certainly
+        returns a stable answer either way. A caller that treats a `None` it got as "no
+        row" when it was actually a still-resolving race sees that corrected on its next
+        poll tick, which is the same bound this project already accepts for a mod
+        toggle. If this reasoning is ever found wrong -- if (3) turns out not to be rare
+        in practice -- the fix is to give the caller the distinction, not to have missed
+        that it needed one.
         """
         if self._closed:
             return None
@@ -417,8 +461,9 @@ class Civ6Ruleset:
             trigger = make("BoostClass", f"{_title(subject)} boost trigger", None)
             if percent is None or trigger is None:
                 continue
-            objects = tuple(f for f in (make(c, f"{_title(subject)} boost {c}", None)
-                                        for c in BOOST_OBJECT_COLUMNS) if f is not None)
+            objects = tuple(
+                f for f in (make(c, f"{_title(subject)} boost {BOOST_OBJECT_LABELS[c]}", None)
+                           for c in BOOST_OBJECT_COLUMNS) if f is not None)
             out.append(BoostFacts(percent=percent, trigger=trigger, objects=objects))
         return tuple(out)
 

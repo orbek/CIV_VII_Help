@@ -154,6 +154,11 @@ def test_a_technology_states_its_cost_prereqs_and_eureka(ruleset):
     assert (boost.percent.value, boost.percent.unit) == (40, "% of the cost")
     assert boost.trigger.value == "BOOST_TRIGGER_MEET_CIV"
     assert [(o.column, o.value) for o in boost.objects] == [("Unit1Type", "UNIT_SCOUT")]
+    # The label is a word, not the database's own column name: a reader must never see
+    # "Writing boost Unit1Type" -- the raw column name reaching them as though it were
+    # a label rather than a fact stated in words.
+    assert boost.objects[0].label == "Writing boost unit"
+    assert "Unit1Type" not in boost.objects[0].label
 
 
 def test_a_civic_states_its_cost_and_inspiration(ruleset):

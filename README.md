@@ -132,9 +132,17 @@ live alert.
 ### Guides and figures
 
 No figure in a recommendation comes from a wiki or from this advisor's own
-guesses. The logs do not record what a building yields, what a settlement can
-build, what is unlocked, or what a placement would cost, and no packaged guide
-asserts a number that has been verified against an installed ruleset. See
+guesses. For Civilization VII that means every figure comes from you: the logs
+do not record what a building yields, what a settlement can build, what is
+unlocked, or what a placement would cost, and no packaged guide asserts a number
+verified against an installed ruleset. For Civilization VI, which ships its
+compiled ruleset as a queryable database, costs, prerequisites and flat yields
+are read from your own installed game files and labelled *your installed
+ruleset* — with the file's timestamp and digest, never a version number, because
+the file states none. Conditional effects — policy cards, government and wonder
+abilities — are not derivable even there, and are never quoted. See
+[docs/architecture/adr-002-ruleset-derived-figures.md](docs/architecture/adr-002-ruleset-derived-figures.md)
+for where that boundary is and why, and
 [docs/architecture/log-capability-matrix.md](docs/architecture/log-capability-matrix.md)
 for exactly what is and is not knowable.
 

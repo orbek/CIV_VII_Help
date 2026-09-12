@@ -6,7 +6,7 @@ import pytest
 
 from civ_advisor.games.civ6 import CIV6
 from civ_advisor.games.civ7 import CIV7
-from civ_advisor.games.detect import ALL_STALE, DETECTED
+from civ_advisor.games.detect import ALL_STALE, DETECTED, NO_CANDIDATES
 from civ_advisor.games.registry import UnknownGame
 from civ_advisor.games.selection import AUTO, PINNED, GameSelector
 
@@ -50,7 +50,7 @@ def test_a_pin_with_no_detection_is_not_a_disagreement(dirs):
     """Detection saying "I cannot tell" does not contradict the pin. Reporting it as a
     disagreement would train the player to ignore a warning that means something."""
     resolved = GameSelector(pinned="civ7", logs_dirs=dirs).resolve()
-    assert resolved.detection_reason in {"no_logs_dir", ALL_STALE}
+    assert resolved.detection_reason in {NO_CANDIDATES, ALL_STALE}
     assert resolved.detected_id is None and resolved.disagrees is False
     assert resolved.profile is CIV7      # a pin still resolves with nothing on disk
 

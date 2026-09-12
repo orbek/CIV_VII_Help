@@ -20,7 +20,12 @@ RECENCY_WINDOW_S = 600.0   # 10 minutes: long enough to survive a slow turn, sho
                            # enough that yesterday's session is not mistaken for now
 
 DETECTED = "detected"          # one game is freshest and inside the window
-NO_LOGS_DIR = "no_logs_dir"    # no registered game has a logs directory with declared logs
+# No registered game has EVER written a declared log: covers both "no logs directory
+# exists at all" and "the directory exists but nothing in it has been played" -- those
+# are genuinely different situations for a player (not installed vs. installed but
+# untouched), and that distinction is NOT collapsed here: `Candidate.present` still
+# says which one it was, per game, for whoever renders the reason.
+NO_CANDIDATES = "no_candidates"
 ALL_STALE = "all_stale"        # candidates exist, none written inside the window
 AMBIGUOUS = "ambiguous"        # two candidates share the freshest timestamp exactly
 
@@ -75,7 +80,10 @@ def detect(profiles: Iterable[GameProfile], *, logs_dirs: Mapping[str, Path] | N
     candidates: list[Candidate] = []
     for profile in profiles:
         logs_dir = overrides.get(profile.id, profile.default_logs_dir)
-        present = logs_dir.is_dir()
+        try:
+            present = logs_dir.is_dir()
+        except OSError:      # unreachable (e.g. permission denied on an ancestor): not
+            present = False  # evidence of play either way, same treatment as absent
         newest = newest_declared_log(logs_dir, profile) if present else None
         candidates.append(Candidate(
             game_id=profile.id, logs_dir=logs_dir, present=present, newest=newest,
@@ -84,7 +92,7 @@ def detect(profiles: Iterable[GameProfile], *, logs_dirs: Mapping[str, Path] | N
     found = tuple(sorted(candidates, key=lambda c: c.game_id))
     live = [c for c in found if c.newest is not None]
     if not live:
-        return Detection(None, NO_LOGS_DIR, found, at)
+        return Detection(None, NO_CANDIDATES, found, at)
     fresh = [c for c in live if c.age is not None and c.age <= window]
     if not fresh:
         # Deliberately NOT "the least stale". Picking one here would attach a whole
@@ -97,5 +105,5 @@ def detect(profiles: Iterable[GameProfile], *, logs_dirs: Mapping[str, Path] | N
     return Detection(winners[0].game_id, DETECTED, found, at)
 
 
-__all__ = ["ALL_STALE", "AMBIGUOUS", "Candidate", "DETECTED", "Detection", "NO_LOGS_DIR",
+__all__ = ["ALL_STALE", "AMBIGUOUS", "Candidate", "DETECTED", "Detection", "NO_CANDIDATES",
            "RECENCY_WINDOW_S", "detect", "newest_declared_log"]

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from civ_advisor.games.base import GameProfile, LogReader, simple
 from civ_advisor.games.detect import (
-    ALL_STALE, AMBIGUOUS, DETECTED, NO_LOGS_DIR, detect, newest_declared_log,
+    ALL_STALE, AMBIGUOUS, DETECTED, NO_CANDIDATES, detect, newest_declared_log,
 )
 
 
@@ -54,7 +54,7 @@ def test_a_game_whose_logs_directory_is_absent_is_not_a_candidate(tmp_path):
 
 def test_no_candidate_at_all_says_so_rather_than_naming_one(tmp_path):
     found = detect([_profile("ga", tmp_path / "x", "Player_Stats.csv")])
-    assert found.game_id is None and found.reason == NO_LOGS_DIR
+    assert found.game_id is None and found.reason == NO_CANDIDATES
 
 
 def test_nothing_recent_is_cannot_tell_not_least_stale(tmp_path):
@@ -110,3 +110,38 @@ def test_detects_against_the_real_registered_profiles_and_fixtures(civ6_dir, fix
 
     civ7_found = detect([CIV7], logs_dirs={"civ7": fixture_v2_dir}, window=huge)
     assert (civ7_found.game_id, civ7_found.reason) == ("civ7", DETECTED)
+
+
+def test_an_unreachable_logs_directory_is_treated_as_absent_not_raised(tmp_path):
+    """Path.is_dir() does not swallow EACCES (only ENOENT/ENOTDIR/EBADF/ELOOP) -- an
+    ancestor directory the process cannot traverse raises PermissionError straight out
+    of is_dir(). detect() runs every poll tick, so this must degrade to "absent",
+    not crash the poll loop or fill logs with a raised exception every second."""
+    locked = tmp_path / "locked"
+    locked.mkdir()
+    inner = locked / "logs"
+    inner.mkdir()
+    _write(inner / "Player_Stats.csv", 5)
+    locked.chmod(0o000)
+    try:
+        found = detect([_profile("ga", inner, "Player_Stats.csv")])
+    finally:
+        locked.chmod(0o755)   # restore so pytest can clean up tmp_path afterwards
+    absent = found.candidate("ga")
+    assert absent.present is False and absent.newest is None
+    assert found.game_id is None and found.reason == NO_CANDIDATES
+
+
+def test_a_present_but_never_played_directory_is_distinguishable_from_no_directory(tmp_path):
+    """NO_CANDIDATES covers both "not installed" and "installed but never played" --
+    genuinely different situations for a player. The reason alone does not distinguish
+    them, but Candidate.present does, per game, for whoever renders the message."""
+    installed_but_unplayed = tmp_path / "installed"
+    installed_but_unplayed.mkdir()
+    found = detect([_profile("ga", tmp_path / "not_installed", "Player_Stats.csv"),
+                    _profile("gb", installed_but_unplayed, "Player_Stats.csv")])
+    assert found.game_id is None and found.reason == NO_CANDIDATES
+    not_installed = found.candidate("ga")
+    unplayed = found.candidate("gb")
+    assert not_installed.present is False
+    assert unplayed.present is True and unplayed.newest is None

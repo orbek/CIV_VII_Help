@@ -46,9 +46,20 @@ Player 0 remains the human in both games.
 
 ### 3.1 One reader serves both games (6 files)
 
-`DiplomacySummary.csv`, `UnitOperations.log`, `AI_Tactical.csv`,
-`AI_Operation.csv`, `AI_MayhemTracker.csv` are byte-identical in header
-between the two games.
+`DiplomacySummary.csv`, `AI_Tactical.csv`, `AI_Operation.csv` and
+`AI_MayhemTracker.csv` are byte-identical in header between the two
+games, and `AI_UnitEfficiency.csv`'s reader pins only shape. All five
+were run against the turn-53 Civ VI capture on 2026-09-12 and parsed
+unchanged, yielding 95, 3215, 5282, 235 and 133 rows.
+
+`GameCore.log` joins them. An earlier draft of this document put it among
+the variant readers on the strength of the turn-3 capture, where every
+slot line still read `Civilization - (null)`. That was a capture taken
+before the engine had resolved the draft. Civ VI writes the slot block
+three times, and the later writes carry the resolved civilization,
+leader, level and slot status in exactly Civ VII's format. Verified
+2026-09-12 against a turn-53 capture: `read_player_identities` parses Civ
+VI's file unchanged and returns all 17 players.
 
 `AI_UnitEfficiency.csv` joins them: its header is the game's own unit
 vocabulary and so differs, but the existing reader pins only *shape* — an
@@ -61,11 +72,23 @@ All six move to a shared reader module; neither game gets a copy.
 
 | File | Difference |
 |---|---|
-| `Player_Stats.csv` | VI: `Game Turn, Player, Num Cities, Population, Techs, Civics, Land Units, corps, Armies, Naval Units, TILES: Owned, Improved, BALANCE: Gold, Faith, YIELDS: Science, Culture, Gold, Faith, Production, Food`. Keys rows by **civilization string**, not player id (§5). No towns, settlement cap, urban/rural split, happiness or diplomacy yield. Adds civics, faith, corps, armies. |
-| `AI_Victories.csv` | VI: `Game Turn, Player, Strategy, Status` — no `Owner`, no `Percentage`, **no weight column**. `StrategyStatus.weight` is therefore unavailable in VI and must be declared so, not defaulted to 0. |
+| `Player_Stats.csv` | VI: `Game Turn, Player, Num Cities, Population, Techs, Civics, Land Units, corps, Armies, Naval Units, TILES: Owned, Improved, BALANCE: Gold, Faith, YIELDS: Science, Culture, Gold, Faith, Production, Food`. Keys rows by **civilization string**, not player id (§5). No towns, settlement cap, urban/rural split, happiness or diplomacy yield. Adds civics, faith, corps, armies. **`Faith` appears twice** — once under `BALANCE:` and once under `YIELDS:`. The reader must address columns by position; anything that builds a dict keyed on column name silently keeps one and discards the other, and which one survives depends on iteration order. |
+
+| `UnitOperations.log` | Header is identical to VII's, but VI interleaves engine diagnostics among the data rows — three lines of the form `Unit operation handler a92585ad, is disabled` in the turn-53 capture, carrying 2 fields where the header declares 5. VII's reader indexes `row[3]` unconditionally and raises `IndexError`. The VI variant skips lines matching that known diagnostic shape and **still raises on any other field-count mismatch**: silently dropping every short row would turn a genuinely malformed log into quiet data loss. |
+| `AI_Victories.csv` | VI: `Game Turn, Player, Strategy, Status` — no `Owner`, no `Percentage`, **no weight column**, so `StrategyStatus.weight` is unavailable. **And the Strategy column is a different concept entirely.** VII's values are victory paths (SCIENCE, CULTURAL, MILITARY, ECONOMIC, ESPIONAGE). VI's observed values are era and posture strategies — `STRATEGY_EARLY_EXPLORATION`, `STRATEGY_DARKAGE`, `STRATEGY_ANCIENT_CHANGES`, `STRATEGY_CLASSICAL_CHANGES`, `STRATEGY_MEDIEVAL_CHANGES`, `STRATEGY_INDUSTRIAL_CHANGES`. They do not say which victory a rival is pursuing. Feeding them into `GameState.strategies` would make the victory advisor assert a rival is "Following CULTURAL" on the strength of a row that says nothing of the kind. **Victory-path advice is therefore unavailable in Civ VI** and must be declared unavailable, not approximated. Whether `AI_Research`/`AI_GovtPolicies` scoring can support a *different*, honestly-labelled inference is a phase-3 question, not a parity claim. |
 | `CombatLog.csv` | VI: `Game Turn, Attacking Civ, DefendingCiv, AttackerObjType, DefenderObjType, Attacker Type, Defender Type, AttackerID, DefenderID, AttackerStr, DefenderStr, AttackerStrMod, DefenderStrMod, AttackerDmg, DefenderDmg`. No `Location`, `Destroyed`, `HealAmount`, `attHealth`, `defHealth`. |
 | `AI_Operation_Eval.csv` | VI: `Game Turn, Player, Enemy, Operation Name, Value` — **no `Odds` column**. The AI's own odds, which v2 §3.6 made the basis of bounded combat prediction, do not exist in VI. Combat prediction is unavailable in VI and says so. |
-| `GameCore.log` | Different identity line shapes (§5). |
+
+**The ownership join is not same-turn.** `AI_CityBuild.csv` does not log
+every city every turn: of 807 (turn, city) pairs in the turn-53
+`City_BuildQueue.csv` capture, only 202 — 25% — have an `AI_CityBuild`
+row for that same turn. Every queue city is resolvable at *some* turn,
+and no city changed owner in that capture. So the join must carry the
+most recent ownership observed at or before the queue row's turn, not
+require a same-turn match; a same-turn join would discard three quarters
+of the queue. Carrying forward is also what makes capture work correctly
+— ownership changes when `AI_CityBuild` next reports a different player,
+and rows before that keep the old owner.
 
 `CityBuildQueue.csv` is named `City_BuildQueue.csv` in VI and **drops the
 `Player` column** while still logging every city in the game — the observed
@@ -159,26 +182,41 @@ commands and the README keep working.
 
 VI's `Player_Stats.csv` and `Player_Stats_2.csv` key rows by civilization
 string (`CIVILIZATION_ROME`); every other VI log uses numeric player ids.
-The join is built from three `GameCore.log` line shapes:
+The join is built from `GameCore.log`, whose resolved slot lines give
+player id, civilization, leader, level and human/AI directly:
 
 ```
-Player 0: Civilization - (null) (0)  Leader - (null) (-1), - Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human
-Player 0 is now using leader LEADER_JULIUS_CAESAR.
-Civilization already used: Player 0 - CIVILIZATION_ROME
+Player 0: Civilization - CIVILIZATION_ROME (-1806906687)  Leader - LEADER_JULIUS_CAESAR (-197233069), - Level - CIVILIZATION_LEVEL_FULL_CIV, SlotStatus - Human
 ```
 
-The first gives slot, level and human/AI. The second gives the leader. The
-third gives the civilization — but it is emitted only while resolving
-*later* players, so **the last-resolved player's civilization never
-appears**. That one is recovered by elimination against the civilization
-set in `Player_Stats`. If elimination is ambiguous — two unresolved
-players, or a non-random draft that emits no resolution lines at all — the
-player is reported as unnamed rather than guessed. A wrong leader
-attribution would misattribute every piece of advice about that rival.
+The shared reader already keeps the last resolved line per player and
+skips the `(null)` placeholders the engine writes before the draft
+resolves, so no VI-specific parsing is needed. Inverting player →
+civilization yields the map `Player_Stats` needs.
 
-City-states (`CIVILIZATION_GENEVA`, `CIVILIZATION_HATTUSA`, …) and
-`CIVILIZATION_FREE_CITIES` classify as `PlayerKind.INDEPENDENT`; the
-observed match had majors at ids 0–14 and Free Cities at 63.
+**Two earlier approaches are recorded here because they look plausible
+and are wrong.** Resolving by elimination against the `Civilization
+already used:` lines fails: those are emitted only on a draft *conflict*,
+and the turn-53 capture has exactly one such line for six majors.
+Resolving through the `CIVILIZATION_X::LEADER_Y` draft pool the engine
+prints works on that capture — 47 pairs, no ambiguity — but the pool is
+printed only when leaders are random, so it vanishes on a hand-picked
+draft. The resolved slot line is written either way.
+
+**The remaining ambiguity, and what to do about it.** Civ VI permits two
+players to field the same civilization. If a civilization string maps to
+more than one player id, the rows under it cannot be attributed, and
+those players are reported as unnamed rather than guessed: a wrong
+attribution would misfile every observation about that rival, and this
+advisor may not assert what it cannot establish.
+
+Levels classify the players directly — no heuristic needed.
+`CIVILIZATION_LEVEL_FULL_CIV` is a major, `CIVILIZATION_LEVEL_CITY_STATE`
+and `CIVILIZATION_LEVEL_FREE_CITIES` are `PlayerKind.INDEPENDENT`, and
+`CIVILIZATION_LEVEL_TRIBE` is the barbarian slot, which is not a player
+for advisory purposes. The turn-53 capture had majors at 0-5, city-states
+at 6-14, Free Cities at 62 and Barbarians at 63; the id ranges are not
+fixed and must be read from the level, never assumed.
 
 ## 6. The canonical state, and the guard on it
 
@@ -253,6 +291,49 @@ actually shown.
   unchanged within a game.
 - The header reports which game is being advised and from which directory.
 
+### 8.1 Choosing the game at runtime
+
+Both games are installed on the same machine and both leave logs on disk,
+so a static choice made once at startup is wrong as soon as the player
+switches games. Selection is therefore a runtime property, settled two
+ways that must agree on precedence:
+
+**Detection.** Each poll, the advisor stats the *gameplay* logs of every
+registered game and picks the one whose newest gameplay log is freshest.
+It stats only files the profile declares, so an engine log rewritten at
+launch cannot masquerade as a game in progress. A game whose logs
+directory is absent is not a candidate. When no candidate has been
+written within a recency window, the advisor reports that it cannot tell
+which game is being played rather than picking the least stale — "I do
+not know" is a supported answer here, and guessing would attach a whole
+dashboard to the wrong game.
+
+**Override.** The header carries a control naming every registered game
+plus Auto. Choosing a game pins it for the session; choosing Auto returns
+to detection. An explicit `--game` on the command line starts pinned to
+that game, and `--game auto` starts in detection.
+
+The override wins over detection, always and visibly: the header must say
+which mode is in force and, when pinned, that detection disagrees if it
+does. A pinned choice silently overridden by detection — or detection
+silently overridden by a stale pin — would make the advisor's own
+provenance claims unreliable, which is the one thing it may not be.
+
+**A game switch is a new sitting.** Swapping the active game changes the
+logs directory, the reader table, the capability matrix, the guide
+catalog and the context namespace at once. Nothing computed under the
+previous game may survive the switch: not the previous turn's snapshot,
+not the change-tracking history that "Since last turn" is built from, not
+acknowledgements. The existing epoch/sitting machinery already expresses
+exactly this, and a switch increments it for the same reason a reload
+does — the past being compared against is not this game's past.
+
+**What the switch may not do.** It may not write to either game's
+directories, and it may not migrate a player's notes between games. An
+acknowledgement made in Civ VII is not an acknowledgement in Civ VI, and
+offering it across the boundary would repeat the mistake the reload logic
+exists to prevent.
+
 VII deletes its `Logs/` directory on every launch (v2 §2), which is why
 `archive.py` exists. **VI does not** — its logs are append-only across
 games and sessions. `latest_game_segment` already handles the resulting
@@ -291,11 +372,25 @@ correct behaviour.
 1. **Neutral core.** Rename to `civ_advisor`, introduce `GameProfile` and
    the registry, move Civ VII's readers and headers behind the `civ7`
    profile. **Zero behaviour change**; the existing suite is the proof.
-2. **Civ VI profile.** Readers (§3.1–3.2, §3.5), identity (§5), canonical
-   state and the capability guard (§6), selection and namespaced storage
-   (§8), fixtures and conformance tests (§10). Parity on the overlapping
-   signals; the capability matrix honest about amenities, maintenance,
-   deals, combat odds.
+2. **Civ VI profile.** Split into two plans; 2a produces a Civ VI game
+   state that is testable on its own, 2b makes it reachable from the UI.
+
+   **2a — the data layer.** Readers (§3.1–3.2, §3.5), identity (§5),
+   canonical state and the capability guard (§6), fixtures and
+   conformance tests (§10). Parity on the overlapping signals; the
+   capability matrix honest about amenities, maintenance, deals, combat
+   odds and — the largest gap, found while verifying against the turn-53
+   capture — victory-path pursuit, which VI's `AI_Victories.csv` does not
+   express (§3.2). Reachable only via `--game civ6` at this point.
+
+   "Parity" in this phase therefore means the overlapping signals, not
+   every tab. A Civ VI game will legitimately show fewer panels than a
+   Civ VII game, and each absent one must say why it is absent.
+
+   **2b — selection and storage.** Runtime detection and the header
+   override (§8.1), namespaced archive and context storage (§8), and the
+   epoch/sitting handling of a game switch. This is the plan that makes
+   the requirements listed immediately below binding.
 
    `--logs-dir` must be made to imply that `--game` is explicit. Phase 1
    left the two flags decoupled because enforcing it then would have

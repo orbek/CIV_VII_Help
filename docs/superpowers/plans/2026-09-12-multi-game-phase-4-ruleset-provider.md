@@ -2011,6 +2011,22 @@ The gold cost of a unit upgrade is stored in no row and stays a mention."
 
 ### Task 7: Wire it into the profile and the recommendation path
 
+**A measured cost this task must bound.** Task 4's fix dropped the
+`(size, mtime_ns)` fast path — correctly, because it could miss a same-size
+edit — so `building()` now re-derives the file's digest on every call, and
+read-verify-reread hashes twice on a cache miss. Measured against the real
+18.1 MB database: **5.7 ms per lookup even when the per-instance cache
+hits**, and 572 ms for 100 lookups. Correctness is not in question; the
+cache is simply bypassed by the verification.
+
+That is fine for a handful of lookups per rebuild and bad for a path that
+walks every building in a queue. So this task must establish how many
+lookups a real recommendation actually makes, and if it is more than a
+handful, verify identity ONCE per rebuild rather than once per call —
+the file cannot plausibly change between two lookups in the same rebuild,
+and a per-rebuild check still catches a mod toggle within one turn. Report
+the real call count; do not assume it is small.
+
 Where a Civ VI recommendation naming a building starts stating that building's
 real cost, maintenance and yield. Civ VII is untouched, by construction: its
 profile declares no ruleset, so it gets `NO_RULESET` and behaves exactly as it

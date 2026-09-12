@@ -1449,6 +1449,30 @@ neither applied nor offered; an unattributable one is offered, never assumed."
 
 ### Task 7: Wire selection into the app — `/api/game`, the supervisor, and `--game auto`
 
+**Two consequences of Task 4 that this task must close.** Phase 2b's Task 4
+made `Store.rebuild()` able to return `None` — when the store is idle, and
+when a rebuild is discarded because the game switched underneath it. Task 4's
+review traced that contract change into callers it did not touch:
+
+1. `civ_advisor/api/app.py`'s `on_change()` dereferences the rebuild result
+   unconditionally. On `None` it raises `AttributeError`, which
+   `civ_advisor/ingest/poller.py`'s broad `except Exception` swallows — but
+   the poller has ALREADY advanced `last = current` and cleared `pending`
+   before calling `on_change`, so nothing reschedules it. The dashboard
+   stalls on a stale or absent snapshot until the game happens to write
+   again. `on_change` must skip publishing on `None` rather than crash.
+
+2. **The poller watches one directory.** A game switch changes `logs_dir`
+   and the declared file set at once, so the poller must be re-pointed at
+   the new game's directory and re-snapshotted, or it will keep watching
+   the old game's files and never fire for the new one. A switch must also
+   force a rebuild by itself rather than waiting for a file to change,
+   because the new game's logs may be complete and untouched since before
+   the switch.
+
+Both must have tests. The second is the one that would make the header
+control look broken while being technically correct.
+
 **Files:**
 - Modify: `civ_advisor/api/app.py` (selector, supervisor task, endpoints, store swap)
 - Modify: `civ_advisor/api/serialize.py` (`game_to_dict`, `status_to_dict`)

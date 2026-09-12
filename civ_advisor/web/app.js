@@ -69,7 +69,10 @@
     /* Tactical view state, kept through a refresh so a turn update does not throw the
        player back to a different frontier or lose the contact they had selected. */
     tacticalView: null, contactPage: 0, contactFilter: "", selectedContact: null,
-    changes: null, record: null, answers: {}, challengeText: {} };
+    changes: null, record: null, answers: {}, challengeText: {},
+    /* Which game, and whether a switch is in flight (disables the control so a second
+       click cannot race the first's request). */
+    game: null, gameBusy: false };
 
   try { state.acks = JSON.parse(localStorage.getItem("civ7.acks") || "{}"); } catch (_) { /* ignore */ }
   try { state.pins = JSON.parse(localStorage.getItem("civ7.pins") || "{}"); } catch (_) { /* ignore */ }
@@ -86,6 +89,26 @@
        it up until the reply lands would keep intercepted content on screen after the
        player switched it off. `seen()` is false the moment the box is unchecked, and
        every oracle-derived region checks it. */
+    render();
+    refresh();
+  });
+
+  $("#game-select").addEventListener("change", async (e) => {
+    const chosen = e.target.value;
+    state.gameBusy = true;
+    renderGame();
+    try {
+      const response = await fetch("/api/game", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ game: chosen }),
+      });
+      if (response.ok) state.game = await response.json();
+    } catch (_) { /* the refresh below reports the real state either way */ }
+    state.gameBusy = false;
+    /* Everything on screen was computed under the previous game. Clear it before the
+       new brief lands rather than leaving one game's advice under another's name. */
+    state.data = null; state.insights = []; state.intel = []; state.decisions = null;
+    state.changes = null; state.tactical = null; state.commentary = null;
     render();
     refresh();
   });
@@ -141,6 +164,7 @@
     state.revision = status.revision;
     state.dataMode = status.evidence_mode;
     state.status = status;
+    state.game = status.game;
     state.data = body.state;
     state.insights = body.insights;
     state.hiddenInsights = body.hidden_insights;
@@ -303,6 +327,68 @@
     $("#announce").textContent = said.join(" ");
   }
 
+  /* Which game, and how that was decided. The mode is stated in words rather than left
+     to be inferred from which option is selected: a pinned choice that detection
+     contradicts is the one case where the numbers on screen may come from a game the
+     player is not looking at, and they have to be told rather than left to find out. */
+  const DETECTION_WORDS = {
+    detected: (g) => `detection says ${g}`,
+    all_stale: () => "nothing written recently — detection cannot tell",
+    no_candidates: () => "no game's log folder found — detection cannot tell",
+    ambiguous: () => "two games wrote at the same moment — detection cannot tell",
+  };
+
+  /* A pin is HONOURED even when its logs directory does not exist or has never been
+     written to (spec 8.1: an empty, correctly-labelled dashboard beats a silent
+     fallback to the other game) -- but those two situations look identical on screen
+     and have opposite remedies, so the header must name which one it is. Read off the
+     matching detection candidate: `present` is whether the directory itself exists;
+     `age` is null only when nothing the game declares has ever been written there. */
+  function pinnedGameGap(game) {
+    if (game.mode !== "pinned") return null;
+    const candidate = (game.detection.candidates || []).find((c) => c.id === game.pinned);
+    if (!candidate) return null;
+    if (!candidate.present) return "its logs folder was not found — install or launch the game";
+    if (candidate.age === null) return "no log has been written for it yet — play a turn";
+    return null;
+  }
+
+  function renderGame() {
+    const game = state.game;
+    const select = $("#game-select");
+    const mode = $("#game-mode");
+    if (!game) { mode.textContent = ""; return; }
+    const names = {};
+    game.games.forEach((g) => { names[g.id] = g.display_name; });
+    const wanted = ["auto"].concat(game.games.map((g) => g.id)).join("|");
+    if (select.dataset.built !== wanted) {
+      select.replaceChildren(...[el("option", null, "Auto — detect from the logs")]
+        .concat(game.games.map((g) => el("option", null, g.display_name))));
+      select.children[0].value = "auto";
+      game.games.forEach((g, i) => { select.children[i + 1].value = g.id; });
+      select.dataset.built = wanted;
+    }
+    select.value = game.mode === "pinned" ? game.pinned : "auto";
+    select.disabled = state.gameBusy;
+
+    const detected = game.detection.game ? names[game.detection.game] : null;
+    const said = DETECTION_WORDS[game.detection.reason] || (() => game.detection.reason);
+    const gap = pinnedGameGap(game);
+    if (game.mode === "pinned") {
+      const parts = [`pinned to ${names[game.pinned]}`];
+      if (gap) parts.push(gap);
+      if (game.disagrees) parts.push(said(detected));
+      mode.textContent = parts.join(" — ");
+      mode.className = (gap || game.disagrees) ? "game-mode game-disagrees" : "game-mode";
+    } else if (game.active) {
+      mode.textContent = `following detection — ${names[game.active.id]}`;
+      mode.className = "game-mode";
+    } else {
+      mode.textContent = `${said(detected)} — pick a game to start`;
+      mode.className = "game-mode game-disagrees";
+    }
+  }
+
   /* Coverage, not a wall of file paths. A required domain failing is a real warning; an
      optional one that the game simply has not written disables its capability and says
      so once. "Empty but readable" and "no rows recent enough" are stated as what they
@@ -340,11 +426,12 @@
 
   function paint() {
     const d = state.data;
-    if (!d) { renderStatus(); renderCoverage(); return; }
+    if (!d) { renderStatus(); renderGame(); renderCoverage(); return; }
     const ins = visible();
     renderHero(d, ins);
     renderRanks(d);
     renderStatus();
+    renderGame();
     renderCoverage();
     renderBrief();
 
@@ -1584,7 +1671,23 @@
   function connect() {
     const es = new EventSource("/events");
     es.onopen = () => { state.connected = true; renderStatus(); };
-    es.onmessage = () => { state.viaEvent = true; refresh(); };
+    es.onmessage = (event) => {
+      state.viaEvent = true;
+      // The stream carries every event as a plain `data:` frame (no SSE `event:`
+      // field), so the server's own event.type -- "state_changed" or "game_changed" --
+      // lives inside the JSON payload, not on the DOM MessageEvent.
+      let payload = null;
+      try { payload = JSON.parse(event.data); } catch (_) { /* not JSON; refresh() below still runs */ }
+      if (payload && payload.type === "game_changed") {
+        // Everything on screen was computed under the previous game. Clear it before
+        // the new brief lands rather than leaving one game's advice under another's
+        // name for however long the round trip to refresh() takes.
+        state.data = null; state.insights = []; state.intel = []; state.decisions = null;
+        state.changes = null; state.tactical = null; state.commentary = null;
+        render();
+      }
+      refresh();
+    };
     es.onerror = () => {
       es.close();
       state.connected = false;

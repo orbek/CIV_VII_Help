@@ -354,6 +354,16 @@ td.behind { color: var(--brass); }
   .intel-kind { display: none; }
 }
 
+/* The game control: which title is in force, and how that was decided. */
+.game-line { display: flex; align-items: baseline; gap: .6rem; flex-wrap: wrap; margin: .3rem 0; }
+.game-switch { font-size: .85rem; opacity: .85; }
+.game-switch select { margin-left: .35rem; font: inherit; }
+.game-mode { font-size: .8rem; opacity: .7; }
+/* Same treatment as .file-warn: a pinned choice detection disagrees with, or a pin
+   whose logs cannot say anything yet, is not a quiet status -- it is the one case
+   where what is on screen may not be what the player thinks they are looking at. */
+.game-disagrees { opacity: 1; font-weight: 600; color: var(--brass); }
+
 /* Status line: connection, freshness and analysis turn, stated separately. */
 .status-line { display: flex; flex-wrap: wrap; gap: .5rem 1rem; align-items: baseline;
   margin: .35rem 0 0; font-size: .82rem; }

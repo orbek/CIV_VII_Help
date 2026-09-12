@@ -259,6 +259,41 @@ def test_an_entry_from_before_namespacing_is_offered_not_applied(tmp_path):
     assert [a.session for a in store.pending] == ["old"]
 
 
+def test_accepting_a_pre_2b_entry_attributes_it_to_the_accepting_game(tmp_path):
+    """associate() must stamp `game`, not just session/epoch. Leaving it "" would mean
+    the accepted entry is neither "mine" nor "foreign" on the next adopt() -- it falls
+    into `groups` again and comes back for the player to accept a second time, forever.
+    Accepting it into a civ7 sitting IS the act that attributes it to civ7."""
+    (tmp_path / "notes.json").write_text(json.dumps({
+        "schema_version": SCHEMA_VERSION, "revision": 1,
+        "entries": [{"id": "e1", "kind": "acknowledged", "subject": "x", "turn": 3,
+                     "session": "old", "epoch": 1, "text": "", "fingerprint": "",
+                     "game_key": None, "created_at": "2026-01-01T00:00:00"}]}))
+    first = PersistentContextStore(path=tmp_path / "notes.json")
+    first.load()
+    first.adopt("s1", 1, None, game="civ7")
+    [held] = first.pending
+    adopted = first.associate(held.session, held.epoch)
+    assert [e.game for e in adopted] == ["civ7"]   # re-filed under s1/epoch1, now civ7's
+
+    # Reload into that SAME sitting: without the fix, the entry's game stays "" even
+    # though its session/epoch match exactly, so mine_p (which also compares game) is
+    # false and it falls into `groups` again -- offered a second time despite having
+    # just been accepted.
+    second = PersistentContextStore(path=tmp_path / "notes.json")
+    second.load()
+    second.adopt("s1", 1, None, game="civ7")
+    assert second.of_kind("acknowledged")[0].id == "e1"
+    assert second.pending == ()
+
+    # And it is not thereby offered or applied under a different game.
+    third = PersistentContextStore(path=tmp_path / "notes.json")
+    third.load()
+    third.adopt("s3", 3, None, game="civ6")
+    assert third.of_kind("acknowledged") == ()
+    assert third.pending == ()
+
+
 def test_a_foreign_game_s_entry_survives_a_save_made_under_this_game(tmp_path):
     """Not offering another game's entries must not mean silently erasing them: a
     later record()/save() under this game must not drop the other game's data from

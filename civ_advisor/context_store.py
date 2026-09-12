@@ -220,7 +220,15 @@ class PersistentContextStore:
                 raise StoreError(f"no held entries for session {session!r} epoch {epoch}")
             adopted = []
             for entry in group.entries:
-                moved = replace(entry, session=self.session, epoch=self.epoch)
+                # Stamp `game` too, not just session/epoch: leaving a pre-2b entry's
+                # game="" here means it is neither "mine" nor "foreign" on the next
+                # adopt(), so it falls into `groups` again and is offered forever even
+                # though the player just accepted it into THIS sitting. Accepting it is
+                # the act that attributes it -- the same claim `record()` already makes
+                # for a brand-new entry (`game=game or self.game`); nothing supports
+                # a weaker "accepted but still unknown" state that no other part of
+                # this store distinguishes.
+                moved = replace(entry, session=self.session, epoch=self.epoch, game=self.game)
                 self.entries[moved.id] = moved
                 adopted.append(moved)
             self.pending = tuple(a for a in self.pending if a is not group)

@@ -129,3 +129,84 @@ def read_diplomacy_modifiers(path: Path) -> list[DiplomacyModifierRow]:
             cooldown_turns=_opt_int(row, 9), reduction=_opt_float(row, 10),
         ))
     return out
+
+
+RESEARCH_HEADER = ["Game Turn", "Player", "Action", "Tech", "Score", "Boost", "Turns"]
+POLICIES_HEADER = ["Game Turn", "Player", "Action", "Policy", "Score", "Turns"]
+
+# Values the Boost column takes. GOAL is the AI naming the tech it selected;
+# RESEARCHING is the one it is working now. Both are statements the AI made,
+# not readings we took.
+GOAL = "GOAL"
+RESEARCHING = "RESEARCHING"
+
+# Civic rows carry Turns; Policies rows stop after Score.
+_POLICY_WIDTHS = (6, 5)
+
+
+@dataclass(frozen=True)
+class TechScoreRow:
+    """What one tech was worth to one player's AI on one turn.
+
+    `score` is a priority within THAT turn's deliberation over THAT player's
+    currently-available options. It is not comparable across turns or players,
+    and it carries no victory-condition label -- see the plan's "victory-path
+    question" section. Report what the AI scored; never what it is "going for".
+    """
+
+    turn: int
+    player: int
+    action: str            # "Tech" in every observed row
+    tech: str
+    score: float
+    boost: str | None      # GOAL | RESEARCHING | OWNED | None when the cell is blank
+    turns: int | None
+
+
+def read_tech_scores(path: Path) -> list[TechScoreRow]:
+    table = read_table(path)
+    expect_header(table, RESEARCH_HEADER)
+    out: list[TechScoreRow] = []
+    for row in latest_game_segment(table.rows, turn_col=0):
+        if len(row) != len(RESEARCH_HEADER):
+            raise LogFormatError(
+                f"{path.name}: expected {len(RESEARCH_HEADER)} columns but a row "
+                f"has {len(row)}: {row!r}"
+            )
+        out.append(TechScoreRow(
+            turn=int(row[0]), player=int(row[1]), action=row[2], tech=row[3],
+            score=float(row[4]), boost=row[5] or None, turns=_opt_int(row, 6),
+        ))
+    return out
+
+
+@dataclass(frozen=True)
+class PolicyScoreRow:
+    """What one civic or policy card was worth to one player's AI on one turn.
+
+    Same caveat as TechScoreRow: a score, not a plan.
+    """
+
+    turn: int
+    player: int
+    action: str            # "Civic" | "Policies"
+    policy: str
+    score: float
+    turns: int | None      # absent on Policies rows; None, never 0
+
+
+def read_policy_scores(path: Path) -> list[PolicyScoreRow]:
+    table = read_table(path)
+    expect_header(table, POLICIES_HEADER)
+    out: list[PolicyScoreRow] = []
+    for row in latest_game_segment(table.rows, turn_col=0):
+        if len(row) not in _POLICY_WIDTHS:
+            raise LogFormatError(
+                f"{path.name}: a row has {len(row)} columns; this file's rows are "
+                f"{_POLICY_WIDTHS[0]} (Civic) or {_POLICY_WIDTHS[1]} (Policies): {row!r}"
+            )
+        out.append(PolicyScoreRow(
+            turn=int(row[0]), player=int(row[1]), action=row[2], policy=row[3],
+            score=float(row[4]), turns=_opt_int(row, 5),
+        ))
+    return out

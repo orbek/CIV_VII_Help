@@ -2,7 +2,7 @@ import asyncio
 import logging
 from pathlib import Path
 
-from civ7_advisor.ingest.poller import snapshot, watch
+from civ_advisor.ingest.poller import snapshot, watch
 
 
 def test_snapshot_reports_missing_files_as_none(tmp_path: Path):
@@ -75,7 +75,7 @@ def test_watch_survives_a_failing_on_change(tmp_path: Path, caplog):
         assert calls == [1, 2]  # a later change still gets rebuilt
         task.cancel()
 
-    with caplog.at_level(logging.ERROR, logger="civ7_advisor.ingest.poller"):
+    with caplog.at_level(logging.ERROR, logger="civ_advisor.ingest.poller"):
         asyncio.run(scenario())
     assert "poll failed; continuing" in caplog.text  # the failure was not silent
 

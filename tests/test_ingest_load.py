@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.load import LOG_FILES, load_logs
+from civ_advisor.ingest.load import LOG_FILES, load_logs
 
 # The seven logs v1 shipped with; the v1 fixture has exactly these, so every newer log is
 # legitimately "file not found" there.

@@ -6,8 +6,8 @@ import threading
 
 import pytest
 
-from civ7_advisor.llm import questions
-from civ7_advisor.llm.worker import CommentaryWorker
+from civ_advisor.llm import questions
+from civ_advisor.llm.worker import CommentaryWorker
 
 DECISION = {
     "id": "decision.culture.CITY", "subject": "Culture in Test1", "severity": "ADVISE",
@@ -231,7 +231,7 @@ def test_a_slow_model_never_delays_the_answer():
 def test_a_question_does_not_queue_behind_a_turns_commentary(fixture_state):
     """Commentary can take minutes on a large local model. A question asked now must not
     wait for it, and neither must the refinement workflow that follows."""
-    from civ7_advisor.advisors import run_all
+    from civ_advisor.advisors import run_all
     from tests.factories import snapshot as make_snapshot
 
     commentary_running, release = threading.Event(), threading.Event()

@@ -5,10 +5,10 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from civ7_advisor.api.app import create_app
-from civ7_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
+from civ_advisor.api.app import create_app
+from civ_advisor.llm.models import Commentary, CommentaryResult, Explanation, PlanStep
 
-APP_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "app.js"
+APP_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "app.js"
 # RivalThreat fields that come from the AI's own logs (AI_DiplomaticActions, AI_Targets).
 ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since",
                         "city_tiles_targeted", "units_targeted", "target_box", "target_turn")
@@ -315,7 +315,7 @@ def test_briefing_is_503_before_the_first_rebuild(fixture_dir: Path):
 
 
 def test_commentary_reports_queued_and_carries_its_decision_identity(fixture_dir: Path):
-    from civ7_advisor.llm.models import CommentaryIdentity
+    from civ_advisor.llm.models import CommentaryIdentity
 
     identity = CommentaryIdentity(session="s", epoch=1, evidence_mode="oracle",
                                   snapshot_revision=3, turn=81, insight_ids=("threat.x",))
@@ -522,7 +522,7 @@ def test_clearing_a_report_moves_the_revision_and_restores_the_inspection(
 
 def _client_with_notes(tmp_path: Path, fixture_dir: Path, worker=None):
     """A client whose player record is a throwaway file, never the developer's own."""
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     return TestClient(create_app(
         _behind_dir(tmp_path, fixture_dir), poll_interval=60, commentary_worker=worker,
@@ -569,7 +569,7 @@ def test_a_question_is_answered_from_the_decisions_own_facts(tmp_path, fixture_d
 def test_a_fair_question_never_receives_intercepted_evidence(tmp_path, fixture_dir):
     """The evidence is filtered before the request exists, so nothing downstream has to
     remember to strip it."""
-    from civ7_advisor.llm import questions
+    from civ_advisor.llm import questions
 
     seen: list[questions.QuestionRequest] = []
 
@@ -603,7 +603,7 @@ def test_a_fair_question_never_receives_intercepted_evidence(tmp_path, fixture_d
 
 
 def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fixture_dir):
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"
@@ -640,7 +640,7 @@ def test_the_player_record_persists_and_a_new_sitting_holds_it_back(tmp_path, fi
 
 
 def test_held_entries_can_be_discarded_instead(tmp_path, fixture_dir):
-    from civ7_advisor.context_store import PersistentContextStore
+    from civ_advisor.context_store import PersistentContextStore
 
     logs = _behind_dir(tmp_path, fixture_dir)
     notes = tmp_path / "notes.json"

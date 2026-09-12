@@ -1,7 +1,7 @@
-from civ7_advisor.advisors import intel, production, run_all, threat
-from civ7_advisor.ingest.events import read_combat_log, read_diplomacy_summary, read_gossip
-from civ7_advisor.ingest.load import LOG_FILES, load_logs
-from civ7_advisor.ingest.production import read_build_queue
+from civ_advisor.advisors import intel, production, run_all, threat
+from civ_advisor.ingest.events import read_combat_log, read_diplomacy_summary, read_gossip
+from civ_advisor.ingest.load import LOG_FILES, load_logs
+from civ_advisor.ingest.production import read_build_queue
 
 
 def test_every_log_in_the_v2_fixture_parses(fixture_v2_dir):

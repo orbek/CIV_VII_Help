@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from civ7_advisor.ingest.load import RawLogs
+from civ_advisor.ingest.load import RawLogs
 
 from .models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
 from .names import NameResolver

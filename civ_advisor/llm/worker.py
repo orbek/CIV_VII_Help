@@ -15,7 +15,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
-from civ7_advisor.store import Snapshot
+from civ_advisor.store import Snapshot
 
 from . import questions
 from .client import OllamaClient, OllamaError

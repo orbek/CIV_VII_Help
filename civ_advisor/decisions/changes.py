@@ -21,8 +21,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from civ7_advisor.advisors.base import Severity
-from civ7_advisor.store import Snapshot
+from civ_advisor.advisors.base import Severity
+from civ_advisor.store import Snapshot
 
 from .models import DecisionCard
 

@@ -11,25 +11,25 @@ from fastapi import Body, FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from civ7_advisor.advisors import tactical
-from civ7_advisor.advisors.base import visible
-from civ7_advisor.context_store import KINDS, PersistentContextStore, StoreError
-from civ7_advisor.decisions import changes as change_tracking
-from civ7_advisor.decisions import decide_all
-from civ7_advisor.decisions.context import (
+from civ_advisor.advisors import tactical
+from civ_advisor.advisors.base import visible
+from civ_advisor.context_store import KINDS, PersistentContextStore, StoreError
+from civ_advisor.decisions import changes as change_tracking
+from civ_advisor.decisions import decide_all
+from civ_advisor.decisions.context import (
     PREVIEW_METRICS,
     ContextConflict,
     ContextStore,
     build_context,
 )
-from civ7_advisor.decisions.models import PlayerReport
-from civ7_advisor.ingest.load import LOG_FILES
-from civ7_advisor.ingest.poller import snapshot as poll_snapshot
-from civ7_advisor.ingest.poller import watch
-from civ7_advisor.llm import questions
-from civ7_advisor.llm.models import CommentaryResult
-from civ7_advisor.llm.worker import CommentaryWorker
-from civ7_advisor.store import Snapshot, Store
+from civ_advisor.decisions.models import PlayerReport
+from civ_advisor.ingest.load import LOG_FILES
+from civ_advisor.ingest.poller import snapshot as poll_snapshot
+from civ_advisor.ingest.poller import watch
+from civ_advisor.llm import questions
+from civ_advisor.llm.models import CommentaryResult
+from civ_advisor.llm.worker import CommentaryWorker
+from civ_advisor.store import Snapshot, Store
 
 from .serialize import (
     INTEL_LIMIT,
@@ -365,7 +365,7 @@ def create_app(logs_dir: Path, poll_interval: float = 1.0, archive_root: Path | 
 
     @app.get("/api/intel")
     def api_intel(oracle: int = 1) -> list[dict]:
-        from civ7_advisor.advisors import intel
+        from civ_advisor.advisors import intel
         events = visible(intel.feed(current().state), bool(oracle))
         return [intel_to_dict(e) for e in events[:INTEL_LIMIT]]
 
@@ -418,7 +418,7 @@ def _dependencies(captured: Snapshot, subject: str) -> dict[str, object]:
     Deliberately narrow. A settlement's queue row and the observed Age can change what a
     preview means; an unrelated rival event cannot, and must not discard it.
     """
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
 
     row = next((q for q in production.queues(captured.state).get(captured.state.HUMAN, [])
                 if q.city == subject), None)

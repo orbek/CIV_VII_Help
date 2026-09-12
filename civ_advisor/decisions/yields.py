@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, replace
 
-from civ7_advisor.advisors.base import Severity
+from civ_advisor.advisors.base import Severity
 
 from . import candidates
 from .context import LARGEST, OBJECTIVES, SOONEST, DecisionContext, Previews

@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from civ7_advisor.state.models import GameState, IntentKind, Player
+from civ_advisor.state.models import GameState, IntentKind, Player
 
 from .base import Insight, Provenance, Severity, humanize
 

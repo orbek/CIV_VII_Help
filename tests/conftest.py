@@ -11,8 +11,8 @@ def fixture_dir() -> Path:
     return FIXTURE_DIR
 
 
-from civ7_advisor.ingest.load import load_logs  # noqa: E402
-from civ7_advisor.state.build import build_state  # noqa: E402
+from civ_advisor.ingest.load import load_logs  # noqa: E402
+from civ_advisor.state.build import build_state  # noqa: E402
 
 
 @pytest.fixture(scope="session")

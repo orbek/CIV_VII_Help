@@ -5,10 +5,10 @@ import argparse
 import json
 from pathlib import Path
 
-from civ7_advisor.advisors import economy, production, tactical, threat, victory
-from civ7_advisor.ingest.load import load_logs
-from civ7_advisor.state.build import build_state
-from civ7_advisor.state.geo import hex_distance
+from civ_advisor.advisors import economy, production, tactical, threat, victory
+from civ_advisor.ingest.load import load_logs
+from civ_advisor.state.build import build_state
+from civ_advisor.state.geo import hex_distance
 
 
 def _summary(values: list[float], threshold: float | None = None, direction: str = "above") -> dict:

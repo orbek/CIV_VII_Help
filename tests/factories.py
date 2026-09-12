@@ -1,13 +1,13 @@
 """Small builders for hand-made GameStates in advisor tests."""
 from __future__ import annotations
 
-from civ7_advisor.advisors.base import Insight, Provenance, Severity
-from civ7_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow
-from civ7_advisor.ingest.production import BuildQueueRow
-from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
-from civ7_advisor.ingest.textlogs import DealItem
-from civ7_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
-from civ7_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
+from civ_advisor.advisors.base import Insight, Provenance, Severity
+from civ_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow
+from civ_advisor.ingest.production import BuildQueueRow
+from civ_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
+from civ_advisor.ingest.textlogs import DealItem
+from civ_advisor.state.models import GameState, Player, PlayerKind, PlayerTurn, StrategyStatus
+from civ_advisor.store import SCHEMA_VERSION, Snapshot, _coverage
 
 
 def insight(
@@ -112,7 +112,7 @@ def snapshot(
     revision: int = 1, captured_at: float = 0.0,
 ) -> Snapshot:
     """A published snapshot around a hand-made state, for worker and serializer tests."""
-    from civ7_advisor.advisors import run_all
+    from civ_advisor.advisors import run_all
 
     ranked = run_all(state) if insights is None else list(insights)
     return Snapshot(

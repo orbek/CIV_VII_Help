@@ -24,8 +24,8 @@ pytest.importorskip("playwright", reason="the browser group is not installed")
 
 import uvicorn  # noqa: E402
 
-from civ7_advisor.api.app import create_app  # noqa: E402
-from civ7_advisor.context_store import PersistentContextStore  # noqa: E402
+from civ_advisor.api.app import create_app  # noqa: E402
+from civ_advisor.context_store import PersistentContextStore  # noqa: E402
 
 FIXTURES = Path(__file__).resolve().parents[1] / "fixtures"
 

@@ -15,8 +15,8 @@ Three rules are enforced structurally rather than remembered:
 """
 from __future__ import annotations
 
-from civ7_advisor.advisors.base import Provenance
-from civ7_advisor.knowledge.catalog import GuideEntry
+from civ_advisor.advisors.base import Provenance
+from civ_advisor.knowledge.catalog import GuideEntry
 
 from .context import DecisionContext, Previews, age_prerequisite
 from .models import ActionCandidate, Applicability, Prerequisite

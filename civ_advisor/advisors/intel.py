@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from civ7_advisor.state.models import GameState, PlayerKind
+from civ_advisor.state.models import GameState, PlayerKind
 
 from . import diplomacy_language
 from .base import Provenance, humanize

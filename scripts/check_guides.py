@@ -26,7 +26,7 @@ from dataclasses import asdict, dataclass
 
 import httpx
 
-from civ7_advisor.knowledge.catalog import UNREACHABLE, load_catalog
+from civ_advisor.knowledge.catalog import UNREACHABLE, load_catalog
 
 USER_AGENT = "civ7-advisor guide-audit (link health check; contact via repository)"
 

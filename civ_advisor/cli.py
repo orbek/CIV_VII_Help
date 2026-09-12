@@ -9,11 +9,11 @@ from pathlib import Path
 
 import uvicorn
 
-from civ7_advisor.api.app import create_app
-from civ7_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
-from civ7_advisor.context_store import DEFAULT_STORE_PATH, PersistentContextStore
-from civ7_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
-from civ7_advisor.llm.client import DEFAULT_TIMEOUT_S
+from civ_advisor.api.app import create_app
+from civ_advisor.archive import DEFAULT_ARCHIVE_ROOT, MANIFEST
+from civ_advisor.context_store import DEFAULT_STORE_PATH, PersistentContextStore
+from civ_advisor.llm import DEFAULT_MODEL, CommentaryWorker, OllamaClient
+from civ_advisor.llm.client import DEFAULT_TIMEOUT_S
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
 

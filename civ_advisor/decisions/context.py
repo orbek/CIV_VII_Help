@@ -15,11 +15,11 @@ from __future__ import annotations
 import threading
 from dataclasses import dataclass, field, replace
 
-from civ7_advisor.advisors import tactical
-from civ7_advisor.advisors.base import Severity, visible
-from civ7_advisor.knowledge.catalog import Catalog, load_catalog
-from civ7_advisor.state.models import GameState
-from civ7_advisor.store import Snapshot
+from civ_advisor.advisors import tactical
+from civ_advisor.advisors.base import Severity, visible
+from civ_advisor.knowledge.catalog import Catalog, load_catalog
+from civ_advisor.state.models import GameState
+from civ_advisor.store import Snapshot
 
 from .evidence import YIELD_STATS, EvidenceLedger, build_ledger
 from .models import EvidenceFact, PlayerContext, PlayerReport, Prerequisite
@@ -349,7 +349,7 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
     for fact in ledger.facts.values():
         if fact.id.startswith("completed.") and fact.subject_id:
             completed_by_city.setdefault(fact.subject_id, []).append(str(fact.value))
-    from civ7_advisor.advisors import production
+    from civ_advisor.advisors import production
     for row in production.queues(state).get(state.HUMAN, []):
         settlements.append(SettlementView(
             city=row.city, name=_city_name(row.city), item=row.item,

@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from civ7_advisor.ingest.tactical import (
+from civ_advisor.ingest.tactical import (
     read_combat_planning, read_operation_evals, read_operations, read_tactical,
     read_unit_efficiency, read_unit_operations,
 )

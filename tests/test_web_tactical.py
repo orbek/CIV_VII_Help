@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-TACTICAL_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "tactical.js"
+TACTICAL_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "tactical.js"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 

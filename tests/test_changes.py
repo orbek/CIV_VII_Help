@@ -3,10 +3,10 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from civ7_advisor.advisors.base import Provenance, Severity
-from civ7_advisor.decisions import changes as tracking
-from civ7_advisor.decisions.models import DecisionCard
-from civ7_advisor.store import SCHEMA_VERSION, DomainCoverage, Snapshot
+from civ_advisor.advisors.base import Provenance, Severity
+from civ_advisor.decisions import changes as tracking
+from civ_advisor.decisions.models import DecisionCard
+from civ_advisor.store import SCHEMA_VERSION, DomainCoverage, Snapshot
 from tests.factories import game_state, insight
 
 
@@ -44,7 +44,7 @@ def entry(turn: int, insights: tuple, *, catalog: str = "cat-1", cards: tuple = 
 
 def gap(stat: str, ratio: float, turn: int):
     """A yield comparison fact, as the ledger produces one."""
-    from civ7_advisor.decisions.models import EvidenceFact, SourceKind
+    from civ_advisor.decisions.models import EvidenceFact, SourceKind
 
     return EvidenceFact(id=f"comparison.{stat}.{turn}", label=stat,
                         source_kind=SourceKind.DERIVED, provenance=Provenance.FAIR,

@@ -54,7 +54,7 @@ def read_player_stats(path: Path) -> list[StatsRow]:
             raise LogFormatError(
                 f"{path.name}: expected {PLAYER_STATS_COLUMN_COUNT} columns but a row has "
                 f"{len(row)} (row starts {row[:2]}). The game may have changed its log "
-                f"format; update civ7_advisor/ingest/columns.py."
+                f"format; update civ_advisor/ingest/columns.py."
             )
         values = {name: int(row[i]) for name, i in PLAYER_STATS_INT_COLUMNS.items()}
         values |= {name: float(row[i]) for name, i in PLAYER_STATS_FLOAT_COLUMNS.items()}

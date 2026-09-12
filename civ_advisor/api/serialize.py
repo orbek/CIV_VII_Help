@@ -9,15 +9,15 @@ from __future__ import annotations
 
 from dataclasses import asdict
 
-from civ7_advisor.advisors import Insight, economy, intel, production, threat, victory
-from civ7_advisor.advisors.base import visible
-from civ7_advisor.decisions.context import DecisionContext
-from civ7_advisor.decisions.evidence import EvidenceLedger
-from civ7_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
-from civ7_advisor.knowledge.catalog import GuideEntry
-from civ7_advisor.llm.models import Commentary, CommentaryResult
-from civ7_advisor.state.models import GameState, PlayerKind, PlayerTurn
-from civ7_advisor.store import Snapshot
+from civ_advisor.advisors import Insight, economy, intel, production, threat, victory
+from civ_advisor.advisors.base import visible
+from civ_advisor.decisions.context import DecisionContext
+from civ_advisor.decisions.evidence import EvidenceLedger
+from civ_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
+from civ_advisor.knowledge.catalog import GuideEntry
+from civ_advisor.llm.models import Commentary, CommentaryResult
+from civ_advisor.state.models import GameState, PlayerKind, PlayerTurn
+from civ_advisor.store import Snapshot
 
 RANK_STATS = ["science", "culture", "production", "gold", "military_units"]
 INTEL_LIMIT = 300  # newest events returned by /api/intel
@@ -277,7 +277,7 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
     a superseded request repaint data the player had just switched off. One response
     carrying one revision removes that class of bug rather than papering over it.
     """
-    from civ7_advisor.advisors import tactical  # local import: keeps serialize import-light
+    from civ_advisor.advisors import tactical  # local import: keeps serialize import-light
 
     state = snapshot.state
     events = visible(intel.feed(state), oracle)[:INTEL_LIMIT]
@@ -303,7 +303,7 @@ def changes_to_dict(entry, previous, history, changes, acknowledged) -> dict:
     against. The UI must say that rather than showing an empty change list, which reads
     as "nothing changed".
     """
-    from civ7_advisor.decisions import changes as tracking
+    from civ_advisor.decisions import changes as tracking
 
     return {
         "session": entry.session, "epoch": entry.epoch, "turn": entry.turn,

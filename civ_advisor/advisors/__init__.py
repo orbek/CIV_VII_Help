@@ -1,7 +1,7 @@
 """Advisors turn a GameState into ranked Insights. Each module exposes advise(state)."""
 from __future__ import annotations
 
-from civ7_advisor.state.models import GameState
+from civ_advisor.state.models import GameState
 
 from . import checklist, economy, intel, production, tactical, threat, victory
 from .base import Insight, Provenance, Severity

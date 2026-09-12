@@ -5,7 +5,7 @@ import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
-from civ7_advisor.state.models import BuildQueueRow, GameState
+from civ_advisor.state.models import BuildQueueRow, GameState
 
 from . import economy
 from .base import Insight, Provenance, Severity, humanize
@@ -44,7 +44,7 @@ def _catalog_item_yields() -> dict[str, tuple[str, ...]]:
     to the unverified table, which is what shipped before the catalog existed.
     """
     try:
-        from civ7_advisor.knowledge.catalog import load_catalog
+        from civ_advisor.knowledge.catalog import load_catalog
         return load_catalog().item_yields
     except Exception:  # pragma: no cover - a packaging fault, not a gameplay path
         log.warning("guide catalog unavailable; falling back to unverified item yields")

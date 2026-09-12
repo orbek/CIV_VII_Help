@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from civ7_advisor import cli
+from civ_advisor import cli
 
 
 def test_default_logs_dir_is_the_macos_civ_vii_logs_folder():
@@ -72,7 +72,7 @@ def test_llm_flags_reach_the_server(fixture_dir, monkeypatch):
 
 
 def test_archive_list_prints_sessions(tmp_path, capsys):
-    from civ7_advisor.archive import MANIFEST
+    from civ_advisor.archive import MANIFEST
     session = tmp_path / "arc" / "abc123def456" / "20260907T171100"
     session.mkdir(parents=True)
     (session / MANIFEST).write_text('{"updated": "2026-09-07T17:11:00", "files": ["Player_Stats.csv"]}')

@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import pytest
 
-from civ7_advisor.advisors import run_all
-from civ7_advisor.advisors.base import Severity
-from civ7_advisor.decisions import culture
-from civ7_advisor.decisions.context import (
+from civ_advisor.advisors import run_all
+from civ_advisor.advisors.base import Severity
+from civ_advisor.decisions import culture
+from civ_advisor.decisions.context import (
     AVAILABLE_OPTIONS,
     LARGEST,
     LOCAL_HAPPINESS_OK,
@@ -25,8 +25,8 @@ from civ7_advisor.decisions.context import (
     build_context,
     preview_label,
 )
-from civ7_advisor.decisions.models import Applicability, PlayerContext, PlayerReport, Prerequisite
-from civ7_advisor.ingest.tactical import OperationRow
+from civ_advisor.decisions.models import Applicability, PlayerContext, PlayerReport, Prerequisite
+from civ_advisor.ingest.tactical import OperationRow
 from tests.factories import build_queue_row, city_target, game_state, snapshot
 
 CITY = "LOC_CITY_NAME_TEST1"
@@ -257,7 +257,7 @@ def test_a_guide_that_is_not_reviewed_yields_no_steps_and_no_candidate():
     """No reviewed source means the observation stands alone; steps are not invented."""
     import json
 
-    from civ7_advisor.knowledge.catalog import load_catalog
+    from civ_advisor.knowledge.catalog import load_catalog
 
     raw = json.loads(load_catalog.__module__ and _catalog_json())
     for row in raw["entries"]:
@@ -271,7 +271,7 @@ def test_a_guide_that_is_not_reviewed_yields_no_steps_and_no_candidate():
 
 def _catalog_json() -> str:
     from importlib import resources
-    return resources.files("civ7_advisor.knowledge").joinpath("guides.json").read_text("utf-8")
+    return resources.files("civ_advisor.knowledge").joinpath("guides.json").read_text("utf-8")
 
 
 # ---- the worked refinement acceptance case (plan section 6) ----------------------

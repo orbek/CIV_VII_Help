@@ -8,15 +8,15 @@ from __future__ import annotations
 
 import pytest
 
-from civ7_advisor.advisors import run_all
-from civ7_advisor.advisors.base import Provenance, Severity
-from civ7_advisor.decisions import decide_all, defense, yields
-from civ7_advisor.decisions.candidates import WORKFLOW_GUIDE
-from civ7_advisor.decisions.context import build_context
-from civ7_advisor.decisions.models import Applicability, Prerequisite
-from civ7_advisor.ingest.tactical import OperationRow, TacticalRow, UnitOperationRow
-from civ7_advisor.ingest.readers import TargetRow
-from civ7_advisor.knowledge.catalog import load_catalog
+from civ_advisor.advisors import run_all
+from civ_advisor.advisors.base import Provenance, Severity
+from civ_advisor.decisions import decide_all, defense, yields
+from civ_advisor.decisions.candidates import WORKFLOW_GUIDE
+from civ_advisor.decisions.context import build_context
+from civ_advisor.decisions.models import Applicability, Prerequisite
+from civ_advisor.ingest.tactical import OperationRow, TacticalRow, UnitOperationRow
+from civ_advisor.ingest.readers import TargetRow
+from civ_advisor.knowledge.catalog import load_catalog
 from tests.factories import build_queue_row, city_target, game_state, snapshot
 
 CITY = "LOC_CITY_NAME_TEST1"
@@ -82,7 +82,7 @@ def test_a_family_whose_guides_are_unreviewed_produces_no_card():
 
     from importlib import resources
 
-    raw = json.loads(resources.files("civ7_advisor.knowledge")
+    raw = json.loads(resources.files("civ_advisor.knowledge")
                      .joinpath("guides.json").read_text("utf-8"))
     for row in raw["entries"]:
         row["review_status"] = "link_only"

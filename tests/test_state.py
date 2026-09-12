@@ -2,10 +2,10 @@ from dataclasses import fields
 
 import pytest
 
-from civ7_advisor.ingest.load import RawLogs
-from civ7_advisor.ingest.readers import StatsRow
-from civ7_advisor.state.build import build_state, display_name
-from civ7_advisor.state.models import PlayerKind, PlayerTurn, StrategyStatus
+from civ_advisor.ingest.load import RawLogs
+from civ_advisor.ingest.readers import StatsRow
+from civ_advisor.state.build import build_state, display_name
+from civ_advisor.state.models import PlayerKind, PlayerTurn, StrategyStatus
 
 
 def test_turn_bookkeeping(fixture_state):
@@ -89,8 +89,8 @@ def test_display_name_fallback():
 
 
 def test_new_rows_are_carried_and_peace_is_folded():
-    from civ7_advisor.ingest.load import RawLogs
-    from civ7_advisor.ingest.readers import StatsRow
+    from civ_advisor.ingest.load import RawLogs
+    from civ_advisor.ingest.readers import StatsRow
     from tests.factories import build_queue_row, combat, deal, diplo_event, gossip_row
 
     def stats(turn, player):
@@ -119,7 +119,7 @@ def test_empty_state_has_empty_collections_and_no_resolver():
 
 
 def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
-    from civ7_advisor.ingest.textlogs import PlayerIdentityRow
+    from civ_advisor.ingest.textlogs import PlayerIdentityRow
 
     raw = RawLogs(
         stats=[

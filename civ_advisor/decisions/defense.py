@@ -11,8 +11,8 @@ label.
 """
 from __future__ import annotations
 
-from civ7_advisor.advisors import tactical
-from civ7_advisor.advisors.base import Severity
+from civ_advisor.advisors import tactical
+from civ_advisor.advisors.base import Severity
 
 from . import candidates
 from .context import DecisionContext

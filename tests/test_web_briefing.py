@@ -15,7 +15,7 @@ from pathlib import Path
 
 import pytest
 
-BRIEFING_JS = Path(__file__).resolve().parents[1] / "civ7_advisor" / "web" / "briefing.js"
+BRIEFING_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "briefing.js"
 
 pytestmark = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
 

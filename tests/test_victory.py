@@ -1,7 +1,7 @@
 import pytest
 
-from civ7_advisor.advisors import victory
-from civ7_advisor.advisors.base import Provenance, Severity
+from civ_advisor.advisors import victory
+from civ_advisor.advisors.base import Provenance, Severity
 from tests.factories import game_state, strategy
 
 

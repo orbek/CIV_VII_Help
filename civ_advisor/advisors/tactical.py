@@ -4,8 +4,8 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import asdict, dataclass
 
-from civ7_advisor.state.geo import hex_distance
-from civ7_advisor.state.models import GameState
+from civ_advisor.state.geo import hex_distance
+from civ_advisor.state.models import GameState
 
 from .base import Insight, Provenance, Severity, humanize
 

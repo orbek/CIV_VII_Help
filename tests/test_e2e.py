@@ -1,5 +1,5 @@
-from civ7_advisor.advisors import Provenance, Severity, run_all
-from civ7_advisor.state.models import GameState
+from civ_advisor.advisors import Provenance, Severity, run_all
+from civ_advisor.state.models import GameState
 
 
 def test_fixture_end_to_end(fixture_state):

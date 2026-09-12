@@ -43,7 +43,7 @@ deciding now. **Why this? · How to do it** opens compact steps beside the
 action.
 
 **How do I do it in the game?** The steps come from a small reviewed guide
-catalog packaged with the advisor (`civ7_advisor/knowledge/guides.json`) and
+catalog packaged with the advisor (`civ_advisor/knowledge/guides.json`) and
 each links the article it was written from. The steps say what to look for
 rather than naming buttons, because the game's UI changes between updates, and
 they never supply a figure — see [Guides and figures](#guides-and-figures).
@@ -211,7 +211,7 @@ than guaranteed optimal moves.
 ## Tuning
 
 Every threshold is a named constant at the top of its advisor module:
-`civ7_advisor/advisors/threat.py`, `tactical.py`, `victory.py`, `economy.py`,
+`civ_advisor/advisors/threat.py`, `tactical.py`, `victory.py`, `economy.py`,
 and `production.py`. Change a number, restart, done.
 
 These thresholds are advisor triage policy, not Civ VII rules. Audit their

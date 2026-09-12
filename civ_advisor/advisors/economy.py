@@ -4,7 +4,7 @@ from __future__ import annotations
 import statistics
 from dataclasses import dataclass
 
-from civ7_advisor.state.models import GameState
+from civ_advisor.state.models import GameState
 
 from .base import Insight, Provenance, Severity
 

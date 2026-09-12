@@ -15,9 +15,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from civ7_advisor.advisors import economy, production, tactical
-from civ7_advisor.advisors.base import Provenance
-from civ7_advisor.state.models import GameState
+from civ_advisor.advisors import economy, production, tactical
+from civ_advisor.advisors.base import Provenance
+from civ_advisor.state.models import GameState
 
 from .models import EvidenceFact, SourceKind
 

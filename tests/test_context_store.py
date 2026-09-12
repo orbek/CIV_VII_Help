@@ -5,7 +5,7 @@ import json
 
 import pytest
 
-from civ7_advisor.context_store import (
+from civ_advisor.context_store import (
     ACKNOWLEDGED,
     GOAL,
     SCHEMA_VERSION,

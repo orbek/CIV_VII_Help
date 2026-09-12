@@ -3,9 +3,9 @@ from __future__ import annotations
 
 import json
 
-from civ7_advisor.advisors import Insight, intel, tactical
-from civ7_advisor.advisors.base import visible
-from civ7_advisor.state.models import GameState
+from civ_advisor.advisors import Insight, intel, tactical
+from civ_advisor.advisors.base import visible
+from civ_advisor.state.models import GameState
 
 EXPLAIN_TOP_N = 3
 

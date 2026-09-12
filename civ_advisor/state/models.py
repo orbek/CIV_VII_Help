@@ -5,12 +5,12 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar
 
-from civ7_advisor.ingest.events import CombatRow, DiplomacySummaryRow, GossipRow
-from civ7_advisor.ingest.load import FileStatus
-from civ7_advisor.ingest.production import BuildQueueRow
-from civ7_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
-from civ7_advisor.ingest.textlogs import DealItem, PlayerIdentityRow
-from civ7_advisor.ingest.tactical import (
+from civ_advisor.ingest.events import CombatRow, DiplomacySummaryRow, GossipRow
+from civ_advisor.ingest.load import FileStatus
+from civ_advisor.ingest.production import BuildQueueRow
+from civ_advisor.ingest.readers import DiplomacyRow, HistorianRow, IntentKind, TargetRow
+from civ_advisor.ingest.textlogs import DealItem, PlayerIdentityRow
+from civ_advisor.ingest.tactical import (
     CombatOrderRow, CommanderPromotionRow, MayhemRow, OperationEvalRow, OperationRow,
     TacticalRow, UnitEfficiencyRow, UnitOperationRow,
 )

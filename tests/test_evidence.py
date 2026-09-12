@@ -3,8 +3,8 @@ from __future__ import annotations
 
 import pytest
 
-from civ7_advisor.advisors.base import Provenance, Severity
-from civ7_advisor.decisions.evidence import (
+from civ_advisor.advisors.base import Provenance, Severity
+from civ_advisor.decisions.evidence import (
     EvidenceLedger,
     age_fact,
     build_ledger,
@@ -17,7 +17,7 @@ from civ7_advisor.decisions.evidence import (
     settlement_coverage_fact,
     yield_comparison_fact,
 )
-from civ7_advisor.decisions.models import (
+from civ_advisor.decisions.models import (
     ActionCandidate,
     Applicability,
     DecisionCard,

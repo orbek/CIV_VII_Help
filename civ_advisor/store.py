@@ -16,14 +16,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable
 
-from civ7_advisor.advisors import Insight, run_all
-from civ7_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
-from civ7_advisor.ingest.load import RawLogs, load_logs
-from civ7_advisor.state.build import build_state
-from civ7_advisor.state.models import GameState
+from civ_advisor.advisors import Insight, run_all
+from civ_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
+from civ_advisor.ingest.load import RawLogs, load_logs
+from civ_advisor.state.build import build_state
+from civ_advisor.state.models import GameState
 
 if TYPE_CHECKING:
-    from civ7_advisor.llm.worker import CommentaryWorker
+    from civ_advisor.llm.worker import CommentaryWorker
 
 log = logging.getLogger(__name__)
 

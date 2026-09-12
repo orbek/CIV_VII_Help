@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.csvfile import LogFormatError
-from civ7_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
+from civ_advisor.ingest.csvfile import LogFormatError
+from civ_advisor.ingest.events import Combatant, CombatRow, DiplomacySummaryRow, GossipRow, read_combat_log, read_diplomacy_summary, read_gossip
 
 COMBAT_HEADER = ("Turn, SourceType, Location, AttPlayer, DefPlayer, CombatType, Attacker, Defender, AttStr, DefStr, "
                  "AttStrMod, DefStrMod, AttDmg, DefDmg, Destroyed, HealAmount, attHealth, defHealth\n")

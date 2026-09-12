@@ -1,7 +1,7 @@
 import asyncio
 from pathlib import Path
 
-from civ7_advisor.store import SCHEMA_VERSION, Store
+from civ_advisor.store import SCHEMA_VERSION, Store
 
 
 def test_rebuild_publishes_one_snapshot_with_state_insights_and_coverage(fixture_dir: Path):
@@ -37,7 +37,7 @@ def test_publish_reaches_subscribers_and_unsubscribe_stops_it():
 
 def test_store_archives_under_game_and_session_and_starts_a_new_session_after_a_wipe(tmp_path, fixture_dir):
     import shutil
-    from civ7_advisor.ingest.load import LOG_FILES
+    from civ_advisor.ingest.load import LOG_FILES
     logs = tmp_path / "logs"
     shutil.copytree(fixture_dir, logs)
     root = tmp_path / "archive"
@@ -78,7 +78,7 @@ def test_store_without_archive_root_writes_nothing(tmp_path, fixture_dir):
 
 
 def test_archiver_failure_does_not_break_rebuild(tmp_path, fixture_dir, monkeypatch):
-    import civ7_advisor.store as store_mod
+    import civ_advisor.store as store_mod
     def boom(*a, **k):
         raise OSError("disk full")
     monkeypatch.setattr(store_mod, "archive_logs", boom)
@@ -152,7 +152,7 @@ def test_a_log_wipe_and_reload_start_a_new_epoch(tmp_path, fixture_dir):
     """Civ VII empties Logs/ on launch. Whatever appears afterwards is a different
     sitting, so acknowledgements must not silently carry across it."""
     import shutil
-    from civ7_advisor.ingest.load import LOG_FILES
+    from civ_advisor.ingest.load import LOG_FILES
     logs = _copy_logs(tmp_path, fixture_dir)
     store = Store(logs)
     first = store.rebuild()

@@ -1,10 +1,10 @@
-from civ7_advisor.advisors import Provenance, tactical
-from civ7_advisor.ingest.readers import TargetRow
-from civ7_advisor.ingest.tactical import (
+from civ_advisor.advisors import Provenance, tactical
+from civ_advisor.ingest.readers import TargetRow
+from civ_advisor.ingest.tactical import (
     OperationEvalRow, OperationRow, TacticalRow, UnitEfficiencyRow, UnitOperationRow,
 )
-from civ7_advisor.state.geo import hex_distance
-from civ7_advisor.state.models import GameState, Player, PlayerKind
+from civ_advisor.state.geo import hex_distance
+from civ_advisor.state.models import GameState, Player, PlayerKind
 from tests.factories import city_target, combat
 
 

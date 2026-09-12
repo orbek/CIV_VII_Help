@@ -1,7 +1,7 @@
 """AI strategic focus and broad output proxies; these are not current victory scores."""
 from __future__ import annotations
 
-from civ7_advisor.state.models import GameState, Player, StrategyStatus
+from civ_advisor.state.models import GameState, Player, StrategyStatus
 
 from .base import Insight, Provenance, Severity
 

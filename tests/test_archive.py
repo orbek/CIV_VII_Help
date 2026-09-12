@@ -3,8 +3,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.archive import MANIFEST, archive_logs, game_key
-from civ7_advisor.ingest.load import LOG_FILES
+from civ_advisor.archive import MANIFEST, archive_logs, game_key
+from civ_advisor.ingest.load import LOG_FILES
 
 # One real GameCore.log line: the engine writes it when a save is loaded (tab after the bracket).
 SEEDS_LINE = "[2026-09-07 17:13:59]\tRandom Seeds: Game 1571231116, Map 1516997327\n"

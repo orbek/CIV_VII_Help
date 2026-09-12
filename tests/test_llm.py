@@ -5,10 +5,10 @@ from copy import deepcopy
 import httpx
 import pytest
 
-from civ7_advisor.advisors import run_all
-from civ7_advisor.llm.client import COMMENTARY_SCHEMA, ModelUnavailable, OllamaClient, OllamaUnavailable
-from civ7_advisor.llm.prompts import build_prompt, response_schema, turn_payload
-from civ7_advisor.llm.worker import CommentaryWorker
+from civ_advisor.advisors import run_all
+from civ_advisor.llm.client import COMMENTARY_SCHEMA, ModelUnavailable, OllamaClient, OllamaUnavailable
+from civ_advisor.llm.prompts import build_prompt, response_schema, turn_payload
+from civ_advisor.llm.worker import CommentaryWorker
 from tests.factories import game_state, snapshot
 
 

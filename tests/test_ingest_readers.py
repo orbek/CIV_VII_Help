@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.csvfile import LogFormatError
-from civ7_advisor.ingest.readers import (
+from civ_advisor.ingest.csvfile import LogFormatError
+from civ_advisor.ingest.readers import (
     DiplomacyRow,
     HappinessRow,
     HistorianRow,

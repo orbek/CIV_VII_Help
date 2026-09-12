@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from civ7_advisor.ingest.csvfile import LogFormatError
-from civ7_advisor.ingest.textlogs import DealItem, PlayerIdentityRow, read_deals, read_player_identities
+from civ_advisor.ingest.csvfile import LogFormatError
+from civ_advisor.ingest.textlogs import DealItem, PlayerIdentityRow, read_deals, read_player_identities
 
 # Captured live 2026-09-07 (verbatim lines).
 LIVE_DEALS = (

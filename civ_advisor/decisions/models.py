@@ -9,7 +9,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 
-from civ7_advisor.advisors.base import Provenance, Severity
+from civ_advisor.advisors.base import Provenance, Severity
 
 
 class SourceKind(Enum):

@@ -15,33 +15,33 @@ from civ_advisor.ingest.tactical import (
 )
 from civ_advisor.ingest.textlogs import read_deals, read_player_identities
 
-from ..base import Capability, GameProfile, LogReader
+from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
 
 READERS: tuple[LogReader, ...] = (
-    LogReader("Player_Stats.csv", "stats", read_player_stats),
-    LogReader("Player_Treasury.csv", "treasury", read_treasury),
-    LogReader("Player_Happiness.csv", "happiness", read_happiness),
-    LogReader("AI_Victories.csv", "victories", read_victories),
-    LogReader("AI_DiplomaticActions.csv", "diplomacy", read_diplomacy),
-    LogReader("AI_Targets.csv", "targets", read_targets),
-    LogReader("Historian.csv", "historian", read_historian),
-    LogReader("CityBuildQueue.csv", "build_queue", read_build_queue),
-    LogReader("CombatLog.csv", "combat", read_combat_log),
-    LogReader("Game_Gossip.csv", "gossip", read_gossip),
-    LogReader("DiplomacySummary.csv", "diplomacy_summary", read_diplomacy_summary),
-    LogReader("DiplomacyDeals.log", "deals", read_deals),
-    LogReader("UnitOperations.log", "unit_operations", read_unit_operations),
-    LogReader("AI_Tactical.csv", "tactical", read_tactical),
-    LogReader("AI_Operation.csv", "operations", read_operations),
-    LogReader("AI_CombatPlanning.csv", "combat_orders", read_combat_planning),
-    LogReader("AI_Operation_Eval.csv", "operation_evals", read_operation_evals),
-    LogReader("AI_UnitEfficiency.csv", "unit_efficiency", read_unit_efficiency),
-    LogReader("AI_MayhemTracker.csv", "mayhem", read_mayhem),
-    LogReader("AI_Commander_Promotions.csv", "commander_promotions", read_commander_promotions),
-    LogReader("GameCore.log", "player_identities", read_player_identities),
+    LogReader("Player_Stats.csv", "stats", simple(read_player_stats)),
+    LogReader("Player_Treasury.csv", "treasury", simple(read_treasury)),
+    LogReader("Player_Happiness.csv", "happiness", simple(read_happiness)),
+    LogReader("AI_Victories.csv", "victories", simple(read_victories)),
+    LogReader("AI_DiplomaticActions.csv", "diplomacy", simple(read_diplomacy)),
+    LogReader("AI_Targets.csv", "targets", simple(read_targets)),
+    LogReader("Historian.csv", "historian", simple(read_historian)),
+    LogReader("CityBuildQueue.csv", "build_queue", simple(read_build_queue)),
+    LogReader("CombatLog.csv", "combat", simple(read_combat_log)),
+    LogReader("Game_Gossip.csv", "gossip", simple(read_gossip)),
+    LogReader("DiplomacySummary.csv", "diplomacy_summary", simple(read_diplomacy_summary)),
+    LogReader("DiplomacyDeals.log", "deals", simple(read_deals)),
+    LogReader("UnitOperations.log", "unit_operations", simple(read_unit_operations)),
+    LogReader("AI_Tactical.csv", "tactical", simple(read_tactical)),
+    LogReader("AI_Operation.csv", "operations", simple(read_operations)),
+    LogReader("AI_CombatPlanning.csv", "combat_orders", simple(read_combat_planning)),
+    LogReader("AI_Operation_Eval.csv", "operation_evals", simple(read_operation_evals)),
+    LogReader("AI_UnitEfficiency.csv", "unit_efficiency", simple(read_unit_efficiency)),
+    LogReader("AI_MayhemTracker.csv", "mayhem", simple(read_mayhem)),
+    LogReader("AI_Commander_Promotions.csv", "commander_promotions", simple(read_commander_promotions)),
+    LogReader("GameCore.log", "player_identities", simple(read_player_identities)),
 )
 
 CIV7 = GameProfile(

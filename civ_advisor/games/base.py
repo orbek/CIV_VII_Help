@@ -38,7 +38,16 @@ class LogReader:
 
     filename: str
     attr: str
-    read: Callable[[Path], list]
+    read: Callable[[Path, Path], list]
+
+
+def simple(fn: Callable[[Path], list]) -> Callable[[Path, Path], list]:
+    """Adapt a reader that needs only its own file to the two-argument form."""
+
+    def read(logs_dir: Path, path: Path) -> list:
+        return fn(path)
+
+    return read
 
 
 @dataclass(frozen=True)

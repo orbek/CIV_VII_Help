@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from civ_advisor.games.base import GameProfile, LogReader
+from civ_advisor.games.base import GameProfile, LogReader, simple
 from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.load import load_logs
 from civ_advisor.ingest.readers import read_player_stats
@@ -102,12 +102,12 @@ def test_new_logs_are_wired_to_their_rawlogs_attribute(tmp_path: Path, fixture_d
 def test_load_logs_reads_only_the_files_the_profile_declares(tmp_path, fixture_dir):
     """A profile that declares one file must not read, or report on, the other
     twenty sitting next to it. This is what lets Civ VI declare a different set."""
-    from civ_advisor.games.base import GameProfile, LogReader
+    from civ_advisor.games.base import GameProfile, LogReader, simple
     from civ_advisor.ingest.readers import read_player_stats
 
     only_stats = GameProfile(
         id="civ7-statsonly", display_name="Stats Only", default_logs_dir=tmp_path,
-        readers=(LogReader("Player_Stats.csv", "stats", read_player_stats),),
+        readers=(LogReader("Player_Stats.csv", "stats", simple(read_player_stats)),),
         knowledge_package="civ_advisor.knowledge",
     )
     raw = load_logs(fixture_dir, profile=only_stats)
@@ -123,7 +123,7 @@ def test_load_logs_reports_a_misspelled_reader_attr_instead_of_silently_dropping
     reads the real (empty) field and gets confidently empty advice."""
     typo_profile = GameProfile(
         id="civ7-typo", display_name="Typo", default_logs_dir=fixture_dir,
-        readers=(LogReader("Player_Stats.csv", "militry", read_player_stats),),
+        readers=(LogReader("Player_Stats.csv", "militry", simple(read_player_stats)),),
         knowledge_package="civ_advisor.knowledge",
     )
     raw = load_logs(fixture_dir, profile=typo_profile)
@@ -132,3 +132,30 @@ def test_load_logs_reports_a_misspelled_reader_attr_instead_of_silently_dropping
     assert "militry" in raw.files["Player_Stats.csv"].error
     assert not hasattr(raw, "militry")
     assert raw.stats == []
+
+
+def test_a_reader_receives_the_logs_directory_so_it_can_join_across_files(tmp_path):
+    """Civ VI's build queue has no owner column; ownership lives in a sibling
+    file. The reader must be handed the directory, not just its own path."""
+    from civ_advisor.games.base import GameProfile, LogReader
+
+    (tmp_path / "Player_Stats.csv").write_text("Game Turn, Player\n1, 0\n")
+    (tmp_path / "Sibling.csv").write_text("anything\n")
+    seen = {}
+
+    def reader(logs_dir, path):
+        seen["logs_dir"] = logs_dir
+        seen["path"] = path
+        seen["sibling_visible"] = (logs_dir / "Sibling.csv").is_file()
+        return []
+
+    profile = GameProfile(
+        id="joingame", display_name="Join Game", default_logs_dir=tmp_path,
+        readers=(LogReader("Player_Stats.csv", "stats", reader),),
+        knowledge_package="civ_advisor.knowledge",
+    )
+    load_logs(tmp_path, profile=profile)
+
+    assert seen["logs_dir"] == tmp_path
+    assert seen["path"] == tmp_path / "Player_Stats.csv"
+    assert seen["sibling_visible"] is True

@@ -74,7 +74,7 @@ def load_logs(logs_dir: Path, profile: GameProfile = CIV7) -> RawLogs:
     for reader in profile.readers:
         path = logs_dir / reader.filename
         try:
-            rows = reader.read(path)
+            rows = reader.read(logs_dir, path)
         except OSError as exc:
             error = "file not found" if isinstance(exc, FileNotFoundError) else str(exc)
             raw.files[reader.filename] = FileStatus(reader.filename, False, 0, None, error)

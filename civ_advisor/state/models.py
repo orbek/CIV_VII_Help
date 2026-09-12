@@ -82,7 +82,9 @@ class PlayerTurn:
     happiness_total: int | None = None
 
     @property
-    def settlements(self) -> int:
+    def settlements(self) -> int | None:
+        if self.towns is None:
+            return None
         return self.cities + self.towns
 
     @property

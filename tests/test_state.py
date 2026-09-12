@@ -163,3 +163,15 @@ def test_optional_stats_fields_default_to_none_not_zero():
     assert pt.towns is None
     assert pt.settlement_cap is None
     assert pt.diplomacy is None
+
+
+def test_settlements_is_none_when_towns_is_none():
+    """cities + towns would raise on None; the derived property must propagate the
+    absence instead, same as the fields it's built from."""
+    from civ_advisor.state.models import PlayerTurn
+
+    pt = PlayerTurn(turn=1, player=0, cities=1, techs=2, land_units=1,
+                    naval_units=0, tiles_owned=5, tiles_improved=1,
+                    gold_balance=10.0, science=1.0, culture=1.0, gold=2.0,
+                    production=3.0, food=4.0)
+    assert pt.settlements is None

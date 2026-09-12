@@ -29,6 +29,11 @@ ORACLE_MARKERS = (
     "scored these policy cards", "TECH_", "CIVIC_", "POLICY_",
     "Likes civs who respect the environment",
     "They dislike civilizations with a small standing army",
+    # Insight titles, which the "since last turn" changes payload carries verbatim
+    # (civ_advisor/decisions/changes.py) -- distinct from the `why` text the markers
+    # above were drawn from, and the exact gap the whole-phase review found.
+    "appetite for a fight is rising",
+    "Diplomatic friction between you and",
 )
 
 # Vocabulary that would mean the advisor had inferred a victory path from
@@ -107,7 +112,7 @@ def test_fair_mode_state_payload_drops_every_new_threat_field(civ6_state):
 
     for entry in fair["threats"]:
         for field in ("combat_desire", "combat_desire_turn", "combat_desire_prior",
-                      "combat_desire_is_highest", "grievances"):
+                      "combat_desire_prior_turn", "combat_desire_is_highest", "grievances"):
             assert field not in entry, f"fair-mode state payload leaked {field}"
     assert json.dumps(fair).count("Likes civs who respect") == 0
 
@@ -120,7 +125,7 @@ def test_every_field_this_phase_added_to_rivalthreat_is_suppressed(civ6_state):
     from civ_advisor.advisors import threat
 
     added = {"combat_desire", "combat_desire_turn", "combat_desire_prior",
-             "combat_desire_is_highest", "grievances"}
+             "combat_desire_prior_turn", "combat_desire_is_highest", "grievances"}
     assert added <= {f.name for f in dataclasses.fields(threat.RivalThreat)}
     assert added <= set(ORACLE_THREAT_FIELDS)
 

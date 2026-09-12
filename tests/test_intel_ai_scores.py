@@ -85,3 +85,17 @@ def test_the_raw_field_keeps_the_games_own_keys(civ6_dir):
     event = next(e for e in ai_score_events(state) if e.event_type == "ai_score.research_goal")
 
     assert "TECH_" in event.raw
+
+
+def test_every_ai_score_event_carries_its_caveat_in_the_text_itself(civ6_dir):
+    """The whole-phase review's Important: the refusal to infer a victory path from a
+    scored preference list lived only in this module's docstring, which ships nowhere
+    -- the prompt builder reads `event.text` verbatim and the docstring never reaches
+    it. The caveat must be IN the text, the same way combat_desire's caveat lives
+    inside its own `why` string and so survives into the prompt naturally."""
+    state = build_state(load_logs(civ6_dir, profile=CIV6))
+    events = ai_score_events(state)
+
+    assert events, "the capture should produce at least one ai_score event"
+    for e in events:
+        assert intel.AI_SCORE_CAVEAT in e.text, f"{e.event_type} text carries no caveat: {e.text!r}"

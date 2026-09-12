@@ -29,7 +29,7 @@ INTEL_LIMIT = 300  # newest events returned by /api/intel
 ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_turn",
                         "city_tiles_targeted", "units_targeted", "target_box",
                         "combat_desire", "combat_desire_turn", "combat_desire_prior",
-                        "combat_desire_is_highest", "grievances")
+                        "combat_desire_prior_turn", "combat_desire_is_highest", "grievances")
 
 SCHEMA_VERSION = 1
 

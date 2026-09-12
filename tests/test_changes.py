@@ -36,10 +36,10 @@ def snapshot(turn: int, insights: tuple, *, session: str = "s1", epoch: int = 1,
 
 def entry(turn: int, insights: tuple, *, catalog: str = "cat-1", cards: tuple = (),
           comparisons: dict | None = None, session: str = "s1", epoch: int = 1,
-          revision: int = 1, **statuses: str) -> tracking.HistoryEntry:
+          revision: int = 1, oracle: bool = True, **statuses: str) -> tracking.HistoryEntry:
     return tracking.entry_from(
         snapshot(turn, insights, session=session, epoch=epoch, revision=revision, **statuses),
-        cards, catalog, comparisons)
+        cards, catalog, comparisons, oracle=oracle)
 
 
 def gap(stat: str, ratio: float, turn: int):
@@ -200,3 +200,47 @@ def test_the_retrospective_puts_two_records_side_by_side_and_claims_nothing():
     assert "no success is being scored" in retro["caveat"]
     # No score, no rate, no causal field of any kind.
     assert set(retro) == {"states", "acknowledged", "caveat"}
+
+
+def test_fair_mode_changes_never_carries_an_oracle_insights_id_or_title():
+    """The whole-phase review's Critical: `signals_from` iterated every insight with
+    no oracle filter, so an Oracle-only insight's id and title reached the fair-mode
+    "since last turn" payload even though cards and intel correctly hid it.
+
+    Proved against a payload that actually HAS rows -- two recorded turns with a
+    fair-visible signal changing between them -- so this cannot pass vacuously the
+    way the guard it replaces did against an empty, single-turn fixture."""
+    oracle_insight = insight("threat.combat_desire.7", advisor="threat",
+                              provenance=Provenance.ORACLE,
+                              title="Cyrus's appetite for a fight is rising")
+    fair_insight_before = insight("threat.at_war.7", advisor="threat",
+                                  severity=Severity.WARN)
+    fair_insight_after = insight("threat.at_war.7", advisor="threat",
+                                 severity=Severity.CRITICAL)
+
+    before = entry(10, (fair_insight_before, oracle_insight), oracle=False)
+    after = entry(11, (fair_insight_after, oracle_insight), oracle=False)
+
+    changes = tracking.compare(before, after)
+    assert changes, "the payload under test must have rows, or this proves nothing"
+
+    ids = {c.signal_id for c in changes}
+    assert "threat.at_war.7" in ids
+    assert "threat.combat_desire.7" not in ids
+    assert all("appetite for a fight" not in c.label for c in changes)
+    assert "threat.combat_desire.7" not in after.signals
+    assert "threat.combat_desire.7" not in before.signals
+
+
+def test_oracle_mode_changes_does_carry_the_oracle_signal():
+    """The filter must be a filter, not a deletion: with oracle=True the same
+    Oracle-only insight shows up as a signal, proving the fair-mode test above
+    exercises a real filter rather than an insight that never made it into a
+    Signal at all."""
+    oracle_insight = insight("threat.combat_desire.7", advisor="threat",
+                              provenance=Provenance.ORACLE)
+    before = entry(10, (), oracle=True)
+    after = entry(11, (oracle_insight,), oracle=True)
+    assert "threat.combat_desire.7" in after.signals
+    ids = {c.signal_id for c in tracking.compare(before, after)}
+    assert "threat.combat_desire.7" in ids

@@ -27,7 +27,7 @@ from civ_advisor.decisions.context import (
 )
 from civ_advisor.decisions.models import PlayerReport
 from civ_advisor.games.base import GameProfile
-from civ_advisor.games.registry import UnknownGame
+from civ_advisor.games.registry import UnknownGame, get_profile
 from civ_advisor.games.selection import AUTO, GameSelector, Resolution
 from civ_advisor.ingest.poller import snapshot as poll_snapshot
 from civ_advisor.ingest.poller import watch
@@ -321,7 +321,7 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     def _changes(captured: Snapshot, oracle: bool, context, cards) -> dict:
         entry = change_tracking.entry_from(
-            captured, cards, context.catalog_revision, context.comparisons)
+            captured, cards, context.catalog_revision, context.comparisons, oracle=oracle)
         previous = history.previous(entry)
         history.record(entry)
         return changes_to_dict(entry, previous, history,
@@ -440,7 +440,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         try:
             request = questions.build_request(
                 kind, decision, evidence, guides, identity,
-                player_text=str(body.get("text") or ""))
+                player_text=str(body.get("text") or ""),
+                display_name=get_profile(captured.game_id).display_name)
         except ValueError as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         if store.commentary_worker is None:

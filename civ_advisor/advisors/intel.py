@@ -20,6 +20,13 @@ KIND_ORDER = {"combat": 0, "deal": 1, "diplomacy": 2, "gossip": 3, "ai_score": 4
 SYMMETRIC_ACTIONS = frozenset({"Met"})  # the log writes these once from each side; show one
 TOP_SCORED = 3   # how many items a "scored these highest" event names
 
+# Carried in the event TEXT itself, not only in this module's docstring: the docstring
+# ships nowhere, but this text is what a prompt builder reads verbatim. Mirrors how the
+# combat-desire insight's caveat survives by living inside its own `why` string.
+AI_SCORE_CAVEAT = (
+    " (a priority ranking among this turn's options, not a stated overall strategy)"
+)
+
 
 @dataclass(frozen=True)
 class IntelEvent:
@@ -151,7 +158,7 @@ def _ai_score_events(state: GameState) -> list[IntelEvent]:
             out.append(IntelEvent(
                 turn, "ai_score", Provenance.ORACLE,
                 f"{_name(state, player)}'s AI set {humanize(goal.tech)} as its research goal "
-                f"(scored {goal.score:.1f} of {weighed} techs it weighed)",
+                f"(scored {goal.score:.1f} of {weighed} techs it weighed)" + AI_SCORE_CAVEAT,
                 (player,), None, None, "AI_Research.csv",
                 raw=f"{goal.tech} score {goal.score} boost {goal.boost}",
                 event_type="ai_score.research_goal"))
@@ -161,7 +168,7 @@ def _ai_score_events(state: GameState) -> list[IntelEvent]:
             turn, "ai_score", Provenance.ORACLE,
             f"{_name(state, player)}'s AI scored these techs highest: "
             + ", ".join(f"{humanize(r.tech)} ({r.score:.1f})" for r in top)
-            + f", of {weighed} weighed",
+            + f", of {weighed} weighed" + AI_SCORE_CAVEAT,
             (player,), None, None, "AI_Research.csv",
             raw=" | ".join(f"{r.tech} {r.score}" for r in top),
             event_type="ai_score.tech"))
@@ -179,7 +186,7 @@ def _ai_score_events(state: GameState) -> list[IntelEvent]:
             turn, "ai_score", Provenance.ORACLE,
             f"{_name(state, player)}'s AI scored these {family} highest: "
             + ", ".join(f"{humanize(r.policy)} ({r.score:.1f})" for r in top)
-            + f", of {len(rows)} weighed",
+            + f", of {len(rows)} weighed" + AI_SCORE_CAVEAT,
             (player,), None, None, "AI_GovtPolicies.csv",
             raw=" | ".join(f"{r.policy} {r.score}" for r in top),
             event_type="ai_score.civic" if action == "Civic" else "ai_score.policy"))

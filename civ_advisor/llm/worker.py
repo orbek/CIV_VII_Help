@@ -15,6 +15,7 @@ import time
 from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass, replace
 
+from civ_advisor.games.registry import get_profile
 from civ_advisor.store import Snapshot
 
 from . import questions
@@ -95,8 +96,9 @@ class CommentaryWorker:
         """The request for this snapshot and mode, or None when there is nothing to narrate."""
         if snapshot.analysis_turn <= 0:
             return None
+        display_name = get_profile(snapshot.game_id).display_name
         prompt, saw_oracle, insight_ids = build_prompt(
-            snapshot.state, list(snapshot.insights), oracle
+            snapshot.state, list(snapshot.insights), oracle, display_name
         )
         if not insight_ids:                 # nothing survived filtering: nothing to explain
             return None

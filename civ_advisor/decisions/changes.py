@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from civ_advisor.advisors.base import Severity
+from civ_advisor.advisors.base import Severity, visible
 from civ_advisor.store import Snapshot
 
 from .models import DecisionCard
@@ -155,15 +155,17 @@ class History:
 
 def signals_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
                  comparisons: dict | None = None,
-                 on_pace: float = 1.0) -> dict[str, Signal]:
+                 on_pace: float = 1.0, oracle: bool = True) -> dict[str, Signal]:
     """Everything trackable in one snapshot, including what is now satisfied.
 
     Satisfied signals matter as much as the warnings: a yield that has climbed back to the
     field is the positive observation that lets last turn's warning be called resolved
-    rather than merely gone.
+    rather than merely gone. Insights are filtered by ``oracle`` first: a fair-mode
+    caller must never have an Oracle-only insight's id, title, or severity turn up in a
+    "since last turn" row, even indirectly through history.
     """
     out: dict[str, Signal] = {}
-    for insight in snapshot.insights:
+    for insight in visible(snapshot.insights, oracle):
         out[insight.id] = Signal(
             id=insight.id, label=insight.title, severity=int(insight.severity),
             observed_turn=insight.turn,
@@ -195,13 +197,14 @@ def signals_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
 
 
 def entry_from(snapshot: Snapshot, cards: tuple[DecisionCard, ...],
-               catalog_revision: str, comparisons: dict | None = None) -> HistoryEntry:
+               catalog_revision: str, comparisons: dict | None = None,
+               oracle: bool = True) -> HistoryEntry:
     return HistoryEntry(
         session=snapshot.session, epoch=snapshot.epoch, turn=snapshot.analysis_turn,
         revision=snapshot.revision, captured_at=snapshot.captured_at,
         catalog_revision=catalog_revision,
         coverage={c.name: c.status for c in snapshot.coverage},
-        signals=signals_from(snapshot, cards, comparisons),
+        signals=signals_from(snapshot, cards, comparisons, oracle=oracle),
     )
 
 

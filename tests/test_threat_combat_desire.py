@@ -79,6 +79,23 @@ def test_a_stale_reading_is_not_reported_as_current():
     assert "threat.combat_desire.1" not in ids(threat.advise(s))
 
 
+def test_a_gap_in_the_log_reports_the_priors_real_turn_not_the_constant():
+    """The whole-phase review's Important: the prior reading is the newest row at or
+    before the nominal COMBAT_DESIRE_TURNS boundary, which can be much older than that
+    boundary when AI_Military has a gap. The evidence must quote the row it actually
+    found, not assert the constant unconditionally."""
+    s = game_state(turn=20, rivals={1: "Rival One"})
+    # No row at turn 11 (20 - COMBAT_DESIRE_TURNS + 1): the newest row at or before it
+    # is from turn 5, fifteen turns back, not ten.
+    s.military = [military_row(5, 1, 0.3), military_row(20, 1, 2.5)]
+    got = threat.summarize(s)[0]
+
+    assert got.combat_desire_prior_turn == 5
+    why = ids(threat.advise(s))["threat.combat_desire.1"].why
+    assert "turn 5" in why
+    assert f"{threat.COMBAT_DESIRE_TURNS} turns earlier" not in why
+
+
 def test_the_signal_is_real_in_the_civ6_capture(civ6_dir):
     from civ_advisor.games.civ6 import CIV6
     from civ_advisor.ingest.load import load_logs

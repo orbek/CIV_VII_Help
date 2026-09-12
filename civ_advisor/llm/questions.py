@@ -84,6 +84,7 @@ class QuestionRequest:
     turn: int
     payload: dict               # the facts, candidates, guides and unknowns
     player_text: str = ""       # for CHALLENGE only, already trimmed
+    display_name: str = "Civilization VII"  # the game this data actually came from
 
     @property
     def evidence_ids(self) -> tuple[str, ...]:
@@ -122,7 +123,8 @@ class Answer:
 
 
 def build_request(kind: str, decision: dict, evidence: list[dict], guides: list[dict],
-                  identity: dict, player_text: str = "") -> QuestionRequest:
+                  identity: dict, player_text: str = "",
+                  display_name: str = "Civilization VII") -> QuestionRequest:
     """Assemble the closed world for one question.
 
     `evidence` and `guides` must already be filtered for the evidence mode: this function
@@ -166,6 +168,7 @@ def build_request(kind: str, decision: dict, evidence: list[dict], guides: list[
         catalog_revision=identity.get("catalog_revision", ""),
         turn=identity["turn"], payload=payload,
         player_text=(player_text or "").strip()[:CHALLENGE_LIMIT],
+        display_name=display_name,
     )
 
 
@@ -198,7 +201,7 @@ def prompt_for(request: QuestionRequest) -> str:
         said = ("\nThe player's own words, which are an intention and not an observed "
                 f"fact: {json.dumps(request.player_text, ensure_ascii=False)}\n")
     return (
-        "You are a Civilization VII turn advisor answering one question about one "
+        f"You are a {request.display_name} turn advisor answering one question about one "
         "decision. Use only the supplied JSON. Do not introduce a number, a prerequisite, "
         "a game screen, an option or a URL that is not in it. Every id you cite must "
         "appear in the supplied lists.\n"

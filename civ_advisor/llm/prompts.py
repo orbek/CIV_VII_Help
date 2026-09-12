@@ -8,6 +8,13 @@ from civ_advisor.advisors.base import visible
 from civ_advisor.state.models import GameState
 
 EXPLAIN_TOP_N = 3
+INTEL_WINDOW = 80        # newest events (of any kind) offered to the model
+# ai_score events can number in the dozens per turn (Civ VI: up to three per rival), and
+# the feed sorts newest-turn-first -- left uncapped they alone can fill INTEL_WINDOW and
+# push out gossip, diplomacy and combat from every earlier turn. Capped independently so
+# the window still covers several turns of the events the player could see in-game
+# rather than becoming mostly AI score lists.
+AI_SCORE_WINDOW = 24
 
 
 def response_schema(top_ids: list[str], valid_ids: set[str]) -> dict:
@@ -64,10 +71,19 @@ def turn_payload(state: GameState, insights: list[Insight], oracle: bool = True)
         "id": item.id, "severity": item.severity.name, "provenance": item.provenance.value,
         "title": item.title, "recommendation": item.recommendation, "why": item.why,
     } for item in insights]
+    fed = visible(intel.feed(state), oracle)
+    capped: list = []
+    ai_score_seen = 0
+    for event in fed:
+        if event.kind == "ai_score":
+            ai_score_seen += 1
+            if ai_score_seen > AI_SCORE_WINDOW:
+                continue
+        capped.append(event)
     events = [{
         "turn": event.turn, "kind": event.kind, "provenance": event.provenance.value,
         "text": event.text,
-    } for event in visible(intel.feed(state), oracle)[:80]]
+    } for event in capped[:INTEL_WINDOW]]
     payload = {"turn": turn, "standings": standings, "insights": insight_rows, "intel": events}
     if oracle:
         tactical_data = tactical.snapshot(state)
@@ -80,12 +96,19 @@ def turn_payload(state: GameState, insights: list[Insight], oracle: bool = True)
 
 
 def build_prompt(state: GameState, insights: list[Insight],
-                 oracle: bool = True) -> tuple[str, bool, list[str]]:
+                 oracle: bool = True,
+                 display_name: str = "Civilization VII") -> tuple[str, bool, list[str]]:
     """The prompt, whether it read any Oracle evidence, and the insight ids it may cite.
 
     `saw_oracle` is a property of this prompt's contents, not of who asked for it: an
     oracle-mode prompt for a turn with no intercepted evidence at all is fair, and the
     result is safe to show in either mode.
+
+    `display_name` names the game this data actually came from -- the caller's job, since
+    only it knows which profile produced this state. Defaulting to Civilization VII keeps
+    every existing Civ VII call site correct without a change; a Civ VI caller must pass
+    its own profile's display name so the model is not told it is advising a different
+    game than the one whose logs it just read.
     """
     insights = visible(insights, oracle)
     payload = turn_payload(state, insights, oracle)
@@ -95,8 +118,10 @@ def build_prompt(state: GameState, insights: list[Insight],
     top_ids = [i.id for i in insights[:EXPLAIN_TOP_N]]
     evidence = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
     prompt = (
-        "You are a Civilization VII turn advisor. Use only the supplied deterministic JSON; do not "
-        "invent or recompute figures. Every claim and every plan step must cite an exact insight id. "
+        f"You are a {display_name} turn advisor. Use only the supplied deterministic JSON; do not "
+        "invent or recompute figures. Do not attribute a victory path, win condition or overall "
+        "strategy to any rival, including from a scored preference list -- a score ranks options, "
+        "it is not a stated goal. Every claim and every plan step must cite an exact insight id. "
         "Return JSON only with this shape: {\"second_opinion\":\"text with [insight.id] citations\","
         "\"explain\":{\"insight.id\":\"why it matters, cost of ignoring it, and alternatives\"},"
         "\"turn_plan\":[{\"insight_id\":\"id\",\"step\":\"ordered action\"}]}. "

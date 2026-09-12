@@ -66,7 +66,8 @@ class RivalThreat:
     # log the AI's appetite for a fight has no reading, which is not a zero.
     combat_desire: float | None = None
     combat_desire_turn: int | None = None
-    combat_desire_prior: float | None = None          # same rival, COMBAT_DESIRE_TURNS earlier
+    combat_desire_prior: float | None = None          # same rival, at/before COMBAT_DESIRE_TURNS earlier
+    combat_desire_prior_turn: int | None = None       # the turn combat_desire_prior actually dates from
     combat_desire_is_highest: bool = False            # among rivals on combat_desire_turn
     grievances: tuple[Grievance, ...] = ()   # standing and negative, most negative first
 
@@ -153,7 +154,8 @@ def _summarize_rival(state: GameState, rival: Player, human_land: int) -> RivalT
         combat_desire=desire[0] if desire else None,
         combat_desire_turn=desire[1] if desire else None,
         combat_desire_prior=desire[2] if desire else None,
-        combat_desire_is_highest=bool(desire and desire[3]),
+        combat_desire_prior_turn=desire[3] if desire else None,
+        combat_desire_is_highest=bool(desire and desire[4]),
         grievances=_grievances(state, rival.id),
     )
 
@@ -182,15 +184,23 @@ def _army_growth(state: GameState, rival_id: int) -> tuple[list[float], list[flo
     return rs, hs
 
 
-def _combat_desire(state: GameState, rival_id: int) -> tuple[float, int, float | None, bool] | None:
-    """The rival's latest combat-desire reading, what it was earlier, and whether it
-    leads the field. None when this game logs no such thing at all.
+def _combat_desire(
+    state: GameState, rival_id: int
+) -> tuple[float, int, float | None, int | None, bool] | None:
+    """The rival's latest combat-desire reading, what it was earlier (and the turn that
+    earlier reading actually dates from), and whether it leads the field. None when this
+    game logs no such thing at all.
 
     Only the newest reading at or before the complete turn counts, and only if it is
     no more than one turn stale -- the AI logs lag the human by up to a turn, exactly
     as the DECLARE_WAR scoring above does. `is_highest` compares only rows from the
     SAME turn: the score is a within-turn priority and comparing two turns' numbers
     would be comparing two different scales.
+
+    The prior reading is the newest row at or before the nominal COMBAT_DESIRE_TURNS
+    boundary, not necessarily one dated exactly there -- a gap in AI_Military.csv can
+    leave the newest such row much older than that. Its actual turn is returned
+    alongside the value so a caller never has to assert a window it cannot verify.
     """
     t = state.complete_through_turn
     rows = [m for m in state.military if m.player == rival_id and m.turn <= t]
@@ -200,11 +210,14 @@ def _combat_desire(state: GameState, rival_id: int) -> tuple[float, int, float |
     if latest.turn < t - 1:
         return None
     prior = [m for m in rows if m.turn <= latest.turn - COMBAT_DESIRE_TURNS + 1]
-    before = max(prior, key=lambda m: m.turn).combat_desire if prior else None
+    prior_row = max(prior, key=lambda m: m.turn) if prior else None
+    before = prior_row.combat_desire if prior_row else None
+    before_turn = prior_row.turn if prior_row else None
     rival_ids = {p.id for p in state.rivals()}
     same_turn = [m.combat_desire for m in state.military
                  if m.turn == latest.turn and m.player in rival_ids]
-    return latest.combat_desire, latest.turn, before, latest.combat_desire >= max(same_turn)
+    return (latest.combat_desire, latest.turn, before, before_turn,
+            latest.combat_desire >= max(same_turn))
 
 
 def _grievances(state: GameState, rival_id: int) -> tuple[Grievance, ...]:
@@ -277,7 +290,7 @@ def advise(state: GameState) -> list[Insight]:
                                "and check whether a grievance can be defused before it is acted on.",
                 why=f"{r.name}'s AI logged a combat desire of {r.combat_desire:.1f} on turn "
                     f"{r.combat_desire_turn}, up {rose:.1f} from {r.combat_desire_prior:.1f} "
-                    f"{COMBAT_DESIRE_TURNS} turns earlier"
+                    f"on turn {r.combat_desire_prior_turn}"
                     + (", the highest of any rival that turn." if r.combat_desire_is_highest
                        else ", though another rival scored higher.")
                     + " This is read relative to the same turn's other rivals and to this "

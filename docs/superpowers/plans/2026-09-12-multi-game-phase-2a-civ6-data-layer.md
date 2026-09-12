@@ -561,9 +561,10 @@ them. The profile declares up front what Civ VI cannot support."
 **Measured facts this task depends on** (turn-53 capture, 2026-09-12):
 `Player_Stats.csv` has exactly 20 header fields and every row has 20.
 `Faith` appears at index 13 (balance) and index 17 (yield) — the reader must
-be positional. `Player_Stats_2.csv` has 12 fields. `UnitOperations.log` has
-6533 rows of 5 fields and 3 rows of 2 fields, the latter reading
-`Unit operation handler <hex>, is disabled`.
+be positional. `Player_Stats_2.csv` has 12 fields. `UnitOperations.log` in the committed
+fixture has 396 rows of 5 fields and 3 rows of 2 fields at lines 2-4, the
+latter reading `Unit operation handler <hex>, is disabled`. (Task 3 trimmed
+this file to 400 lines; the untrimmed capture had 6533 data rows.)
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -606,12 +607,17 @@ def test_player_stats_leaves_civ7_only_fields_unavailable(civ6_dir):
 
 def test_unit_operations_skips_engine_diagnostics_but_not_real_rows(civ6_dir):
     """Civ VI interleaves 'Unit operation handler <hex>, is disabled' lines
-    among the data. Verified: 6533 data rows, 3 diagnostics."""
+    among the data -- at lines 2-4, before any data row.
+
+    Counts are for the COMMITTED fixture, which Task 3 trimmed to 400 lines:
+    396 data rows and 3 diagnostics, turns 1-7. (The untrimmed capture had
+    6533 data rows through turn 52.) The trim deliberately kept the
+    diagnostics, which are the whole point of this test."""
     from civ_advisor.games.civ6.readers import read_unit_operations_civ6
 
     rows = read_unit_operations_civ6(civ6_dir, civ6_dir / "UnitOperations.log")
-    assert len(rows) == 6533
-    assert max(r.turn for r in rows) == 52
+    assert len(rows) == 396
+    assert max(r.turn for r in rows) == 7
 
 
 def test_unit_operations_still_raises_on_an_unrecognised_short_row(tmp_path):

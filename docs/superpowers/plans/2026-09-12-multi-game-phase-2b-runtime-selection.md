@@ -2669,6 +2669,14 @@ tab and states the reason from the profile's own declaration."
 
 ### Task 11: Record what phase 2b established
 
+**One wording polish carried from Task 9's review.** When a pinned game
+both has a gap (absent directory, or installed-but-never-played) AND
+disagrees with detection, the header concatenates three `" — "` segments:
+`pinned to X — <gap> — detection says Y`. Every part is accurate; it is
+just dense to read at a glance, which matters for a line whose whole job
+is telling the player at a glance which game they are looking at. Restructure
+the wording so the three facts stay distinguishable without three dashes.
+
 **Two user-facing wrinkles this task must document or resolve**, both raised
 by earlier reviews rather than invented here:
 

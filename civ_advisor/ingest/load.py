@@ -22,6 +22,7 @@ from .tactical import (
     UnitEfficiencyRow,
     UnitOperationRow,
 )
+from .aiscores import DiplomacyModifierRow, MilitaryRow, PolicyScoreRow, TechScoreRow
 
 log = logging.getLogger(__name__)
 
@@ -58,6 +59,13 @@ class RawLogs:
     mayhem: list[MayhemRow] = field(default_factory=list)
     commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
     player_identities: list[PlayerIdentityRow] = field(default_factory=list)
+    # Civ VI-only, AI-internal (spec §3.3). Civ VII declares no reader for any of
+    # them, so these stay empty for it -- empty because the game has no such
+    # concept, which the profile's capability declaration is what actually says.
+    military: list[MilitaryRow] = field(default_factory=list)
+    diplomacy_modifiers: list[DiplomacyModifierRow] = field(default_factory=list)
+    tech_scores: list[TechScoreRow] = field(default_factory=list)
+    policy_scores: list[PolicyScoreRow] = field(default_factory=list)
     # Civ VI's build-queue reader joins AI_CityBuild.csv privately for ownership and
     # never sets this; it exists only so that file gets a declared reader of its own,
     # and therefore its own FileStatus below -- a joined-only file must not go

@@ -53,6 +53,16 @@ def test_every_declared_capability_is_backed_by_a_declared_reader(profile):
         assert "Player_Stats.csv" in profile.log_files
     if stats2_backed & set(profile.capabilities):
         assert "Player_Stats_2.csv" in profile.log_files
+    # Phase 3: each of these is one file, and the declaration is a promise
+    # that file is read.
+    for capability, filename in (
+        (Capability.COMBAT_DESIRE, "AI_Military.csv"),
+        (Capability.DIPLOMATIC_MODIFIERS, "DiplomacyModifiers.csv"),
+        (Capability.RESEARCH_PREFERENCE, "AI_Research.csv"),
+        (Capability.POLICY_PREFERENCE, "AI_GovtPolicies.csv"),
+    ):
+        if profile.supports(capability):
+            assert filename in profile.log_files
 
 
 @pytest.mark.parametrize("profile", PROFILES, ids=lambda p: p.id)

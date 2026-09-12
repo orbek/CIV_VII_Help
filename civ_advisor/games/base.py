@@ -26,6 +26,11 @@ class Capability(StrEnum):
     CIVICS = "civics"
     TOURISM = "tourism"
     DIPLOMATIC_FAVOR = "diplomatic_favor"
+    # Civ VI-only, and all AI-internal: anything built from these is ORACLE.
+    COMBAT_DESIRE = "combat_desire"                # AI_Military.csv
+    DIPLOMATIC_MODIFIERS = "diplomatic_modifiers"  # DiplomacyModifiers.csv
+    RESEARCH_PREFERENCE = "research_preference"    # AI_Research.csv
+    POLICY_PREFERENCE = "policy_preference"        # AI_GovtPolicies.csv
 
 
 @dataclass(frozen=True)

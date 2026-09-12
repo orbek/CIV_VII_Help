@@ -69,6 +69,10 @@ CIV7 = GameProfile(
         (Capability.TOURISM, "Civ VII's Player_Stats.csv has no Tourism column."),
         (Capability.DIPLOMATIC_FAVOR,
          "Civ VII's Player_Stats.csv has no Diplomatic Favor column."),
+        (Capability.COMBAT_DESIRE, "Civ VII has no AI_Military.csv."),
+        (Capability.DIPLOMATIC_MODIFIERS, "Civ VII has no DiplomacyModifiers.csv."),
+        (Capability.RESEARCH_PREFERENCE, "Civ VII has no AI_Research.csv."),
+        (Capability.POLICY_PREFERENCE, "Civ VII has no AI_GovtPolicies.csv."),
     ),
 )
 

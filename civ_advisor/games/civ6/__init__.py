@@ -8,6 +8,9 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from civ_advisor.ingest.aiscores import (
+    read_diplomacy_modifiers, read_military, read_policy_scores, read_tech_scores,
+)
 from civ_advisor.ingest.events import read_diplomacy_summary
 from civ_advisor.ingest.tactical import (
     read_mayhem, read_operations, read_tactical, read_unit_efficiency,
@@ -41,6 +44,12 @@ READERS: tuple[LogReader, ...] = (
     # AI_CityBuild.csv is joined privately by the build-queue reader above; declared
     # separately so it gets its own FileStatus rather than failing invisibly (spec §3.2).
     LogReader("AI_CityBuild.csv", "city_ownership", read_city_ownership_status),
+    # Civ VI-only and strictly AI-internal (spec §3.3). Everything built from
+    # these four is ORACLE; see advisors/threat.py and advisors/intel.py.
+    LogReader("AI_Military.csv", "military", simple(read_military)),
+    LogReader("DiplomacyModifiers.csv", "diplomacy_modifiers", simple(read_diplomacy_modifiers)),
+    LogReader("AI_Research.csv", "tech_scores", simple(read_tech_scores)),
+    LogReader("AI_GovtPolicies.csv", "policy_scores", simple(read_policy_scores)),
 )
 
 CIV6 = GameProfile(
@@ -58,9 +67,20 @@ CIV6 = GameProfile(
     # to fill a panel -- declaring one with nothing behind it is the exact
     # defect this phase exists to prevent. Add them back only alongside a
     # Player_Stats_2.csv reader and the canonical fields it would populate.
+    #
+    # VICTORY_PATHS stays undeclared. AI_Research and AI_GovtPolicies score
+    # the AI's tech and civic preferences, and phase 3 answered the question
+    # spec §3.2 left open: those scores carry no victory label, are not
+    # comparable across turns or players, and name items that serve every
+    # path. They support "Cyrus scored these civics highest", and nothing
+    # about what Cyrus is pursuing.
     capabilities=frozenset({
         Capability.FAITH,
         Capability.CIVICS,
+        Capability.COMBAT_DESIRE,
+        Capability.DIPLOMATIC_MODIFIERS,
+        Capability.RESEARCH_PREFERENCE,
+        Capability.POLICY_PREFERENCE,
     }),
     unsupported=(
         (Capability.VICTORY_PATHS,

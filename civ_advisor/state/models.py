@@ -5,6 +5,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import ClassVar
 
+from civ_advisor.ingest.aiscores import (
+    DiplomacyModifierRow, MilitaryRow, PolicyScoreRow, TechScoreRow,
+)
 from civ_advisor.ingest.events import CombatRow, DiplomacySummaryRow, GossipRow
 from civ_advisor.ingest.load import FileStatus
 from civ_advisor.ingest.production import BuildQueueRow
@@ -145,6 +148,10 @@ class GameState:
     unit_efficiency: list[UnitEfficiencyRow] = field(default_factory=list)
     mayhem: list[MayhemRow] = field(default_factory=list)
     commander_promotions: list[CommanderPromotionRow] = field(default_factory=list)
+    military: list[MilitaryRow] = field(default_factory=list)
+    diplomacy_modifiers: list[DiplomacyModifierRow] = field(default_factory=list)
+    tech_scores: list[TechScoreRow] = field(default_factory=list)
+    policy_scores: list[PolicyScoreRow] = field(default_factory=list)
     peace_turns: dict[frozenset[int], int] = field(default_factory=dict)  # pair -> latest Peace deal turn
     # Civilization and leader per player, as the engine recorded them when the save
     # loaded. Carried explicitly rather than left inside the name resolver: a unique

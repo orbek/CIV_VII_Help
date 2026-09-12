@@ -4,7 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from civ_advisor.ruleset.base import RulesetProvider
 
 
 class Capability(StrEnum):
@@ -31,6 +34,7 @@ class Capability(StrEnum):
     DIPLOMATIC_MODIFIERS = "diplomatic_modifiers"  # DiplomacyModifiers.csv
     RESEARCH_PREFERENCE = "research_preference"    # AI_Research.csv
     POLICY_PREFERENCE = "policy_preference"        # AI_GovtPolicies.csv
+    INSTALLED_RULESET = "installed_ruleset"
 
 
 @dataclass(frozen=True)
@@ -66,6 +70,10 @@ class GameProfile:
     knowledge_package: str              # importable package holding this game's guides.json
     capabilities: frozenset[Capability] = frozenset()
     unsupported: tuple[tuple[Capability, str], ...] = ()
+    # A factory rather than a provider: opening the database is I/O against a file the
+    # player's game rewrites, and a profile is a module-level constant built at import
+    # time. Calling it is what re-checks the file; see ruleset/civ6.py:open_ruleset.
+    ruleset: Callable[[], "RulesetProvider"] | None = None
 
     def supports(self, capability: Capability) -> bool:
         return capability in self.capabilities

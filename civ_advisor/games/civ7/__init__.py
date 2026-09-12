@@ -73,6 +73,9 @@ CIV7 = GameProfile(
         (Capability.DIPLOMATIC_MODIFIERS, "Civ VII has no DiplomacyModifiers.csv."),
         (Capability.RESEARCH_PREFERENCE, "Civ VII has no AI_Research.csv."),
         (Capability.POLICY_PREFERENCE, "Civ VII has no AI_GovtPolicies.csv."),
+        (Capability.INSTALLED_RULESET,
+         "Civ VII ships no queryable ruleset database; every figure in a recommendation "
+         "comes from the player's own preview."),
     ),
 )
 

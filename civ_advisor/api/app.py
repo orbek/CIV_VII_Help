@@ -34,6 +34,7 @@ from civ_advisor.ingest.poller import watch
 from civ_advisor.llm import questions
 from civ_advisor.llm.models import CommentaryResult
 from civ_advisor.llm.worker import CommentaryWorker
+from civ_advisor.ruleset.civ6 import clear_cache as ruleset_clear_cache
 from civ_advisor.store import Snapshot, Store
 
 from .serialize import (
@@ -102,7 +103,9 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         generation is still running.
         """
         context_store.adopt(captured)
-        context = build_context(captured, context_store.context())
+        active = get_profile(captured.game_id)
+        context = build_context(captured, context_store.context(),
+                                ruleset=active.ruleset() if active.ruleset else None)
         cards = decide_all(context)
         return {
             "decision_revision": decision_fingerprint(cards),
@@ -147,6 +150,15 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             record = PersistentContextStore(path=store_path_for(active.id, base=base))
             record.load()
         history.forget()          # "since last turn" has no meaning across a game switch
+        # A cached ruleset provider is the same story: it is keyed on a file path, and a
+        # switch to a different game (or the same game's install moving) must not leave
+        # it open indefinitely, nor let the NEXT game's `open_ruleset(path)` collide with
+        # a still-open connection from this one. `clear_cache()` is a no-op when nothing
+        # was ever opened, so this costs nothing on a Civ VII session or a fixed-profile
+        # app that never had a ruleset. Called here rather than only where Civ VI's
+        # profile is built, for the same reason `restart_watcher` sits in `activate()`
+        # itself: one place both the detected and pinned paths pass through.
+        ruleset_clear_cache()
         store.switch_to(active, new.logs_dir)
         return True
 
@@ -301,7 +313,9 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         context_store.adopt(captured)
         record.adopt(captured.session, captured.epoch, captured.game_key,
                      captured.epoch_reason, game=captured.game_id)
-        context = build_context(captured, context_store.context(), oracle=oracle)
+        active = get_profile(captured.game_id)
+        context = build_context(captured, context_store.context(), oracle=oracle,
+                                ruleset=active.ruleset() if active.ruleset else None)
         return context, decide_all(context)
 
     def decisions_for(captured: Snapshot, oracle: bool) -> dict:

@@ -16,6 +16,7 @@ from civ_advisor.ingest.tactical import (
     read_mayhem, read_operations, read_tactical, read_unit_efficiency,
 )
 from civ_advisor.ingest.textlogs import read_player_identities
+from civ_advisor.ruleset.civ6 import open_ruleset
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
@@ -81,7 +82,9 @@ CIV6 = GameProfile(
         Capability.DIPLOMATIC_MODIFIERS,
         Capability.RESEARCH_PREFERENCE,
         Capability.POLICY_PREFERENCE,
+        Capability.INSTALLED_RULESET,
     }),
+    ruleset=open_ruleset,
     unsupported=(
         (Capability.VICTORY_PATHS,
          "Civ VI's AI_Victories.csv records era and posture strategies "

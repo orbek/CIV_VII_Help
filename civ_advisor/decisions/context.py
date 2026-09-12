@@ -19,10 +19,11 @@ from civ_advisor.advisors import tactical
 from civ_advisor.advisors.base import Severity, visible
 from civ_advisor.games.registry import get_profile
 from civ_advisor.knowledge.catalog import Catalog, load_catalog
+from civ_advisor.ruleset.base import NO_RULESET, RulesetProvider
 from civ_advisor.state.models import GameState
 from civ_advisor.store import Snapshot
 
-from .evidence import YIELD_STATS, EvidenceLedger, build_ledger
+from .evidence import YIELD_STATS, EvidenceLedger, build_ledger, ruleset_fact
 from .models import EvidenceFact, PlayerContext, PlayerReport, Prerequisite
 
 # The report vocabulary. A submission naming anything else is refused, so the panel
@@ -273,6 +274,7 @@ class DecisionContext:
     defense_severity: Severity | None = None
     defense_titles: tuple[str, ...] = ()
     insight_ids: tuple[str, ...] = ()
+    ruleset: RulesetProvider = NO_RULESET
 
     # -- what the player told us ---------------------------------------------------
 
@@ -331,7 +333,8 @@ class DecisionContext:
 
 
 def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
-                  oracle: bool = True, catalog: Catalog | None = None) -> DecisionContext:
+                  oracle: bool = True, catalog: Catalog | None = None,
+                  ruleset: RulesetProvider | None = None) -> DecisionContext:
     """Everything the culture pilot may read, from this snapshot in this evidence mode."""
     state = snapshot.state
     # Civ VI's own catalog is deliberately empty (spec: no guide has been reviewed
@@ -348,6 +351,17 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
     player = player or PlayerContext(session=snapshot.session)
     for report in player.reports:
         ledger.add(report.fact())
+
+    # Ruleset figures go into the ledger here rather than while a candidate is being
+    # built, so the ledger is complete before anything cites it: a card citing a fact that
+    # was added later would resolve through the API and not in a test that built only the
+    # context. `ruleset_fact` is idempotent, so a candidate may re-derive the same figure.
+    ruleset = ruleset or NO_RULESET
+    for item in sorted({key for entry in catalog.entries for key in entry.item_keys}):
+        item_facts = ruleset.building(item)
+        if item_facts is not None:
+            for figure in item_facts.figures:
+                ruleset_fact(ledger, figure)
 
     settlements = []
     completed_by_city: dict[str, list[str]] = {}
@@ -401,6 +415,7 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
         defense_titles=tuple(i.title for i in defense_insights
                              if i.severity == severity) if oracle else (),
         insight_ids=tuple(i.id for i in insights),
+        ruleset=ruleset,
     )
 
 

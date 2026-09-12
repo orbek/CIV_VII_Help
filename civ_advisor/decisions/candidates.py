@@ -17,8 +17,10 @@ from __future__ import annotations
 
 from civ_advisor.advisors.base import Provenance
 from civ_advisor.knowledge.catalog import GuideEntry
+from civ_advisor.ruleset.base import BuildingFacts
 
 from .context import DecisionContext, Previews, age_prerequisite
+from .evidence import ruleset_fact
 from .models import ActionCandidate, Applicability, Prerequisite
 
 WORKFLOW_GUIDE = "guide.official.settlements"
@@ -106,11 +108,25 @@ def named_build(context: DecisionContext, city: str, name: str, item: str, why_n
         ("a legal placement",
          Prerequisite.MET if context.flagged(city, "placement_legal", item) else Prerequisite.UNKNOWN),
     ]
+    ruleset_facts = context.ruleset.building(item)
+    ruleset_ids: tuple[str, ...] = ()
+    ruleset_trade_offs: tuple[str, ...] = ()
+    if ruleset_facts is not None and ruleset_facts.figures:
+        ruleset_ids = tuple(ruleset_fact(context.ledger, f).id
+                            for f in ruleset_facts.figures)
+        ruleset_trade_offs = (_ruleset_summary(ruleset_facts),)
+
     unknowns: list[str] = []
     if not confirmed_available:
         unknowns.append(f"Whether {entry.title} is offered in {name} at all.")
-    unknowns.append("The installed ruleset is not recorded, so no figure for this building "
-                    "is taken from any guide — only from your own preview.")
+    if ruleset_ids:
+        unknowns.append("The figures above are read from your installed ruleset, not from "
+                        "a guide. What this settlement is offered, and whether a placement "
+                        "is legal, are still unknown.")
+    else:
+        unknowns.append("The installed ruleset is not recorded, so no figure for this "
+                        "building is taken from any guide — only from your own preview.")
+    unknowns.extend(m.as_unknown() for m in (ruleset_facts.mentions if ruleset_facts else ()))
     missing = previews.missing("completion_turns", "yield_delta")
     if missing:
         unknowns.append("Not supplied from the preview: " + ", ".join(missing) + ".")
@@ -123,13 +139,29 @@ def named_build(context: DecisionContext, city: str, name: str, item: str, why_n
         applicability=Applicability.CONDITIONAL,
         steps=tuple(entry.instructions) + tuple(
             step for e in workflow for step in e.instructions[1:3]),
-        evidence_ids=evidence_for(context, city, mechanic_key) + previews.fact_ids,
+        evidence_ids=evidence_for(context, city, mechanic_key) + previews.fact_ids + ruleset_ids,
         guide_ids=(entry.id,) + tuple(e.id for e in workflow),
         prerequisites=tuple(prerequisites),
-        trade_offs=trade_offs + version_notes((entry,) + workflow),
+        trade_offs=trade_offs + ruleset_trade_offs + version_notes((entry,) + workflow),
         unknowns=tuple(unknowns),
         provenance=Provenance.FAIR,
     )
+
+
+def _ruleset_summary(facts: BuildingFacts) -> str:
+    """One sentence naming what the installed files say, and which file they are.
+
+    Reads every figure off its own label and unit rather than picking out the ones this
+    function expects: a building with only a prerequisite row still produces a correct
+    sentence, and there is no index into a list that may be empty. Says the file and its
+    digest rather than a version, because the database states no version — see
+    docs/architecture/adr-002-ruleset-derived-figures.md.
+    """
+    said = "; ".join(f"{figure.label} {figure.value}"
+                     + (f" {figure.unit}" if figure.unit else "")
+                     for figure in facts.figures)
+    return (f"Your installed ruleset states — {said}. Read from "
+            f"{facts.figures[0].identity.describe()}.")
 
 
 def inspect_requirement(context: DecisionContext, city: str, name: str, why_now: str,

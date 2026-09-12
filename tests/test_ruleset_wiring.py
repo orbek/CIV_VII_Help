@@ -245,8 +245,14 @@ def test_the_api_surfaces_whether_the_ruleset_is_actually_usable_right_now(snap,
     missing = _open(tmp_path / "nothing-here.sqlite")
     context = build_context(snap, ruleset=missing)
     payload = decisions_to_dict(context, decide_all(context))
+    reason = payload["context"]["ruleset"]["reason"]
     assert payload["context"]["ruleset"]["available"] is False
-    assert "nothing-here.sqlite" in payload["context"]["ruleset"]["reason"]
+    assert "nothing-here.sqlite" in reason
+    # Review found: this reason used to embed the full absolute path, which on a real
+    # machine contains the player's username (DEFAULT_DATABASE lives under their home
+    # directory) -- and this payload is what the browser renders. Only the filename may
+    # appear; the directory must not, so this cannot regress silently.
+    assert str(tmp_path) not in reason
 
 
 def test_civ6s_empty_catalog_means_no_recommendation_names_a_building_yet(snap, tmp_path):

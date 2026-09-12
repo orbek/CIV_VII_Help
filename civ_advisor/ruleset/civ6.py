@@ -673,9 +673,9 @@ def open_ruleset(path: Path | None = None) -> RulesetProvider:
         with _LOCK:
             _forget(path)
         return NullRuleset(
-            f"{path.name} was not readable at {path} ({exc.strerror or exc}), so no "
-            "figure is taken from your installed ruleset; the advisor will ask you "
-            "for the game's own preview instead.")
+            f"{path.name} was not readable ({exc.strerror or exc}), so no figure is "
+            "taken from your installed ruleset; the advisor will ask you for the "
+            "game's own preview instead.")
 
     with _LOCK:
         cached = _OPEN.get(path)

@@ -212,10 +212,15 @@ def _changed_dependencies(claimed: dict[str, object], current: dict[str, object]
 
 @dataclass(frozen=True)
 class Previews:
-    """Player-supplied preview figures for one candidate item in one settlement.
+    """Preview figures for one candidate item in one settlement — the player's own where
+    supplied, filled from the installed ruleset (Civ VI only) where they are not.
 
-    Every metric is optional and stays `None` when it was not supplied. A comparison that
-    needs a missing metric must say what is missing, not substitute zero.
+    Every metric is optional and stays `None` when it was not supplied by either source.
+    A comparison that needs a missing metric must say what is missing, not substitute
+    zero. `ruleset_filled` names which metrics came from the ruleset rather than the
+    player, so a caller can say which is which rather than letting one look like the
+    other — see `DecisionContext.previews` for why the player's own figure always wins
+    where both exist.
     """
 
     item: str
@@ -225,6 +230,7 @@ class Previews:
     happiness_cost: float | None = None
     observed_turn: int | None = None
     fact_ids: tuple[str, ...] = ()
+    ruleset_filled: frozenset[str] = frozenset()
 
     def missing(self, *metrics: str) -> tuple[str, ...]:
         return tuple(m for m in metrics if getattr(self, m) is None)
@@ -305,7 +311,33 @@ class DecisionContext:
         return any(r.label == label and r.value == item
                    for r in self.player.for_subject(city))
 
-    def previews(self, city: str, item: str) -> Previews:
+    def previews(self, city: str, item: str, stat: str | None = None) -> Previews:
+        """This item's preview figures: the player's own reports first, then whatever
+        the installed ruleset can fill in for what they left blank.
+
+        The player's report always wins where both exist. It is a live observation of
+        this settlement now; a ruleset figure is a general fact about the installed
+        file, not about this city or this turn — a specific, current observation
+        outranks a general one, and silently replacing what someone typed with a
+        database value is exactly the kind of confusable-sources problem this project's
+        provenance labelling exists to prevent. So the ruleset is consulted only for a
+        metric the player left `None`, never to override one they supplied.
+
+        `stat` (the yield family this decision is about, e.g. "culture") is what makes
+        `yield_delta` fillable at all: `Previews` carries one undated float with no
+        stat of its own, so the caller must say which `YIELD_*` it means. Without a
+        `stat`, or without a ruleset, this behaves exactly as before -- no callers
+        outside `yields.py`'s named families pass one, and none of the shape changes
+        for them.
+
+        `completion_turns` is never filled from the ruleset, on purpose: how long an
+        item takes in one settlement depends on that settlement's own production, which
+        no ruleset row states and no log records either. `happiness_cost` is also never
+        filled: the ruleset has no field for it. Reading one would need
+        `Buildings.Entertainment`, which is a schema extension this task did not judge
+        worth making for one metric — a decision, not an oversight; see
+        `docs/architecture/adr-002-ruleset-derived-figures.md`.
+        """
         values: dict[str, float | None] = {m: None for m in PREVIEW_METRICS}
         turns: list[int] = []
         fact_ids: list[str] = []
@@ -320,8 +352,26 @@ class DecisionContext:
                 continue
             turns.append(report.observed_turn)
             fact_ids.append(report.id)
+
+        ruleset_filled: set[str] = set()
+        if stat is not None:
+            item_facts = self.ruleset.building(item)
+            if item_facts is not None:
+                if values["yield_delta"] is None:
+                    yield_type = f"YIELD_{stat.upper()}"
+                    match = next(
+                        (f for f in item_facts.yields if f.row_key[-1] == yield_type), None)
+                    if match is not None and isinstance(match.value, (int, float)):
+                        values["yield_delta"] = float(match.value)
+                        ruleset_filled.add("yield_delta")
+                if values["gold_upkeep"] is None and item_facts.maintenance is not None \
+                        and isinstance(item_facts.maintenance.value, (int, float)):
+                    values["gold_upkeep"] = float(item_facts.maintenance.value)
+                    ruleset_filled.add("gold_upkeep")
+
         return Previews(item=item, observed_turn=max(turns) if turns else None,
-                        fact_ids=tuple(sorted(fact_ids)), **values)
+                        fact_ids=tuple(sorted(fact_ids)),
+                        ruleset_filled=frozenset(ruleset_filled), **values)
 
     def settlement(self, city: str) -> SettlementView | None:
         return next((s for s in self.settlements if s.city == city), None)

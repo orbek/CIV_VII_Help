@@ -83,7 +83,7 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
     With no objective there is no winner: the two candidates answer different questions
     and picking one would be asserting a goal the player never stated.
     """
-    previews = {item: context.previews(city, item) for item in items}
+    previews = {item: context.previews(city, item, stat=family.stat) for item in items}
     incomplete = tuple(
         f"{item}: {', '.join(p.missing('completion_turns', 'yield_delta'))}"
         for item, p in previews.items()
@@ -108,7 +108,7 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
             parts.append(f"{_n(preview.gold_upkeep)} gold upkeep")
         if preview.happiness_cost is not None:
             parts.append(f"{_n(preview.happiness_cost)} local happiness")
-        lines.append("; ".join(parts) + f" (your figures, read on turn {preview.observed_turn}).")
+        lines.append("; ".join(parts) + f" ({_source_note(preview)}).")
 
     ordered = sorted(usable.items(), key=lambda kv: kv[1].completion_turns)
     quickest, slowest = ordered[0], ordered[-1]
@@ -140,9 +140,22 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
             lines.append(f"Upkeep would take your net gold from {_n(net)} per turn to {detail}, "
                          "all else equal — a scenario estimate, not a forecast.")
 
-    lines.append("This follows from the figures you supplied and the objective you stated. "
+    lines.append("This follows from the figures above and the objective you stated. "
                  "It is not a claim about the best play available in the game.")
     return Comparison(winner, objective, tuple(lines), incomplete)
+
+
+def _source_note(preview: Previews) -> str:
+    """Which source each preview's figures came from, honestly. A ruleset figure is a
+    fact about the installed game; a player's own reading is a dated observation of one
+    settlement. Saying "your figures" about a number the player never typed would record
+    one source as the other -- the exact confusion this project's provenance labelling
+    exists to prevent."""
+    if not preview.ruleset_filled:
+        return f"your figures, read on turn {preview.observed_turn}"
+    if preview.observed_turn is None:
+        return "your installed ruleset"
+    return f"your installed ruleset and your own figures, read on turn {preview.observed_turn}"
 
 
 def decide(context: DecisionContext, family: Family) -> DecisionCard | None:
@@ -213,14 +226,14 @@ def _rank(context: DecisionContext, target, why_now: str, family_options: tuple[
         # This is the only situation in which a specific building can be named.
         chosen = candidates.named_build(
             context, target.city, target.name, comparison.winner, why_now,
-            context.previews(target.city, comparison.winner), family.mechanic_key,
+            context.previews(target.city, comparison.winner, stat=family.stat), family.mechanic_key,
             trade_offs=comparison.lines)
         if chosen is not None:
             built.append(chosen)
         for item in sorted(set(family_options) - {comparison.winner}):
             other = candidates.named_build(
                 context, target.city, target.name, item, why_now,
-                context.previews(target.city, item), family.mechanic_key,
+                context.previews(target.city, item, stat=family.stat), family.mechanic_key,
                 trade_offs=comparison.lines)
             if other is not None:
                 built.append(other)
@@ -234,7 +247,7 @@ def _rank(context: DecisionContext, target, why_now: str, family_options: tuple[
         for item in sorted(family_options):
             candidate = candidates.named_build(
                 context, target.city, target.name, item, why_now,
-                context.previews(target.city, item), family.mechanic_key)
+                context.previews(target.city, item, stat=family.stat), family.mechanic_key)
             if candidate is not None:
                 built.append(candidate)
         inspection = candidates.inspect_options(

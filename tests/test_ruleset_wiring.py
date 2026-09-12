@@ -2,8 +2,8 @@ import pytest
 
 from civ_advisor.advisors import run_all
 from civ_advisor.decisions.candidates import named_build
-from civ_advisor.decisions.context import Previews, build_context
-from civ_advisor.decisions.models import SourceKind
+from civ_advisor.decisions.context import Previews, build_context, preview_label
+from civ_advisor.decisions.models import PlayerContext, PlayerReport, SourceKind
 from civ_advisor.games.base import Capability
 from civ_advisor.ruleset.base import NO_RULESET
 from civ_advisor.ruleset.civ6 import clear_cache, open_ruleset
@@ -130,3 +130,85 @@ def test_a_game_switch_tears_down_the_cached_ruleset(fixture_dir, civ6_dir, tmp_
         after = len(calls)
 
     assert after > before
+
+
+# ---- Task 9: the Refine flow itself ----------------------------------------------
+
+def _player_report(item: str, metric: str, value: float, *, turn: int = 33) -> PlayerReport:
+    return PlayerReport(id=f"report.{item}.{metric}", subject=CITY,
+                        label=preview_label(item, metric), value=value, unit=None,
+                        observed_turn=turn, session="session-1", reported_at="2026-09-12T00:00:00")
+
+
+def test_previews_are_filled_from_the_ruleset_when_the_player_supplied_nothing(snap, tmp_path):
+    """spec §7's actual promise: figures can be looked up rather than typed in. With no
+    player report at all, the flat yield and the maintenance still show up, read from
+    the installed ruleset."""
+    context = build_context(snap, ruleset=_ruleset(tmp_path))
+
+    preview = context.previews(CITY, AMPHITHEATER, stat="culture")
+
+    assert preview.yield_delta == 2       # Building_YieldChanges: YIELD_CULTURE = 2
+    assert preview.gold_upkeep == 1       # Buildings.Maintenance = 1
+    assert preview.ruleset_filled == frozenset({"yield_delta", "gold_upkeep"})
+
+
+def test_the_players_own_preview_is_never_overridden_by_the_ruleset(snap, tmp_path):
+    """The argued precedence: a live observation of this settlement now outranks a
+    general fact about the installed file. The ruleset's Amphitheater yield is 2; the
+    player's own reading of 5 must win, not be silently replaced."""
+    player = PlayerContext(session=snap.session,
+                           reports=(_player_report(AMPHITHEATER, "yield_delta", 5.0),))
+    context = build_context(snap, player=player, ruleset=_ruleset(tmp_path))
+
+    preview = context.previews(CITY, AMPHITHEATER, stat="culture")
+
+    assert preview.yield_delta == 5.0
+    assert "yield_delta" not in preview.ruleset_filled
+    # The metric the player did NOT supply is still filled.
+    assert preview.gold_upkeep == 1
+    assert preview.ruleset_filled == frozenset({"gold_upkeep"})
+
+
+def test_completion_turns_and_happiness_cost_are_never_filled_from_the_ruleset(snap, tmp_path):
+    """What the ruleset cannot know: how long an item takes in this settlement (depends
+    on its own production, not a ruleset row) and its local happiness cost (the ruleset
+    has no field for it at all -- a decision recorded in `DecisionContext.previews`'s
+    docstring, not an oversight). Both must still be asked for."""
+    context = build_context(snap, ruleset=_ruleset(tmp_path))
+
+    preview = context.previews(CITY, AMPHITHEATER, stat="culture")
+
+    assert preview.completion_turns is None
+    assert preview.happiness_cost is None
+    assert preview.missing("completion_turns", "happiness_cost") == (
+        "completion_turns", "happiness_cost")
+
+
+def test_previews_without_a_stat_behave_exactly_as_before(snap, tmp_path):
+    """No caller outside yields.py's named families passes `stat`, and none of their
+    shape may change: without it, the ruleset is never consulted, matching the
+    behaviour before this task."""
+    context = build_context(snap, ruleset=_ruleset(tmp_path))
+
+    preview = context.previews(CITY, AMPHITHEATER)
+
+    assert preview.yield_delta is None and preview.gold_upkeep is None
+    assert preview.ruleset_filled == frozenset()
+
+
+def test_the_comparison_text_names_the_ruleset_when_it_filled_a_figure():
+    """The evidence-drawer honesty requirement, applied to the comparison prose too:
+    "your figures" must never be said about a number the player never typed."""
+    from civ_advisor.decisions.yields import _source_note
+
+    all_player = Previews(item=AMPHITHEATER, yield_delta=2, observed_turn=10)
+    assert _source_note(all_player) == "your figures, read on turn 10"
+
+    all_ruleset = Previews(item=AMPHITHEATER, yield_delta=2,
+                           ruleset_filled=frozenset({"yield_delta", "gold_upkeep"}))
+    assert _source_note(all_ruleset) == "your installed ruleset"
+
+    mixed = Previews(item=AMPHITHEATER, yield_delta=2, gold_upkeep=1, observed_turn=10,
+                     ruleset_filled=frozenset({"gold_upkeep"}))
+    assert _source_note(mixed) == "your installed ruleset and your own figures, read on turn 10"

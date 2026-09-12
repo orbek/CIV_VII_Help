@@ -4,7 +4,7 @@ from pathlib import Path
 import pytest
 
 from civ_advisor.ruleset.base import (
-    NO_RULESET, BuildingFacts, NullRuleset, RulesetFigure, RulesetIdentity,
+    NO_RULESET, BuildingFacts, NullRuleset, RulesetCount, RulesetFigure, RulesetIdentity,
     RulesetMention, RulesetProvider,
 )
 
@@ -47,6 +47,69 @@ def test_identity_carries_no_version_and_claims_none():
     assert "version" not in described.lower()
     assert IDENTITY.short_digest in described
     assert "DebugGameplay.sqlite" in described
+
+
+def test_a_count_cannot_be_constructed_as_a_figure():
+    """The whole-phase review's fix: BuildingModifiers rows may be counted, never
+    priced. Attempting to build the exact leak the reviewer described -- a count
+    smuggled in as a figure via an aggregate column -- must fail at construction."""
+    with pytest.raises(ValueError, match="aggregate"):
+        _figure(column="COUNT(*)", value=3, unit=None)
+
+
+def test_a_count_has_no_value_or_unit_field_to_carry_a_magnitude():
+    """Structurally distinct from RulesetFigure: nowhere to put a number a reader
+    could mistake for a yield or a cost."""
+    names = {f.name for f in fields(RulesetCount)}
+    assert "value" not in names and "unit" not in names
+    assert "count" in names
+
+
+def test_a_count_must_also_name_the_rows_it_came_from():
+    with pytest.raises(ValueError, match="table, column and row"):
+        RulesetCount(subject="BUILDING_GREAT_LIBRARY", label="Modifier count", count=3,
+                    table="", column="COUNT(*)", row_key=("BUILDING_GREAT_LIBRARY",),
+                    identity=IDENTITY)
+
+
+def test_a_count_cannot_be_negative():
+    with pytest.raises(ValueError, match="cannot be negative"):
+        RulesetCount(subject="BUILDING_GREAT_LIBRARY", label="Modifier count", count=-1,
+                    table="BuildingModifiers", column="COUNT(*)",
+                    row_key=("BUILDING_GREAT_LIBRARY",), identity=IDENTITY)
+
+
+def test_a_count_renders_visibly_distinct_from_a_yield():
+    count = RulesetCount(subject="BUILDING_GREAT_LIBRARY",
+                         label="Great Library modifier-based effects", count=3,
+                         table="BuildingModifiers", column="COUNT(*)",
+                         row_key=("BUILDING_GREAT_LIBRARY",), identity=IDENTITY)
+    described = count.describe()
+    assert "3 modifier-based effects" in described
+    assert "does not state their magnitude" in described
+
+
+def test_ruleset_fact_refuses_a_count():
+    """The same guard that already refuses a RulesetMention (no value field to read)
+    must refuse a RulesetCount just as hard -- this is the whole point of the type."""
+    from civ_advisor.decisions.evidence import EvidenceLedger, ruleset_fact
+
+    count = RulesetCount(subject="BUILDING_GREAT_LIBRARY", label="Modifier count",
+                         count=3, table="BuildingModifiers", column="ModifierId",
+                         row_key=("BUILDING_GREAT_LIBRARY",), identity=IDENTITY)
+    with pytest.raises(TypeError, match="only accepts a RulesetFigure"):
+        ruleset_fact(EvidenceLedger(), count)
+
+
+def test_building_facts_counts_are_never_folded_into_figures():
+    count = RulesetCount(subject="BUILDING_GREAT_LIBRARY", label="Modifier count",
+                         count=3, table="BuildingModifiers", column="ModifierId",
+                         row_key=("BUILDING_GREAT_LIBRARY",), identity=IDENTITY)
+    facts = BuildingFacts(building="BUILDING_GREAT_LIBRARY", cost=_figure(),
+                          counts=(count,))
+    assert facts.figures == (_figure(),)
+    assert count not in facts.figures
+    assert facts.counts == (count,)
 
 
 def test_figures_are_immutable():

@@ -1,9 +1,15 @@
 """What a ruleset provider may say, and what it may not.
 
-Three constraints are types rather than intentions:
+Four constraints are types rather than intentions:
 
   - a figure names the table, column and row it was read from, or it cannot be
-    constructed. There is no way to produce a number that has no row behind it.
+    constructed. There is no way to produce a number that has no row behind it. Its
+    column must also name one stored value, not an aggregate over many rows: a figure
+    reads one row, and `COUNT(*)` is not that.
+  - a count of rows (`RulesetCount`) is not a figure and cannot become one. It has no
+    `value`/`unit` field to carry a number a reader could mistake for a yield or a cost —
+    only a `count`. Adjudicated for `BuildingModifiers`: those rows may be counted, never
+    priced, and the type is what keeps that true regardless of who writes the next reader.
   - a `RulesetMention` has no value field. Conditional effects live in modifier chains
     that record which effect fires under which condition and call the magnitude by a name
     the database never defines; this is what such an effect becomes instead of a number.
@@ -71,6 +77,44 @@ class RulesetFigure:
             raise ValueError(
                 f"ruleset figure {self.label!r} must name the table, column and row it was "
                 "read from; a value with no row behind it is not a figure")
+        if "(" in self.column or ")" in self.column:
+            raise ValueError(
+                f"ruleset figure {self.label!r} names column {self.column!r}, which reads "
+                "as an aggregate expression over many rows rather than one stored column; "
+                "a count belongs in RulesetCount, never in RulesetFigure")
+
+
+@dataclass(frozen=True)
+class RulesetCount:
+    """How many ruleset rows exist for one subject — never their combined magnitude.
+
+    Structurally distinct from `RulesetFigure`: no `value` or `unit` field, so there is
+    nowhere for a count to carry a number a reader could mistake for a yield or a cost.
+    Built for the case that motivated it: `BuildingModifiers` rows may be counted — "this
+    building has N modifier-based effects" — but the ruleset never states what any of
+    them are worth, and adjudication requires that this never render as though it did.
+    """
+
+    subject: str
+    label: str
+    count: int
+    table: str
+    column: str
+    row_key: tuple[str, ...]
+    identity: RulesetIdentity
+
+    def __post_init__(self) -> None:
+        if not self.table or not self.column or not self.row_key:
+            raise ValueError(
+                f"ruleset count {self.label!r} must name the table, column and row(s) it "
+                "was counted from; a count with no rows behind it is not a count")
+        if self.count < 0:
+            raise ValueError(f"ruleset count {self.label!r} cannot be negative: {self.count}")
+
+    def describe(self) -> str:
+        noun = "effect" if self.count == 1 else "effects"
+        return (f"{self.label}: {self.count} modifier-based {noun}. The installed "
+                "ruleset does not state their magnitude.")
 
 
 @dataclass(frozen=True)
@@ -103,11 +147,12 @@ class BuildingFacts:
     prereq_civic: RulesetFigure | None = None
     yields: tuple[RulesetFigure, ...] = ()
     mentions: tuple[RulesetMention, ...] = ()
+    counts: tuple[RulesetCount, ...] = ()
 
     @property
     def figures(self) -> tuple[RulesetFigure, ...]:
-        """The stateable figures, in a stable order. Mentions are not here: they are not
-        figures and must never be folded into a list of them."""
+        """The stateable figures, in a stable order. Mentions and counts are not here:
+        neither is a figure, and must never be folded into a list of them."""
         named = (self.cost, self.maintenance, self.prereq_district, self.prereq_tech,
                  self.prereq_civic)
         return tuple(f for f in named if f is not None) + self.yields
@@ -163,5 +208,5 @@ NO_RULESET = NullRuleset("This game ships no queryable ruleset, so every figure 
                          "recommendation comes from your own preview.")
 
 
-__all__ = ["NO_RULESET", "BuildingFacts", "NullRuleset", "RulesetFigure", "RulesetIdentity",
-           "RulesetMention", "RulesetOutOfScope", "RulesetProvider"]
+__all__ = ["NO_RULESET", "BuildingFacts", "NullRuleset", "RulesetCount", "RulesetFigure",
+           "RulesetIdentity", "RulesetMention", "RulesetOutOfScope", "RulesetProvider"]

@@ -360,7 +360,15 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
     what the installed files say, and dating it to the analysis turn would imply the game
     reported it this turn. The one honest "when" — when the game last wrote that file —
     lives in the note, together with the digest that makes the claim checkable.
+
+    Accepts only a `RulesetFigure`. A `RulesetCount` or `RulesetMention` has no `value`
+    field and would fail below with an AttributeError regardless, but this checks first
+    to name the mistake rather than let a count or mention be half-built into a fact.
     """
+    if not isinstance(figure, RulesetFigure):
+        raise TypeError(
+            f"ruleset_fact only accepts a RulesetFigure, not {type(figure).__name__}; "
+            "a count or a mention must never be rendered as a valued fact")
     return ledger.add(EvidenceFact(
         id=f"ruleset.{figure.table}.{'.'.join(figure.row_key)}.{figure.column}",
         label=figure.label,

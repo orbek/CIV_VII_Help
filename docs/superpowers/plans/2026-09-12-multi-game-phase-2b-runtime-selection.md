@@ -2658,6 +2658,20 @@ tab and states the reason from the profile's own declaration."
 
 ### Task 11: Record what phase 2b established
 
+**Two user-facing wrinkles this task must document or resolve**, both raised
+by earlier reviews rather than invented here:
+
+- `--archive-dir` now means two different things depending on subcommand: a
+  direct destination for `civ-advisor`, but a base-for-all-games for
+  `civ-advisor archive list`. That is plan-mandated rather than an
+  implementation slip, but it is a genuine wart — a flag whose meaning
+  depends on the subcommand is the kind of thing that silently puts a
+  user's archive somewhere they did not expect. Either give the two uses
+  distinct names, or document the difference explicitly in `--help` and the
+  README. Do not leave it implicit.
+- The README still says `--game civ7` is "the only game this build advises
+  on so far". It has not been true since phase 2a.
+
 **Files:**
 - Modify: `README.md`
 - Modify: `docs/architecture/log-capability-matrix.md`

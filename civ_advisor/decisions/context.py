@@ -17,6 +17,7 @@ from dataclasses import dataclass, field, replace
 
 from civ_advisor.advisors import tactical
 from civ_advisor.advisors.base import Severity, visible
+from civ_advisor.games.registry import get_profile
 from civ_advisor.knowledge.catalog import Catalog, load_catalog
 from civ_advisor.state.models import GameState
 from civ_advisor.store import Snapshot
@@ -333,7 +334,11 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
                   oracle: bool = True, catalog: Catalog | None = None) -> DecisionContext:
     """Everything the culture pilot may read, from this snapshot in this evidence mode."""
     state = snapshot.state
-    catalog = catalog or load_catalog()
+    # Civ VI's own catalog is deliberately empty (spec: no guide has been reviewed
+    # against it yet) -- loading Civ VII's here instead would hand a Civ VI session
+    # Civ VII's reviewed navigation steps for screens Civ VI does not have.
+    catalog = catalog or load_catalog(
+        package=get_profile(snapshot.game_id).knowledge_package, game=snapshot.game_id)
     ledger = build_ledger(state)
     insights = visible(snapshot.insights, oracle)
 

@@ -137,6 +137,49 @@ def test_a_broken_required_source_is_a_warning_not_a_quiet_note():
                       "text": "Empire yields and standings is unavailable: unexpected header"}]
 
 
+def test_unattributed_rows_are_reported_even_when_the_domain_is_healthy():
+    lines = run_js(
+        'return B.coverageLines([{name: "production", label: "Settlement build queues",'
+        ' status: "ok", required: false, files: ["City_BuildQueue.csv"], missing: [],'
+        ' rows: 807, errors: [], unattributed: 12}]);'
+    )
+    assert len(lines) == 1
+    assert "12 rows could not be attributed" in lines[0]["text"]
+    assert "not assigned to you" in lines[0]["text"]
+
+
+def test_an_unbacked_partial_domain_never_claims_a_file_is_unreadable():
+    """LIVE DEFECT this task fixes: before, a domain whose files all read fine but
+    which has no reader at all for part of what it covers (Civ VI's diplomacy) rendered
+    as "0 of 1 logs unreadable" -- a false reason for a real gap. `missing` is empty
+    here on purpose; only `unbacked` explains why the domain is still "partial"."""
+    lines = run_js("""
+      return B.coverageLines([
+        { name: "diplomacy", label: "Rival diplomatic intent", required: false,
+          status: "partial", files: ["DiplomacySummary.csv"], missing: [], rows: 5,
+          latest_turn: 81, lag: 0, errors: [], unbacked: ["diplomacy", "deals"] },
+      ]);
+    """)
+    text = " | ".join(line["text"] for line in lines)
+    assert "unreadable" not in text
+    assert "0 of" not in text
+    assert "does not log 2 parts of this" in text
+
+
+def test_a_partial_domain_with_both_causes_reports_both():
+    lines = run_js("""
+      return B.coverageLines([
+        { name: "tactical", label: "Tactical unit positions and plans", required: false,
+          status: "partial", files: ["AI_Tactical.csv", "AI_Operation.csv"],
+          missing: ["AI_Operation.csv"], rows: 3, latest_turn: 80, lag: 1,
+          errors: ["file not found"], unbacked: ["mayhem"] },
+      ]);
+    """)
+    text = " | ".join(line["text"] for line in lines)
+    assert "1 of 2 logs unreadable" in text
+    assert "does not log 1 part of this" in text
+
+
 # ---- the decision brief ----------------------------------------------------------
 
 INSIGHTS = """

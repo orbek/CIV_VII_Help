@@ -62,6 +62,31 @@ CIV6 = GameProfile(
         Capability.FAITH,
         Capability.CIVICS,
     }),
+    unsupported=(
+        (Capability.VICTORY_PATHS,
+         "Civ VI's AI_Victories.csv records era and posture strategies "
+         "(STRATEGY_DARKAGE, STRATEGY_EARLY_EXPLORATION), not which victory a rival is "
+         "pursuing. Reading them as victory paths would assert a pursuit the log does "
+         "not state."),
+        (Capability.HAPPINESS,
+         "Civ VI writes no amenities log. DynamicEmpires.csv supplies the golden-age "
+         "flag; the happiness numbers have no substitute."),
+        (Capability.MAINTENANCE,
+         "Civ VI logs a gold balance but no maintenance breakdown, so net gold per turn "
+         "cannot be computed."),
+        (Capability.PEACE_DEALS,
+         "Civ VI has no DiplomacyDeals.log, so a signed peace treaty is not observable "
+         "and a war alert cannot be cleared by one."),
+        (Capability.COMBAT_ODDS,
+         "Civ VI's AI_Operation_Eval.csv has no Odds column, so the AI's own combat odds "
+         "-- the basis of bounded combat prediction -- do not exist."),
+        (Capability.SETTLEMENT_CAP, "Civ VI has no settlement cap."),
+        (Capability.URBAN_RURAL_SPLIT, "Civ VI does not split population urban/rural."),
+        (Capability.TOURISM,
+         "Tourism is in Player_Stats_2.csv, for which this build has no reader yet."),
+        (Capability.DIPLOMATIC_FAVOR,
+         "Diplomatic favor is in Player_Stats_2.csv, for which this build has no reader yet."),
+    ),
 )
 
 register(CIV6)

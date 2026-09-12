@@ -1,5 +1,4 @@
 from civ_advisor.advisors import run_all
-from civ_advisor.games.base import Capability
 from civ_advisor.games.civ6 import CIV6
 from civ_advisor.ingest.load import load_logs
 from civ_advisor.state.build import build_state
@@ -27,6 +26,27 @@ def test_the_api_reports_which_capabilities_are_unavailable(civ6_dir):
     from civ_advisor.api.serialize import capability_report
 
     report = capability_report(CIV6)
-    assert report[Capability.VICTORY_PATHS.value] is False
-    assert report[Capability.HAPPINESS.value] is False
-    assert report[Capability.FAITH.value] is True
+    assert report["victory_paths"]["supported"] is False
+    assert "victory" in report["victory_paths"]["reason"].lower()
+    assert report["happiness"]["supported"] is False and report["happiness"]["reason"]
+    assert report["faith"] == {"supported": True, "reason": None}
+
+
+def test_civ6_production_advice_uses_civ6_s_own_empty_catalog(civ6_dir):
+    """Civ VI's catalog is deliberately empty -- no guide has been reviewed against it
+    yet. `run_all(state, CIV6)` must not fall back to Civ VII's reviewed guidance for a
+    Civ VI item just because both games happen to name similar buildings; the correct
+    outcome is no reviewed association at all, not Civ VII's."""
+    from civ_advisor.advisors import production
+
+    state = build_state(load_logs(civ6_dir, profile=CIV6))
+    package = CIV6.knowledge_package
+    for row in state.build_queues:
+        if row.item:
+            assert production.reviewed_yield(row.item, package) is False
+
+    # Confirms the threading actually reaches run_all (not just production called
+    # directly): passing the profile through must not raise, and production's own
+    # insight still comes out the other end.
+    insights = run_all(state, CIV6)
+    assert any(i.id == "production.own_queue" for i in insights)

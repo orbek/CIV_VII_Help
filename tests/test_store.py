@@ -3,7 +3,7 @@ from pathlib import Path
 
 from civ_advisor.games.civ6 import CIV6
 from civ_advisor.games.civ7 import CIV7
-from civ_advisor.store import GAME_SWITCHED, SCHEMA_VERSION, Store
+from civ_advisor.store import DOMAINS, GAME_SWITCHED, SCHEMA_VERSION, Store
 
 
 def test_rebuild_publishes_one_snapshot_with_state_insights_and_coverage(fixture_dir: Path):
@@ -258,6 +258,61 @@ def test_coverage_is_profile_aware_for_civ6(civ6_dir):
     # the concept does not exist for this game, it did not merely fail to read.
     assert by_name["happiness"].status == "not_applicable"
     assert by_name["strategy"].status == "not_applicable"
+
+
+def test_a_domain_this_game_never_writes_is_not_reported_as_broken(civ6_dir):
+    """Civ VI has no Player_Happiness.csv. Reporting it 'unavailable' would be an alarm
+    about a file that does not exist by design -- exactly the distinction spec 9 draws.
+
+    The brief for this task described the fix as `_coverage` omitting the domain from
+    `captured.coverage` entirely. That was already superseded by an earlier fix round
+    (07a5322, "Make coverage domains resolve through reader attributes, not filenames"):
+    the domain is KEPT, tagged `not_applicable`, which is more honest than silence (a
+    missing key is indistinguishable from a domain nobody thought to check) and is
+    already covered by `test_coverage_is_profile_aware_for_civ6` above, whose passing
+    assertions this task must not contradict. This test pins the actual, already-correct
+    behavior: no such domain is ever reported as `unavailable` or `partial`."""
+    captured = Store(civ6_dir, profile=CIV6).rebuild()
+    for name in ("happiness", "treasury"):
+        assert captured.domain(name).status == "not_applicable"
+    for name in ("empire", "production"):
+        assert captured.domain(name).status not in ("not_applicable", "unavailable")
+
+
+def test_civ7_coverage_is_unchanged(fixture_dir):
+    captured = Store(fixture_dir, profile=CIV7).rebuild()
+    assert len(captured.coverage) == len(DOMAINS)
+
+
+def test_unattributed_build_queue_rows_are_counted_not_hidden(civ6_dir):
+    """Civ VI's City_BuildQueue.csv has no Player column; a row whose city has no owner
+    in the join is attributed to nobody. The count must be visible, because a silently
+    shorter queue reads as a quieter game."""
+    captured = Store(civ6_dir, profile=CIV6).rebuild()
+    production = captured.domain("production")
+    assert production is not None and production.unattributed is not None
+    assert production.unattributed >= 0
+
+
+def test_civ7_reports_no_attribution_gap_concept(fixture_dir):
+    """Civ VII's build-queue reader always produces a real player id (its own CSV
+    carries the column directly), so the attribution gap is not "zero today" but a
+    concept that does not exist for this game at all."""
+    captured = Store(fixture_dir, profile=CIV7).rebuild()
+    assert captured.domain("production").unattributed is None
+
+
+def test_diplomacy_is_partial_for_an_unbacked_reason_not_a_missing_file(civ6_dir):
+    """LIVE DEFECT (plan Task 8 appendix): Civ VI's diplomacy domain reads its one
+    declared file (DiplomacySummary.csv) fine -- nothing is missing -- but has no reader
+    at all for two of the domain's three attributes (diplomacy, deals). `missing` alone
+    cannot say why this is 'partial'; `unbacked` must carry the true reason so the
+    renderer never states "0 of 1 logs unreadable" when nothing is unreadable."""
+    captured = Store(civ6_dir, profile=CIV6).rebuild()
+    diplomacy = captured.domain("diplomacy")
+    assert diplomacy.status == "partial"
+    assert diplomacy.missing == ()
+    assert diplomacy.unbacked == ("diplomacy", "deals")
 
 
 def test_a_snapshot_records_which_game_produced_it(fixture_dir):

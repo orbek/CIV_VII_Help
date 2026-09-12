@@ -32,14 +32,17 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_
 SCHEMA_VERSION = 1
 
 
-def capability_report(profile: GameProfile) -> dict[str, bool]:
-    """Every capability this build models, and whether this game supports it.
+def capability_report(profile: GameProfile) -> dict[str, dict]:
+    """Every capability this build models, whether this game supports it, and why not.
 
-    Exhaustive on purpose: the UI must be able to say "this game does not
-    support X" rather than simply omitting X, which would be indistinguishable
-    from X being quiet.
+    Exhaustive on purpose, and the reason ships with the answer: the UI must be able to
+    say "Civ VI's logs do not record which victory a rival is pursuing" rather than
+    quietly rendering one panel fewer, which is indistinguishable from a quiet game.
     """
-    return {c.value: profile.supports(c) for c in Capability}
+    return {
+        c.value: {"supported": profile.supports(c), "reason": profile.reason(c)}
+        for c in Capability
+    }
 
 
 def game_to_dict(resolution: Resolution) -> dict:

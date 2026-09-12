@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from functools import lru_cache
 
+from civ_advisor.knowledge.catalog import DEFAULT_CATALOG_PACKAGE
 from civ_advisor.state.models import BuildQueueRow, GameState
 
 from . import economy
@@ -36,36 +37,42 @@ UNVERIFIED_ITEM_YIELDS: dict[str, str] = {
 ITEM_YIELDS = UNVERIFIED_ITEM_YIELDS
 
 
-@lru_cache(maxsize=1)
-def _catalog_item_yields() -> dict[str, tuple[str, ...]]:
-    """The reviewed associations, or nothing if the catalog cannot be loaded.
+@lru_cache(maxsize=None)
+def _catalog_item_yields(package: str) -> dict[str, tuple[str, ...]]:
+    """The reviewed associations for one game's catalog, or nothing if it cannot load.
 
-    A broken catalog must not take the production advisor down with it: the advice degrades
-    to the unverified table, which is what shipped before the catalog existed.
+    Keyed by `package` (Task 8): Civ VI's catalog is deliberately empty (no guide has
+    been reviewed against it yet), so its associations must come from ITS OWN package,
+    never Civ VII's -- reusing Civ VII's here would attach Civ VII's reviewed guidance
+    to Civ VI items it was never verified against. A broken catalog must not take the
+    production advisor down with it: the advice degrades to the unverified table, which
+    is what shipped before the catalog existed.
     """
     try:
         from civ_advisor.knowledge.catalog import load_catalog
-        return load_catalog().item_yields
+        return load_catalog(package=package).item_yields
     except Exception:  # pragma: no cover - a packaging fault, not a gameplay path
         log.warning("guide catalog unavailable; falling back to unverified item yields")
         return {}
 
 
-def item_yield(item: str) -> str | None:
+def item_yield(item: str, package: str = DEFAULT_CATALOG_PACKAGE) -> str | None:
     """Which yield this build item serves, reviewed source first.
 
     One lookup for the whole codebase, so the decision layer and this advisor cannot end
-    up disagreeing about what a building is for.
+    up disagreeing about what a building is for. `package` names the catalog to consult
+    (a game's `knowledge_package`); the default is Civ VII's, for every caller that
+    predates other games.
     """
-    reviewed = _catalog_item_yields().get(item)
+    reviewed = _catalog_item_yields(package).get(item)
     if reviewed:
         return reviewed[0]
     return UNVERIFIED_ITEM_YIELDS.get(item)
 
 
-def reviewed_yield(item: str) -> bool:
+def reviewed_yield(item: str, package: str = DEFAULT_CATALOG_PACKAGE) -> bool:
     """Whether the association came from a reviewed guide rather than a heuristic."""
-    return bool(_catalog_item_yields().get(item))
+    return bool(_catalog_item_yields(package).get(item))
 
 
 def is_military(item: str) -> bool:
@@ -136,7 +143,7 @@ def _queue_phrase(c: CityQueue) -> str:
     return f"{_city(c.city)}: {humanize(c.item)} in {n} turn{'s' if n != 1 else ''}"
 
 
-def advise(state: GameState) -> list[Insight]:
+def advise(state: GameState, package: str = DEFAULT_CATALOG_PACKAGE) -> list[Insight]:
     t = state.complete_through_turn
     out: list[Insight] = []
     qs = queues(state)
@@ -151,11 +158,11 @@ def advise(state: GameState) -> list[Insight]:
         ))
         gaps = economy.behind(state)
         building = [c for c in human if c.item]
-        served = [item_yield(c.item) for c in building]
+        served = [item_yield(c.item, package) for c in building]
         if gaps and building and all(served) and gaps[0].stat not in served:
             worst = gaps[0]
             unreviewed = sorted({humanize(c.item) for c in building
-                                 if not reviewed_yield(c.item)})
+                                 if not reviewed_yield(c.item, package)})
             # The queue rows are read at latest_turn, the economy comparison at complete_through_turn,
             # so each clause is dated from the rows it actually came from.
             queue_evidence = ", ".join(

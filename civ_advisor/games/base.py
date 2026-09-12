@@ -60,9 +60,21 @@ class GameProfile:
     readers: tuple[LogReader, ...]
     knowledge_package: str              # importable package holding this game's guides.json
     capabilities: frozenset[Capability] = frozenset()
+    unsupported: tuple[tuple[Capability, str], ...] = ()
 
     def supports(self, capability: Capability) -> bool:
         return capability in self.capabilities
+
+    def reason(self, capability: Capability) -> str | None:
+        """Why this game cannot support `capability`, or None when it can.
+
+        Required for every capability the profile does not declare: "not available" with
+        no reason is indistinguishable from a panel that happens to be empty, and the
+        two mean opposite things to a player deciding what to do this turn.
+        """
+        if self.supports(capability):
+            return None
+        return next((why for cap, why in self.unsupported if cap is capability), None)
 
     @property
     def log_files(self) -> tuple[str, ...]:

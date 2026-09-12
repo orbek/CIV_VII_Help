@@ -53,6 +53,14 @@
     const lines = [];
     const disabled = [];
     (coverage || []).forEach(function (c) {
+      if (c.unattributed) {
+        lines.push({
+          cls: "file-note",
+          text: c.label + ": " + c.unattributed + " row"
+            + (c.unattributed === 1 ? "" : "s") + " could not be attributed to a player"
+            + " — they are excluded, not assigned to you",
+        });
+      }
       if (c.status === "ok") return;
       if (c.required && (c.status === "unavailable" || c.status === "partial")) {
         lines.push({
@@ -62,11 +70,27 @@
       } else if (c.status === "unavailable") {
         disabled.push(c.label);
       } else if (c.status === "partial") {
-        lines.push({
-          cls: "file-note",
-          text: c.label + " is incomplete — " + c.missing.length + " of " + c.files.length
-            + " log" + (c.files.length === 1 ? "" : "s") + " unreadable",
-        });
+        // "partial" has two distinct causes and `missing` alone cannot tell them apart:
+        // a declared file that failed to read, or (unbacked) this game having no reader
+        // at all for part of what the domain needs. Stating "0 of N unreadable" when
+        // nothing is actually unreadable would give a false reason for the gap.
+        const missingNames = c.missing || [];
+        const unbackedNames = c.unbacked || [];
+        if (missingNames.length) {
+          lines.push({
+            cls: "file-note",
+            text: c.label + " is incomplete — " + missingNames.length + " of " + c.files.length
+              + " log" + (c.files.length === 1 ? "" : "s") + " unreadable",
+          });
+        }
+        if (unbackedNames.length) {
+          lines.push({
+            cls: "file-note",
+            text: c.label + " is incomplete — this game does not log "
+              + unbackedNames.length + " part" + (unbackedNames.length === 1 ? "" : "s")
+              + " of this",
+          });
+        }
       } else if (c.status === "empty") {
         lines.push({ cls: "file-note", text: c.label + ": readable, but nothing recorded yet" });
       } else if (c.status === "stale") {

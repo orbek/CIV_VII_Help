@@ -113,12 +113,14 @@ def snapshot(
 ) -> Snapshot:
     """A published snapshot around a hand-made state, for worker and serializer tests."""
     from civ_advisor.advisors import run_all
+    from civ_advisor.games.registry import get_profile
 
-    ranked = run_all(state) if insights is None else list(insights)
+    profile = get_profile(game_id)
+    ranked = run_all(state, profile) if insights is None else list(insights)
     return Snapshot(
         schema_version=SCHEMA_VERSION, game_id=game_id, session=session, epoch=epoch,
         epoch_reason="first_load", game_key=None, revision=revision,
         captured_at=captured_at, latest_turn=state.latest_turn,
         analysis_turn=state.complete_through_turn, state=state, insights=tuple(ranked),
-        coverage=_coverage(state, state.complete_through_turn),
+        coverage=_coverage(state, state.complete_through_turn, profile),
     )

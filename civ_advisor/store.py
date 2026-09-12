@@ -19,7 +19,6 @@ from typing import TYPE_CHECKING, Callable
 from civ_advisor.advisors import Insight, run_all
 from civ_advisor.archive import UNKNOWN_GAME, archive_logs, game_key
 from civ_advisor.games.base import GameProfile
-from civ_advisor.games.civ7 import CIV7
 from civ_advisor.ingest.load import RawLogs, load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.models import GameState
@@ -41,27 +40,53 @@ SCHEMA_VERSION = 1
 # be behind the analysis turn. Identity is written once when a save loads, so measuring
 # its age against the turn counter would report a 99-turn lag on a perfectly current file.
 #
-# The last element names RawLogs/reader ATTRIBUTES, not filenames: two games can feed the
+def _unattributed_queue_rows(state: GameState, profile: GameProfile) -> int | None:
+    """Build-queue rows with no owner, or None when this profile has no such concept.
+
+    Civ VI recovers ownership by joining City name against AI_CityBuild.csv (spec 3.2);
+    a city absent from that join is attributed to nobody rather than defaulted to the
+    human, and `city_ownership` is the attribute that join reader feeds. Civ VII's own
+    CityBuildQueue.csv carries the player as a column directly -- its reader always
+    produces an int (`ingest/production.py`), so the gap cannot occur there at all, not
+    merely "did not occur this time." Whether the concept applies is read from the
+    profile's own declared readers, not the game id, so a future game gains or lacks it
+    by what it declares, not by name. `state.build_queues` mirrors `RawLogs.build_queue`
+    row for row (state/build.py), so nothing is discarded before this count -- it is not
+    inferred from a row-count difference, which would silently absorb a parse failure too.
+    """
+    if not any(r.attr == "city_ownership" for r in profile.readers):
+        return None
+    return sum(1 for row in state.build_queues if row.player is None)
+
+
+# The fifth element names RawLogs/reader ATTRIBUTES, not filenames: two games can feed the
 # same attribute from differently-named files (Civ VII's build queue is CityBuildQueue.csv,
 # Civ VI's is City_BuildQueue.csv), and only the profile's own reader table knows which file
 # backs an attribute for THIS game. Resolving through the attribute, in `_coverage`, is what
 # lets a domain be reported correctly regardless of which profile built the state.
-DOMAINS: tuple[tuple[str, str, bool, bool, tuple[str, ...]], ...] = (
-    ("empire", "Empire yields and standings", True, True, ("stats",)),
-    ("treasury", "Treasury and maintenance", False, True, ("treasury",)),
-    ("happiness", "Happiness and celebrations", False, True, ("happiness",)),
-    ("strategy", "Rival victory strategies", False, True, ("victories",)),
+#
+# The sixth element is an optional counter over `(GameState, GameProfile)`, for a domain
+# that can read successfully and still leave some of its own rows unaccounted for -- it
+# returns None itself when the profile has no such concept at all (every domain but
+# production, today; and production itself, for Civ VII).
+DOMAINS: tuple[tuple[str, str, bool, bool, tuple[str, ...],
+                     Callable[[GameState, GameProfile], int | None] | None], ...] = (
+    ("empire", "Empire yields and standings", True, True, ("stats",), None),
+    ("treasury", "Treasury and maintenance", False, True, ("treasury",), None),
+    ("happiness", "Happiness and celebrations", False, True, ("happiness",), None),
+    ("strategy", "Rival victory strategies", False, True, ("victories",), None),
     ("diplomacy", "Rival diplomatic intent", False, True,
-     ("diplomacy", "diplomacy_summary", "deals")),
-    ("targets", "Rival target plots", False, True, ("targets",)),
-    ("history", "Age and historian events", False, True, ("historian",)),
-    ("production", "Settlement build queues", False, True, ("build_queue",)),
-    ("combat", "Combat results", False, True, ("combat",)),
-    ("gossip", "Observed world events", False, True, ("gossip",)),
+     ("diplomacy", "diplomacy_summary", "deals"), None),
+    ("targets", "Rival target plots", False, True, ("targets",), None),
+    ("history", "Age and historian events", False, True, ("historian",), None),
+    ("production", "Settlement build queues", False, True, ("build_queue",),
+     _unattributed_queue_rows),
+    ("combat", "Combat results", False, True, ("combat",), None),
+    ("gossip", "Observed world events", False, True, ("gossip",), None),
     ("tactical", "Tactical unit positions and plans", False, True,
      ("unit_operations", "tactical", "operations", "combat_orders",
-      "operation_evals", "unit_efficiency", "mayhem", "commander_promotions")),
-    ("identity", "Leader and civilization identity", False, False, ("player_identities",)),
+      "operation_evals", "unit_efficiency", "mayhem", "commander_promotions"), None),
+    ("identity", "Leader and civilization identity", False, False, ("player_identities",), None),
 )
 
 # Why the advisor decided it is looking at a different game than before. Anything other
@@ -95,6 +120,14 @@ class DomainCoverage:
     promotions legitimately have nothing to say on most turns, which is why
     `latest_turn` and `lag` ship alongside so the UI can date the gap instead of
     alarming about it.
+
+    `partial` has two distinct causes that `missing` alone cannot tell apart: a
+    declared file that failed to read, or (via `unbacked`) an attribute this domain
+    needs for which the profile has no reader at all. `missing` can be empty while
+    `unbacked` is not -- exactly Civ VI's diplomacy domain, which reads its one
+    declared file fine but has no reader for `deals` at all. Reporting that as "0 of 1
+    logs unreadable" would state a false reason for the gap; the renderer must consult
+    `unbacked` to say the true one.
     """
 
     name: str
@@ -108,6 +141,8 @@ class DomainCoverage:
     latest_turn: int | None
     lag: int | None
     errors: tuple[str, ...]
+    unbacked: tuple[str, ...] = ()       # attrs this domain needs that the profile has no reader for
+    unattributed: int | None = None      # rows this domain's own counter could not attribute; None = no such concept
 
 
 @dataclass(frozen=True)
@@ -136,22 +171,22 @@ class Snapshot:
         return next((c for c in self.coverage if c.name == name), None)
 
 
-def _coverage(state: GameState, analysis_turn: int, profile: GameProfile = CIV7) -> tuple[DomainCoverage, ...]:
+def _coverage(state: GameState, analysis_turn: int, profile: GameProfile) -> tuple[DomainCoverage, ...]:
     # attr -> filename, for whichever readers THIS profile actually declares. A domain's
     # attrs are resolved through this map rather than checked against a literal filename,
     # so the same domain definition means the right thing for every game.
     attr_to_file = {r.attr: r.filename for r in profile.readers}
     out = []
-    for name, label, required, turn_scoped, attrs in DOMAINS:
+    for name, label, required, turn_scoped, attrs, counter in DOMAINS:
         backed = [attr_to_file[a] for a in attrs if a in attr_to_file]
-        unbacked = [a for a in attrs if a not in attr_to_file]
+        unbacked = tuple(a for a in attrs if a not in attr_to_file)
         if not backed:
             # No reader this profile declares could ever produce any of this domain's
             # data: the concept does not exist for this game, not merely unreadable.
             out.append(DomainCoverage(
                 name=name, label=label, required=required, turn_scoped=turn_scoped,
                 status="not_applicable", files=(), missing=(), rows=0,
-                latest_turn=None, lag=None, errors=(),
+                latest_turn=None, lag=None, errors=(), unbacked=unbacked,
             ))
             continue
         names = tuple(backed)
@@ -168,6 +203,10 @@ def _coverage(state: GameState, analysis_turn: int, profile: GameProfile = CIV7)
             # `unbacked`: this domain is built from several attributes and at least one
             # of them has no reader at all for this profile. A domain must not report
             # itself whole when this game cannot supply part of what it claims to cover.
+            # `missing` and `unbacked` are different reasons and both ship on the record
+            # (rather than being collapsed into one "partial"), because "some logs could
+            # not be read" and "this game does not log part of this" are different
+            # statements to a player and the renderer must be able to tell them apart.
             status = "partial"
         elif not rows:
             status = "empty"
@@ -182,7 +221,8 @@ def _coverage(state: GameState, analysis_turn: int, profile: GameProfile = CIV7)
             status=status, files=names, missing=missing, rows=rows,
             latest_turn=latest if turn_scoped else None,
             lag=None if latest is None or not turn_scoped else max(analysis_turn - latest, 0),
-            errors=errors,
+            errors=errors, unbacked=unbacked,
+            unattributed=None if counter is None else counter(state, profile),
         ))
     return tuple(out)
 
@@ -273,7 +313,7 @@ class Store:
             return None
         raw = load_logs(logs_dir, profile)
         state = build_state(raw)
-        insights = run_all(state)
+        insights = run_all(state, profile)
         key = game_key(logs_dir)
         with self._lock:
             if self.profile is not profile or self.logs_dir != logs_dir:

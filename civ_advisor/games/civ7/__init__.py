@@ -63,6 +63,13 @@ CIV7 = GameProfile(
         Capability.SETTLEMENT_CAP,       # Player_Stats.csv (Settlement Cap, Settlements Over Cap)
         Capability.URBAN_RURAL_SPLIT,    # Player_Stats.csv (Urban Pop, Rural Pop)
     }),
+    unsupported=(
+        (Capability.FAITH, "Civ VII has no Faith yield."),
+        (Capability.CIVICS, "Civ VII tracks Legacy Paths rather than a civics count."),
+        (Capability.TOURISM, "Civ VII's Player_Stats.csv has no Tourism column."),
+        (Capability.DIPLOMATIC_FAVOR,
+         "Civ VII's Player_Stats.csv has no Diplomatic Favor column."),
+    ),
 )
 
 register(CIV7)

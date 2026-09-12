@@ -53,3 +53,18 @@ def test_every_declared_capability_is_backed_by_a_declared_reader(profile):
         assert "Player_Stats.csv" in profile.log_files
     if stats2_backed & set(profile.capabilities):
         assert "Player_Stats_2.csv" in profile.log_files
+
+
+@pytest.mark.parametrize("profile", PROFILES, ids=lambda p: p.id)
+def test_every_unsupported_capability_carries_a_reason(profile):
+    """A capability that is merely absent from the set tells the player nothing. The
+    profile is the source of truth for WHY, and this is what stops the two drifting."""
+    from civ_advisor.games.base import Capability
+
+    for capability in Capability:
+        if profile.supports(capability):
+            assert profile.reason(capability) is None, \
+                f"{profile.id} declares {capability.value} supported AND gives a reason it is not"
+        else:
+            assert profile.reason(capability), \
+                f"{profile.id} does not support {capability.value} and does not say why"

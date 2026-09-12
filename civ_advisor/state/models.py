@@ -51,11 +51,6 @@ class PlayerTurn:
     turn: int
     player: int
     cities: int
-    towns: int
-    settlement_cap: int
-    settlements_over_cap: int
-    urban_pop: int
-    rural_pop: int
     techs: int
     land_units: int
     naval_units: int
@@ -67,8 +62,18 @@ class PlayerTurn:
     gold: float
     production: float
     food: float
-    happiness: float
-    diplomacy: float
+    towns: int | None = None
+    settlement_cap: int | None = None
+    settlements_over_cap: int | None = None
+    urban_pop: int | None = None
+    rural_pop: int | None = None
+    happiness: float | None = None
+    diplomacy: float | None = None
+    civics: int | None = None
+    faith_balance: float | None = None
+    faith: float | None = None
+    corps: int | None = None
+    armies: int | None = None
     unit_maintenance: int | None = None
     building_maintenance: int | None = None
     total_maintenance: int | None = None
@@ -102,12 +107,12 @@ class StrategyStatus:
     player: int
     strategy: str   # SCIENCE, CULTURAL, MILITARY, ECONOMIC, ESPIONAGE
     status: str     # Following | Stopped | Forbidden
-    weight: int     # the AI's priority weight, not progress
     # Turn of the last AI_Victories row for this (player, strategy). That log emits a
     # row on any change, including a weight-only change, so this is NOT "the status has
     # held since this turn" — player 4 was Following CULTURAL from turn 1 but its
     # since_turn is 74. Do not render it as a continuous-pursuit claim.
     since_turn: int
+    weight: int | None = None    # the AI's priority weight, not progress
 
     @property
     def following(self) -> bool:

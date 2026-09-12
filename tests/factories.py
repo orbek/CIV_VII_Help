@@ -77,7 +77,7 @@ def city_target(
 
 
 def strategy(player: int, path: str, weight: int, status: str = "Following", since: int = 1) -> StrategyStatus:
-    return StrategyStatus(player, path, status, weight, since)
+    return StrategyStatus(player=player, strategy=path, status=status, since_turn=since, weight=weight)
 
 
 def build_queue_row(turn: int, player: int, city: str = "LOC_CITY_NAME_TEST1", item: str = "BUILDING_BRICKYARD",

@@ -47,7 +47,9 @@ def test_independent_has_treasury_but_no_happiness(fixture_state):
 
 def test_strategies_fold_to_current_status(fixture_state):
     st = fixture_state.strategies
-    assert st[4]["CULTURAL"] == StrategyStatus(4, "CULTURAL", "Following", 100, since_turn=74)
+    assert st[4]["CULTURAL"] == StrategyStatus(
+        player=4, strategy="CULTURAL", status="Following", since_turn=74, weight=100,
+    )
     assert st[1]["CULTURAL"].status == "Stopped" and st[1]["CULTURAL"].since_turn == 80
     assert st[7]["SCIENCE"].weight == 100 and st[7]["SCIENCE"].following
     assert 0 not in st  # the human has no AI strategy rows
@@ -66,7 +68,11 @@ def test_series_skips_missing_values(fixture_state):
 
 
 def test_player_turn_covers_every_stats_field():
-    assert {f.name for f in fields(StatsRow)} <= {f.name for f in fields(PlayerTurn)}
+    # `civilization` is the one deliberate exception: it exists only to carry Civ VI's
+    # row key from the reader to build_state, which resolves it to a player id and
+    # drops it before constructing PlayerTurn (identity then lives in state.identities).
+    stats_fields = {f.name for f in fields(StatsRow)} - {"civilization"}
+    assert stats_fields <= {f.name for f in fields(PlayerTurn)}
 
 
 def test_raw_rows_are_carried_through(fixture_state):
@@ -94,7 +100,12 @@ def test_new_rows_are_carried_and_peace_is_folded():
     from tests.factories import build_queue_row, combat, deal, diplo_event, gossip_row
 
     def stats(turn, player):
-        return StatsRow(turn, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+        return StatsRow(
+            turn=turn, player=player, cities=1, techs=1, land_units=2, naval_units=0,
+            tiles_owned=5, tiles_improved=1, gold_balance=10.0, science=1, culture=1, gold=1,
+            production=1, food=1, towns=0, settlement_cap=3, settlements_over_cap=0,
+            urban_pop=1, rural_pop=2, happiness=1, diplomacy=0,
+        )
 
     raw = RawLogs(
         stats=[stats(1, 0), stats(1, 4), stats(2, 0), stats(2, 4), stats(3, 0)],
@@ -123,7 +134,12 @@ def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
 
     raw = RawLogs(
         stats=[
-            StatsRow(1, player, 1, 0, 3, 0, 1, 2, 1, 2, 0, 5, 1, 10.0, 1, 1, 1, 1, 1, 1, 0)
+            StatsRow(
+                turn=1, player=player, cities=1, techs=1, land_units=2, naval_units=0,
+                tiles_owned=5, tiles_improved=1, gold_balance=10.0, science=1, culture=1,
+                gold=1, production=1, food=1, towns=0, settlement_cap=3,
+                settlements_over_cap=0, urban_pop=1, rural_pop=2, happiness=1, diplomacy=0,
+            )
             for player in (0, 1)
         ],
         player_identities=[
@@ -136,3 +152,18 @@ def test_gamecore_identity_classifies_and_names_rival_without_event_rows():
     state = build_state(raw)
     assert state.players[1].kind is PlayerKind.RIVAL and state.players[1].name == "Xerxes"
     assert state.names is not None and state.names.player_for("Benjamin Franklin") == 0
+
+
+def test_optional_stats_fields_default_to_none_not_zero():
+    """A game that cannot supply happiness must yield None. 0.0 would read as
+    'this civ is miserable' rather than 'this game has no such concept'."""
+    from civ_advisor.state.models import PlayerTurn
+
+    pt = PlayerTurn(turn=1, player=0, cities=1, techs=2, land_units=1,
+                    naval_units=0, tiles_owned=5, tiles_improved=1,
+                    gold_balance=10.0, science=1.0, culture=1.0, gold=2.0,
+                    production=3.0, food=4.0)
+    assert pt.happiness is None
+    assert pt.towns is None
+    assert pt.settlement_cap is None
+    assert pt.diplomacy is None

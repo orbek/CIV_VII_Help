@@ -15,7 +15,7 @@ from civ_advisor.ingest.tactical import (
 )
 from civ_advisor.ingest.textlogs import read_deals, read_player_identities
 
-from ..base import GameProfile, LogReader
+from ..base import Capability, GameProfile, LogReader
 from ..registry import register
 
 DEFAULT_LOGS_DIR = Path.home() / "Library/Application Support/Civilization VII/Logs"
@@ -50,6 +50,7 @@ CIV7 = GameProfile(
     default_logs_dir=DEFAULT_LOGS_DIR,
     readers=READERS,
     knowledge_package="civ_advisor.knowledge.civ7",
+    capabilities=frozenset(Capability),   # Civ VII supports every capability this build models
 )
 
 register(CIV7)

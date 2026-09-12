@@ -26,11 +26,6 @@ class StatsRow:
     turn: int
     player: int
     cities: int
-    towns: int
-    settlement_cap: int
-    settlements_over_cap: int
-    urban_pop: int
-    rural_pop: int
     techs: int
     land_units: int
     naval_units: int
@@ -42,8 +37,21 @@ class StatsRow:
     gold: float
     production: float
     food: float
-    happiness: float
-    diplomacy: float
+    towns: int | None = None
+    settlement_cap: int | None = None
+    settlements_over_cap: int | None = None
+    urban_pop: int | None = None
+    rural_pop: int | None = None
+    happiness: float | None = None
+    diplomacy: float | None = None
+    civics: int | None = None
+    faith_balance: float | None = None
+    faith: float | None = None
+    corps: int | None = None
+    armies: int | None = None
+    # Civ VI keys its stats rows by civilization string rather than a stable
+    # player id; Task 6 resolves this to a player id in build_state and drops it.
+    civilization: str | None = None
 
 
 def read_player_stats(path: Path) -> list[StatsRow]:

@@ -98,3 +98,24 @@ def test_every_civ7_reader_targets_a_real_rawlogs_field():
 
     known = {f.name for f in fields(RawLogs)}
     assert {r.attr for r in CIV7.readers} <= known
+
+
+def test_a_profile_declares_what_it_supports():
+    from civ_advisor.games.base import Capability, GameProfile
+
+    profile = GameProfile(
+        id="capgame", display_name="Cap Game", default_logs_dir=Path("/tmp/logs"),
+        readers=(), knowledge_package="civ_advisor.knowledge",
+        capabilities=frozenset({Capability.HAPPINESS}),
+    )
+    assert profile.supports(Capability.HAPPINESS)
+    assert not profile.supports(Capability.VICTORY_PATHS)
+
+
+def test_civ7_supports_everything_it_did_before():
+    """Phase 1 changed no behaviour, so civ7 must declare every capability;
+    a missing one here would silently switch off a working Civ VII panel."""
+    from civ_advisor.games.base import Capability
+    from civ_advisor.games.civ7 import CIV7
+
+    assert set(CIV7.capabilities) == set(Capability)

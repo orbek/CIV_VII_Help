@@ -2,8 +2,30 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from enum import StrEnum
 from pathlib import Path
 from typing import Callable
+
+
+class Capability(StrEnum):
+    """A signal or panel a game may or may not be able to support.
+
+    Declared per profile rather than inferred from data: a log that is merely
+    empty this turn is not the same as a game that has no such concept, and
+    only the profile knows which is which.
+    """
+
+    VICTORY_PATHS = "victory_paths"
+    HAPPINESS = "happiness"
+    MAINTENANCE = "maintenance"
+    PEACE_DEALS = "peace_deals"
+    COMBAT_ODDS = "combat_odds"
+    SETTLEMENT_CAP = "settlement_cap"
+    URBAN_RURAL_SPLIT = "urban_rural_split"
+    FAITH = "faith"
+    CIVICS = "civics"
+    TOURISM = "tourism"
+    DIPLOMATIC_FAVOR = "diplomatic_favor"
 
 
 @dataclass(frozen=True)
@@ -28,6 +50,10 @@ class GameProfile:
     default_logs_dir: Path
     readers: tuple[LogReader, ...]
     knowledge_package: str              # importable package holding this game's guides.json
+    capabilities: frozenset[Capability] = frozenset()
+
+    def supports(self, capability: Capability) -> bool:
+        return capability in self.capabilities
 
     @property
     def log_files(self) -> tuple[str, ...]:

@@ -2324,6 +2324,17 @@ data-completeness one."
 
 ### Task 9: The header control
 
+**Carried in from Task 7's review.** Pinning a game whose logs directory
+does not exist is HONOURED, not refused — spec §8.1 prefers an empty but
+correctly-labelled dashboard over a silent fallback to the other game, and
+Task 3 implemented it that way deliberately. But nothing currently tells
+the player why the dashboard is empty. The header must say that the pinned
+game's logs directory is absent, distinctly from "this game is installed
+but has not been played" (which detection reports as a present candidate
+with no declared file written). Those two look identical on screen today
+and have completely different remedies: install or launch the game, versus
+play a turn.
+
 **Files:**
 - Modify: `civ_advisor/web/index.html` (the control)
 - Modify: `civ_advisor/web/app.js` (`renderGame`, the change handler, `game_changed`)

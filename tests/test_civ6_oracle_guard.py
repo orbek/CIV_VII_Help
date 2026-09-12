@@ -33,7 +33,35 @@ ORACLE_MARKERS = (
 
 # Vocabulary that would mean the advisor had inferred a victory path from
 # scored tech and civic preferences. See the phase-3 plan.
-VICTORY_WORDS = ("victory", "pursuing", "going for", "winning by", "victory path")
+# The one known-legitimate use of the bare word "victory": advisors/victory.py's own
+# pre-existing, reviewed recommendation ("...current victory score before spending
+# resources...") points the player at the game's real victory-progress meter and
+# claims nothing about what a rival is pursuing. It is the ONLY exception, and it is
+# narrow on purpose: stripping just this phrase must still leave "victory" detectable
+# in a genuine leak like "Cyrus is pursuing a science victory" -- proven below by
+# `test_the_victory_path_guard_still_catches_a_real_leak`.
+ALLOWED_VICTORY_PHRASE = "victory score"
+
+
+def _victory_path_claim(text: str) -> str | None:
+    """The first forbidden word/phrase this text contains, or None if it is clean.
+
+    Pursuit vocabulary is forbidden with NO exception, including in the victory
+    advisor's own output -- it is the single most likely place a real leak would
+    appear, since victory paths are its whole subject and Civ VI cannot support it.
+    The bare word "victory" is allowed only inside `ALLOWED_VICTORY_PHRASE`.
+    """
+    lowered = text.lower()
+    for word in ("pursuing", "going for", "winning by", "victory path"):
+        if word in lowered:
+            return word
+    for path in ("science victory", "cultural victory", "military victory",
+                 "economic victory", "espionage victory"):
+        if path in lowered:
+            return path
+    if "victory" in lowered.replace(ALLOWED_VICTORY_PHRASE, ""):
+        return "victory"
+    return None
 
 
 @pytest.fixture(scope="module")
@@ -142,24 +170,38 @@ def test_no_civ6_insight_or_intel_event_infers_a_victory_path(civ6_state):
     """The back door this design has been most careful about: scored tech and
     civic preferences must stay descriptive.
 
-    Excludes `advisors/victory.py`'s own PRE-EXISTING insights: they legitimately
-    say "victory score" (the game's real, in-game victory-progress meter -- an
-    honest, unrelated concept from phase 1/2a) and checking that against
-    the real capture found it fires there, which is correct behaviour, not a
-    leak. Excluding just that one advisor keeps the guard broad -- every OTHER
-    advisor's insights and every intel event are still scanned, so a future
-    task's insight that leaks victory-path vocabulary is still caught here."""
-    other_insights = [i for i in run_all(civ6_state) if i.advisor != "victory"]
-    text = " ".join(
-        [f"{i.title} {i.recommendation} {i.why}" for i in other_insights]
-        + [e.text for e in intel.feed(civ6_state)]
-    ).lower()
+    No advisor is excluded, including `advisors/victory.py` -- it is the single
+    most likely place a real leak would appear, since victory paths are its whole
+    subject and Civ VI cannot support it. Its own pre-existing recommendation does
+    legitimately say "victory score" (the game's real victory-progress meter,
+    an honest and unrelated concept), which is why that one exact phrase, and
+    only that phrase, is carved out by `_victory_path_claim` -- narrowly enough
+    that a genuine leak still trips it, proven directly by the negative test
+    below rather than assumed."""
+    for i in run_all(civ6_state):
+        for field in (i.title, i.recommendation, i.why):
+            claim = _victory_path_claim(field)
+            assert claim is None, f"{i.id} uses {claim!r}: {field!r}"
+    for e in intel.feed(civ6_state):
+        claim = _victory_path_claim(e.text)
+        assert claim is None, f"{e.event_type} uses {claim!r}: {e.text!r}"
 
-    for word in VICTORY_WORDS:
-        assert word not in text, f"a Civ VI claim uses {word!r}"
-    for path in ("science victory", "cultural victory", "military victory",
-                 "economic victory", "espionage victory"):
-        assert path not in text
+
+def test_the_victory_path_guard_still_catches_a_real_leak():
+    """Proves the carve-out for "victory score" is narrow enough to matter: a
+    sentence that WOULD be a real victory-path claim must still be rejected by
+    the exact same check the test above relies on, not merely by construction."""
+    assert _victory_path_claim("Cyrus is pursuing a science victory") == "pursuing"
+    assert _victory_path_claim("Cyrus is going for a cultural victory") == "going for"
+    assert _victory_path_claim("Dido is winning by a military victory") == "winning by"
+    assert _victory_path_claim("This rival's victory path is science") == "victory path"
+    assert _victory_path_claim("Cyrus's score suggests a science victory") == "science victory"
+    # The one phrase the real advisor legitimately uses is still allowed on its own...
+    assert _victory_path_claim("current victory score before spending resources") is None
+    # ...but does not license the bare word appearing anywhere else in the same text.
+    assert _victory_path_claim(
+        "current victory score, and Cyrus is close to victory"
+    ) == "victory"
 
 
 def test_the_capability_report_tells_the_ui_what_each_game_has(civ6_dir):

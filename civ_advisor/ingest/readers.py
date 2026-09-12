@@ -49,9 +49,6 @@ class StatsRow:
     faith: float | None = None
     corps: int | None = None
     armies: int | None = None
-    # Civ VI keys its stats rows by civilization string rather than a stable
-    # player id; Task 6 resolves this to a player id in build_state and drops it.
-    civilization: str | None = None
 
 
 def read_player_stats(path: Path) -> list[StatsRow]:

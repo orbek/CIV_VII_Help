@@ -68,11 +68,7 @@ def test_series_skips_missing_values(fixture_state):
 
 
 def test_player_turn_covers_every_stats_field():
-    # `civilization` is the one deliberate exception: it exists only to carry Civ VI's
-    # row key from the reader to build_state, which resolves it to a player id and
-    # drops it before constructing PlayerTurn (identity then lives in state.identities).
-    stats_fields = {f.name for f in fields(StatsRow)} - {"civilization"}
-    assert stats_fields <= {f.name for f in fields(PlayerTurn)}
+    assert {f.name for f in fields(StatsRow)} <= {f.name for f in fields(PlayerTurn)}
 
 
 def test_raw_rows_are_carried_through(fixture_state):

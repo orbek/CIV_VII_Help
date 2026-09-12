@@ -78,12 +78,7 @@ def build_state(raw: RawLogs) -> GameState:
         hp = happiness.get((s.turn, s.player))
         if hp is not None:
             extra |= dict(golden_age=hp.golden_age, happiness_threshold=hp.threshold, happiness_total=hp.total)
-        # `civilization` exists only to key Civ VI's stats rows; once the row is folded
-        # in here it has served its purpose (identity lives in state.identities), and
-        # PlayerTurn has no such field to receive it.
-        stats_fields = asdict(s)
-        stats_fields.pop("civilization", None)
-        state.turns.setdefault(s.turn, {})[s.player] = PlayerTurn(**stats_fields, **extra)
+        state.turns.setdefault(s.turn, {})[s.player] = PlayerTurn(**asdict(s), **extra)
 
     # Players: 0 is human; a LOC_LEADER owner key or a happiness row marks a rival;
     # everyone else is an independent people.

@@ -11,3 +11,4 @@ __all__ = [
 # Imported for the side effect of registering. Must come last: each game package
 # imports .base, so importing one from the top of this module would be circular.
 from . import civ7  # noqa: E402,F401
+from . import civ6  # noqa: E402,F401

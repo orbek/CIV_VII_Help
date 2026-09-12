@@ -1,0 +1,23 @@
+Game Turn, Player, Opponent, Modifier, Change, Value, Max, Accum Amt, Accum Turns, Cooldown Turns, Reduction
+12, 0, 5, First impressions of you, Activate,    2.0,    2.0,    1.0, 0, 10,    1.0
+12, 0,  5, First impressions of you, Deactivate
+12, 5, 0, First impressions of you, Activate,   -4.0,   -4.0,    1.0, 0, 10,    1.0
+12, 5,  0, First impressions of you, Deactivate
+21, 5, 0, First impressions of you, Update,   -3.0
+22, 0, 5, First impressions of you, Update,    1.0
+31, 5, 0, First impressions of you, Update,   -2.0
+32, 0, 5, First impressions of you, Update,    0.0
+33, 5, 0, Trade routes between our nations, Activate,    2.0,    2.0,    1.0, 0, 0,    1.0
+34, 0, 5, Trade routes between our nations, Activate,    2.0,    2.0,    1.0, 0, 0,    1.0
+37, 0, 5, Settled near them, Activate,   -3.0,   -3.0,    0.0, 0, 10,   -1.0
+39, 0, 5, Trade routes between our nations, Activate,    0.0,    0.0,    1.0, 0, 0,    1.0
+39, 5, 0, Trade routes between our nations, Activate,    0.0,    0.0,    1.0, 0, 0,    1.0
+41, 5, 0, First impressions of you, Update,   -1.0
+42, 0, 5, They dislike civilizations who do not clear barbarians, Activate,   -6.0,   -6.0,    1.0, 0, 0,    1.0
+42, 0, 5, They dislike civilizations with a small standing army, Activate,   -6.0,   -6.0,    1.0, 0, 0,    1.0
+48, 3, 4, First impressions of you, Activate,   -2.0,   -2.0,    1.0, 0, 10,    1.0
+48, 3,  4, First impressions of you, Deactivate
+48, 4, 3, First impressions of you, Activate,    1.0,    1.0,    1.0, 0, 10,    1.0
+48, 4,  3, First impressions of you, Deactivate
+50, 5, 0, Likes civs who respect the environment, Activate,   -8.0,   -8.0,    1.0, 0, 0,    1.0
+51, 5, 0, First impressions of you, Update,    0.0

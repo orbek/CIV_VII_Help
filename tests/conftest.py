@@ -4,6 +4,7 @@ import pytest
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures" / "logs_82turns"
 FIXTURE_V2_DIR = Path(__file__).parent / "fixtures" / "logs_v2"
+FIXTURE_CIV6_DIR = Path(__file__).parent / "fixtures" / "logs_civ6"
 
 
 @pytest.fixture(scope="session")
@@ -32,6 +33,13 @@ def fixture_v2_dir() -> Path:
 def fixture_v2_state(fixture_v2_dir: Path):
     """GameState built from the turn-100 fixture that exercises all v2 readers."""
     return build_state(load_logs(fixture_v2_dir))
+
+
+@pytest.fixture(scope="session")
+def civ6_dir() -> Path:
+    if not FIXTURE_CIV6_DIR.is_dir():
+        pytest.skip("civ6 fixture not installed")
+    return FIXTURE_CIV6_DIR
 
 
 from civ_advisor.games import registry  # noqa: E402

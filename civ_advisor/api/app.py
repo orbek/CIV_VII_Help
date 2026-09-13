@@ -543,7 +543,9 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     @app.get("/api/game")
     def api_game() -> dict:
-        return game_to_dict(selector.resolve() if supervise_selection else resolution)
+        snap = store.snapshot
+        return game_to_dict(selector.resolve() if supervise_selection else resolution,
+                            tuner=snap.tuner if snap is not None else None)
 
     @app.post("/api/game", response_model=None)
     async def api_set_game(body: dict = Body(...)) -> dict:
@@ -565,7 +567,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             except UnknownGame as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             await apply_selection(selector.resolve())
-        return game_to_dict(resolution)
+        snap = store.snapshot
+        return game_to_dict(resolution, tuner=snap.tuner if snap is not None else None)
 
     @app.get("/api/state")
     def api_state(oracle: int = 1) -> dict:

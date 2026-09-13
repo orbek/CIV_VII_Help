@@ -22,6 +22,7 @@ from civ_advisor.games.base import GameProfile
 from civ_advisor.ingest.load import RawLogs, load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.models import GameState
+from civ_advisor.tuner.base import NullTuner, TUNER_OFF, TunerUnavailable
 
 if TYPE_CHECKING:
     from civ_advisor.llm.worker import CommentaryWorker
@@ -162,6 +163,9 @@ class Snapshot:
     state: GameState
     insights: tuple[Insight, ...]
     coverage: tuple[DomainCoverage, ...]
+    # Never None. A caller that had to check for absence would eventually forget,
+    # and a missing figure would read as a zero.
+    tuner: object = TUNER_OFF
 
     @property
     def in_progress(self) -> bool:
@@ -329,11 +333,28 @@ class Store:
         state = build_state(raw)
         insights = run_all(state, profile)
         key = game_key(logs_dir)
+        # Outside the lock, and never fatal: a socket problem must not discard a
+        # poll that read every log correctly. Opened once per rebuild, not once
+        # per question the snapshot is later asked.
+        tuner = TUNER_OFF
+        factory = getattr(profile, "tuner", None)
+        if factory is not None:
+            try:
+                tuner = factory()
+            except Exception:       # a third-party socket has many failure shapes
+                tuner = NullTuner(
+                    TunerUnavailable.NOT_ANSWERING,
+                    "the tuner socket could not be reached this turn")
         with self._lock:
             if self.profile is not profile or self.logs_dir != logs_dir \
                     or self._generation != generation:
+                # This rebuild's own tuner reading is discarded along with everything
+                # else it read; nothing will ever publish it, so its socket must not
+                # be left open.
+                self._close_tuner(tuner)
                 return None
-            snapshot = self._capture_locked(raw, state, insights, key, profile)
+            snapshot = self._capture_locked(raw, state, insights, key, profile, tuner)
+            previous = self.snapshot
             self.snapshot = snapshot
             # Captured under the same lock as the snapshot itself: a switch_to landing
             # in the gap between releasing this lock and _archive() running must not be
@@ -342,10 +363,28 @@ class Store:
             # already guards the snapshot against, applied to archiving too.
             archive_root = self.archive_root
             observed_key = self._observed_key
+        # Only after the new snapshot has been published and the lock released: a
+        # reader that fetched `previous` just before this rebuild took the lock may
+        # still be reading through its tuner, and closing it any earlier would pull
+        # the socket out from under that read -- the same swap-before-safe ordering
+        # hazard that has bitten this project before, applied to a tuner socket
+        # instead of a file or a snapshot field.
+        if previous is not None:
+            self._close_tuner(previous.tuner)
         self._archive(raw, snapshot.session, logs_dir, archive_root, observed_key)
         if self.commentary_worker is not None:
             self.commentary_worker.schedule(snapshot, revisions=self.revisions(snapshot))
         return snapshot
+
+    @staticmethod
+    def _close_tuner(tuner: object) -> None:
+        """Close a tuner's socket if it has one. TUNER_OFF and every NullTuner do not."""
+        close = getattr(tuner, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:   # closing a socket must never break a rebuild
+                log.exception("closing the previous tuner failed; continuing")
 
     def revisions(self, snapshot: Snapshot) -> dict:
         """The decision/context/catalog revisions for this snapshot, if anything supplies them."""
@@ -358,7 +397,7 @@ class Store:
             return {}
 
     def _capture_locked(self, raw: RawLogs, state: GameState, insights: list[Insight],
-                        key: str | None, profile: GameProfile) -> Snapshot:
+                        key: str | None, profile: GameProfile, tuner: object) -> Snapshot:
         self._revision += 1
         reason = self._session_reason_locked(raw, key)  # compares `key` against the session's own
         if reason is not None:
@@ -386,6 +425,7 @@ class Store:
             latest_turn=state.latest_turn, analysis_turn=state.complete_through_turn,
             state=state, insights=tuple(insights),
             coverage=_coverage(state, state.complete_through_turn, profile),
+            tuner=tuner,
         )
 
     def _session_reason_locked(self, raw: RawLogs, key: str | None) -> str | None:

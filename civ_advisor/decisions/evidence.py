@@ -19,6 +19,7 @@ from civ_advisor.advisors import economy, production, tactical
 from civ_advisor.advisors.base import Provenance
 from civ_advisor.ruleset.base import RulesetFigure
 from civ_advisor.state.models import GameState
+from civ_advisor.tuner.base import BuildOption, CityAmenities, Maintenance, TunerReading
 
 from .models import EvidenceFact, SourceKind
 
@@ -381,6 +382,65 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
         subject_id=figure.subject,
         note=(f"Read from {figure.identity.describe()}. That file records no game build, "
               "no expansion list and no mod list, so none is claimed here."),
+    ))
+
+
+# ---- the live tuner --------------------------------------------------------------
+
+def amenities_fact(ledger: EvidenceLedger, reading: TunerReading,
+                    amenities: CityAmenities) -> EvidenceFact:
+    """One settlement's amenities, as read from the running game just now.
+
+    FAIR, not Oracle: amenities are on the player's own city screen. LIVE_READING
+    because it is a value we asked for at a moment we chose, not something the game
+    logged on its own -- so it carries the turn it describes and when we asked.
+    """
+    return ledger.add(EvidenceFact(
+        id=f"tuner.amenities.{amenities.city}.{reading.turn}",
+        label=f"{amenities.city}'s amenities",
+        source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
+        observed_turn=reading.turn, reported_at=reading.read_at,
+        value=amenities.total, unit="amenities", subject_id=amenities.city,
+        note=(f"Read from {reading.state}. Luxuries {amenities.from_luxuries}, "
+              f"civics {amenities.from_civics}, entertainment "
+              f"{amenities.from_entertainment}; unexplained {amenities.unexplained}."),
+    ))
+
+
+def tuner_net_gold_fact(ledger: EvidenceLedger, reading: TunerReading,
+                        maintenance: Maintenance) -> EvidenceFact:
+    """Gold per turn after upkeep, read live -- the figure the logs cannot supply.
+
+    Named apart from the log-derived `net_gold_fact` above: that one is SourceKind.LOG
+    computed from the player's stats and treasury logs; this one is SourceKind.LIVE_READING
+    because it came from asking the running game, not from anything it wrote on its own.
+    """
+    return ledger.add(EvidenceFact(
+        id=f"tuner.net_gold.{reading.turn}", label="Your net gold per turn, read live",
+        source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
+        observed_turn=reading.turn, reported_at=reading.read_at,
+        value=maintenance.net_gold, unit="per turn", subject_id=None,
+        note=(f"Read from {reading.state}. Upkeep {maintenance.total} against a gold "
+              f"yield of {maintenance.gold_yield}; unattributed upkeep "
+              f"{maintenance.unattributed}."),
+    ))
+
+
+def build_option_fact(ledger: EvidenceLedger, reading: TunerReading, city: str,
+                       option: BuildOption) -> EvidenceFact:
+    """One thing a settlement may build right now, and how long it would take.
+
+    LIVE_READING: this is not derivable from the ruleset alone, because the turn
+    estimate depends on this settlement's current production, so it is only ever
+    known by asking the running game.
+    """
+    return ledger.add(EvidenceFact(
+        id=f"tuner.build_option.{city}.{option.item}.{reading.turn}",
+        label=f"{city} may build {option.item}",
+        source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
+        observed_turn=reading.turn, reported_at=reading.read_at,
+        value=option.turns, unit="turns", subject_id=city,
+        note=f"Read from {reading.state}.",
     ))
 
 

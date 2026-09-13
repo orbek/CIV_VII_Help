@@ -26,6 +26,12 @@ class SourceKind(Enum):
     # player typed in. Badging it as any of those would misstate where the number is
     # checkable: this one is checkable against a file on the player's own disk.
     INSTALLED_RULESET = "installed_ruleset"
+    # A sixth kind. Every other source is something that happened without us asking: a
+    # log row is what the game wrote on its own, a ruleset figure is a fact about the
+    # player's install, a player report is a dated human observation. A tuner reading is
+    # different in kind: it is a value WE asked for, at a moment WE chose, so it must
+    # carry both the turn it describes and when we asked rather than either alone.
+    LIVE_READING = "live_reading"     # a value we asked the running game for
 
 
 class Applicability(Enum):
@@ -83,6 +89,14 @@ class EvidenceFact:
             if len(self.record_key) < 3:
                 raise ValueError(f"ruleset fact {self.id} must cite a table, a column "
                                  "and the row key that selects the row")
+        if self.source_kind is SourceKind.LIVE_READING:
+            # Both halves matter and neither is optional. A log row is something
+            # the game wrote on its own; this is a value we asked for, so it must
+            # say both which turn it describes and when we asked.
+            if self.reported_at is None:
+                raise ValueError(f"live reading fact {self.id} must record reported_at")
+            if self.observed_turn is None:
+                raise ValueError(f"live reading fact {self.id} must name its observed_turn")
 
     @property
     def freshness(self) -> str:

@@ -17,6 +17,9 @@ from civ_advisor.games.civ7 import CIV7
 from civ_advisor.tuner.base import (
     BuildOption, CityAmenities, Maintenance, SettlementOptions, TUNER_OFF, TunerReading,
 )
+from civ_advisor.tuner.client import open_tuner
+
+from tests.test_tuner_client import FakeGame, replies
 
 
 class _LiveTuner:
@@ -278,3 +281,53 @@ def test_the_reading_carries_when_it_was_taken(client_with_live_tuner):
     body = client_with_live_tuner.get("/api/briefing").json()
     assert body["tuner"]["read_at"] == "2026-09-13T10:40:00Z"
     assert body["tuner"]["turn"] == 12
+
+
+# ---- the turn a live figure is filed under -------------------------------------
+#
+# Driven end to end through a real socket, because the defect lived exactly where the
+# other fakes do not reach: `Civ6Tuner._turn` defaulted to 0 and nothing ever set it,
+# so every live figure in production was filed under turn 0 while every fake in this
+# file handed back `turn=12` on the object and hid it. Here nobody sets a turn on
+# anything -- the game's REPLY names it, the client parses it out, and the payload is
+# checked for what it carries.
+
+
+@pytest.fixture
+def live_game_on_turn_59():
+    game = FakeGame(replies(turn=59))
+    try:
+        yield game
+    finally:
+        game.close()
+
+
+@pytest.fixture
+def client_against_a_socket(civ6_dir, live_game_on_turn_59):
+    profile = _profile_with_tuner(
+        lambda: open_tuner(port=live_game_on_turn_59.port, timeout=3.0))
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=profile,
+                               archiving=False)) as c:
+        yield c
+
+
+def test_a_live_figure_is_filed_under_the_turn_the_game_named(client_against_a_socket):
+    """Not turn 0, and not the logs' last complete turn: the turn the running game
+    itself answered with when it was asked for these very figures."""
+    body = client_against_a_socket.get("/api/briefing").json()
+    tuner = body["tuner"]
+    assert tuner["available"] is True
+    assert tuner["turn"] == 59
+    assert tuner["turn"] != 0
+    assert tuner["maintenance_read"]["turn"] == 59
+    assert tuner["maintenance"]["net_gold"] == 7
+
+
+def test_the_live_turn_is_not_borrowed_from_the_logs(client_against_a_socket):
+    """The socket reads the live game; the logs are complete only through the last
+    FINISHED turn. They disagree exactly when the player is mid-turn, and the reading
+    must carry its own answer rather than being quietly reconciled to the snapshot's."""
+    body = client_against_a_socket.get("/api/briefing").json()
+    logged_turn = body["status"]["analysis_turn"]
+    assert body["tuner"]["turn"] == 59
+    assert body["tuner"]["turn"] != logged_turn

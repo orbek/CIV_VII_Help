@@ -44,7 +44,16 @@ class FakeGame:
             conn.sendall(payload)
 
     def _serve(self):
-        conn, _ = self._srv.accept()
+        # Re-accepts: a store rebuild opens a fresh connection per poll, and one
+        # exchange per process would make this fake answer the first poll only.
+        while True:
+            try:
+                conn, _ = self._srv.accept()
+            except OSError:
+                return
+            self._exchange(conn)
+
+    def _exchange(self, conn):
         buf = b""
         try:
             while True:
@@ -79,10 +88,27 @@ def aborted_reply(text: str) -> bytes:
     return frame(TAG_HANDSHAKE, f"O\x00x: {text}")
 
 
-def replies() -> dict[int, bytes]:
+def turn_line(turn: int) -> bytes:
+    """The first line of every real reply: the game naming its own current turn.
+
+    The .bin captures in tests/fixtures/tuner/ predate the turn line and are never
+    edited to add one -- they are real bytes off a real socket. A fake that wants a
+    turn-bearing reply prepends this frame to the capture instead, which is also
+    what makes these tests honest about where the turn comes from: the game's REPLY,
+    not a field somebody set on the client object.
+    """
+    return frame(TAG_HANDSHAKE, f"O\x00x: turn\t{turn}")
+
+
+def dated(raw: bytes, turn: int = 59) -> bytes:
+    """A captured reply as the game sends it today: turn line first, then the figures."""
+    return turn_line(turn) + raw
+
+
+def replies(turn: int = 59) -> dict[int, bytes]:
     return {
-        4: (FIXTURES / "query_maintenance.bin").read_bytes(),
-        125: (FIXTURES / "query_buildoptions.bin").read_bytes(),
+        4: dated((FIXTURES / "query_maintenance.bin").read_bytes(), turn),
+        125: dated((FIXTURES / "query_buildoptions.bin").read_bytes(), turn),
     }
 
 
@@ -133,6 +159,65 @@ def test_a_reading_carries_the_vm_and_a_timestamp():
         t.maintenance()
         r = t.reading()
         assert r is not None and r.state == "GameCore_Tuner" and r.read_at
+    finally:
+        game.close()
+
+
+def test_the_turn_comes_from_the_games_own_reply():
+    """The defect this test exists for: `_turn: int = 0` was never set, so every
+    live figure in production was filed under turn 0 -- including the sentence a
+    player on turn 59 reads. The fake here does NOT set a turn on the client; it
+    sends one the way the game does, in the reply, which is the only way this
+    could ever have been caught."""
+    game = FakeGame(replies(turn=59))
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is not None
+        r = t.reading()
+        assert r is not None
+        assert r.turn == 59
+        assert r.turn != 0
+    finally:
+        game.close()
+
+
+def test_each_query_is_dated_by_its_own_reply():
+    """The game may pass a turn between two queries of one capture. Each figure
+    carries the turn that produced it; nothing reconciles them."""
+    game = FakeGame({4: dated((FIXTURES / "query_maintenance.bin").read_bytes(), 59),
+                     125: dated((FIXTURES / "query_buildoptions.bin").read_bytes(), 60)})
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        t.maintenance()
+        assert t.reading().turn == 59
+        t.build_options()
+        assert t.reading().turn == 60
+    finally:
+        game.close()
+
+
+def test_a_reply_that_names_no_turn_is_refused_rather_than_dated_by_guesswork():
+    """The figures may be perfectly real. They are still refused: nothing here may
+    substitute a turn from the logs, from the last query, or from zero."""
+    game = FakeGame({4: (FIXTURES / "query_maintenance.bin").read_bytes()})
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        assert "turn" in t.reason
+        assert t.reading() is None
+    finally:
+        game.close()
+
+
+def test_a_reply_naming_turn_zero_is_refused():
+    """Turn 0 is what an unset field looks like, and no real match is on it."""
+    game = FakeGame(replies(turn=0))
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        assert t.reading() is None
     finally:
         game.close()
 
@@ -193,7 +278,7 @@ def test_an_aborted_chunk_does_not_burn_the_whole_timeout():
 
 def test_a_failure_does_not_leak_into_the_next_call_on_the_same_instance():
     game = FakeGame({4: aborted_reply("ERR:Runtime Error: boom"),
-                      125: (FIXTURES / "query_buildoptions.bin").read_bytes()},
+                      125: dated((FIXTURES / "query_buildoptions.bin").read_bytes())},
                      abort_states=frozenset({4}))
     try:
         t = open_tuner(port=game.port, timeout=3.0)

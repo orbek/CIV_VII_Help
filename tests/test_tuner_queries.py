@@ -4,20 +4,65 @@ from pathlib import Path
 import pytest
 
 from civ_advisor.tuner.protocol import output_text, parse
-from civ_advisor.tuner.queries import CATALOG, looks_unreachable
+from civ_advisor.tuner.queries import CATALOG, looks_unreachable, split_turn
 
 FIXTURES = Path(__file__).parent / "fixtures" / "tuner"
 
 
 def lines(name: str) -> list[str]:
+    """The output lines of one captured reply.
+
+    The .bin captures predate the turn line every query now prints first, and they
+    are never edited: they are real bytes off a real socket and are the ground truth
+    for the protocol. A test that needs a turn-bearing reply builds one with
+    `dated()` below instead.
+    """
     msgs = parse((FIXTURES / name).read_bytes())
     return [t for t in (output_text(p) for _, p in msgs) if t and "---END---" not in t]
+
+
+def dated(name: str, turn: int = 59) -> list[str]:
+    """A captured reply as the game sends it today: the turn line, then the figures."""
+    return [f"turn\t{turn}", *lines(name)]
 
 
 def test_every_entry_declares_where_it_runs_and_when_it_was_verified():
     for q in CATALOG.values():
         assert q.state in {"GameCore_Tuner", "InGame"}, q.id
         assert q.verified_on, q.id
+
+
+def test_every_entry_asks_the_game_for_its_own_turn():
+    """A figure must carry the turn that produced it, and the only honest source of
+    that turn is the game. Not the logs: they are complete through the last FINISHED
+    turn, and disagree with the live game exactly when the player is mid-turn."""
+    for q in CATALOG.values():
+        assert "Game.GetCurrentGameTurn()" in q.lua, q.id
+
+
+def test_the_turn_is_read_out_of_a_real_reply_and_removed_before_parsing():
+    turn, rest = split_turn(dated("query_maintenance.bin", 59))
+    assert turn == 59
+    assert rest == lines("query_maintenance.bin")
+    m = CATALOG["maintenance"].parse(rest)
+    assert m.net_gold == 7
+
+
+def test_every_figure_still_parses_out_of_a_turn_bearing_reply():
+    turn, rest = split_turn(dated("query_amenities.bin", 59))
+    assert turn == 59
+    assert {r.city for r in CATALOG["amenities"].parse(rest)} == {"Rome", "Puteoli"}
+
+    turn, rest = split_turn(dated("query_buildoptions.bin", 60))
+    assert turn == 60
+    assert CATALOG["build_options"].parse(rest)
+
+
+def test_a_reply_with_no_turn_line_reports_no_turn_rather_than_zero():
+    """`None`, never 0: 0 is a real-looking turn number that no match is ever on."""
+    turn, rest = split_turn(lines("query_maintenance.bin"))
+    assert turn is None
+    assert rest == lines("query_maintenance.bin")
 
 
 def test_no_entry_contains_a_format_placeholder():

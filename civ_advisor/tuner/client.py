@@ -16,7 +16,7 @@ from .base import (
     TunerProvider, TunerReading, TunerUnavailable,
 )
 from .protocol import TAG_COMMAND, TAG_HANDSHAKE, consume, frame, output_text, parse_states
-from .queries import CATALOG, looks_unreachable
+from .queries import CATALOG, looks_unreachable, split_turn
 
 HOST = "127.0.0.1"      # loopback only, always. Never configurable.
 PORT = 4318
@@ -48,7 +48,6 @@ class Civ6Tuner:
     _reading: TunerReading | None = None
     _unavailable: TunerUnavailable | None = None
     _reason: str | None = None
-    _turn: int = 0
     _closed: bool = False
 
     @property
@@ -64,6 +63,13 @@ class Civ6Tuner:
         return self._unavailable
 
     def reading(self) -> TunerReading | None:
+        """The reading belonging to the MOST RECENT query on this instance.
+
+        Not a property of the connection: every query asks the game its own turn
+        and is dated by that answer, so a caller reading this before asking
+        anything -- or after a query the game never dated -- gets None rather
+        than a turn from some other question.
+        """
         return self._reading
 
     def close(self) -> None:
@@ -115,8 +121,6 @@ class Civ6Tuner:
                 if text is None:
                     continue
                 if SENTINEL in text:
-                    self._reading = TunerReading(
-                        turn=self._turn, read_at=_now(), state=query.state)
                     return lines
                 if looks_unreachable([text]):
                     # An uncaught Lua error aborts the chunk before the
@@ -137,9 +141,12 @@ class Civ6Tuner:
     def _answer(self, query_id: str):
         # Cleared up front: a poll asks maintenance, amenities and build
         # options on this same instance, and a failure on one must not leak
-        # into how the next is reported.
+        # into how the next is reported. `_reading` is cleared with them: a
+        # reading is the date of ONE query's figures, so the previous query's
+        # must not be left standing where this one's belongs.
         self._unavailable = None
         self._reason = None
+        self._reading = None
         query = CATALOG[query_id]
         lines = self._ask(query_id)
         if lines is None:
@@ -150,6 +157,22 @@ class Civ6Tuner:
             self._reason = (
                 f"the game's {query.state} state does not implement the calls "
                 f"{query.id} needs")
+            return None
+        turn, lines = split_turn(lines)
+        if turn is None:
+            # The figures may well be real, and they are still refused: a figure
+            # that cannot say which turn produced it is the one thing this package
+            # must never hand on. Nothing here substitutes a turn from elsewhere.
+            self._unavailable = TunerUnavailable.UNREACHABLE
+            self._reason = (
+                f"the {query.id} reply did not name the game's turn, so its "
+                "figures cannot be dated to the turn that produced them")
+            return None
+        try:
+            self._reading = TunerReading(turn=turn, read_at=_now(), state=query.state)
+        except ValueError as exc:
+            self._unavailable = TunerUnavailable.UNREACHABLE
+            self._reason = f"the {query.id} reply named turn {turn}: {exc}"
             return None
         try:
             return query.parse(lines)

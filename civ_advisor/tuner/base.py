@@ -38,6 +38,9 @@ class TunerReading:
     A log row is something the game wrote on its own; this is a value we asked
     for at a moment we chose. Both facts travel with every figure, which is why
     `read_at` exists beside `turn`.
+
+    `turn` is the turn the GAME named when it answered, never the last turn the
+    logs finished. The two differ exactly when the player is mid-turn.
     """
 
     turn: int
@@ -47,6 +50,11 @@ class TunerReading:
     def __post_init__(self) -> None:
         if not self.state:
             raise ValueError("a reading must name the state it was read from")
+        if self.turn < 1:
+            raise ValueError(
+                f"a reading must name a real game turn, got {self.turn}; turn 0 is how "
+                "an unset field looks, and a figure filed under the wrong turn is the "
+                "one error this project must never make")
 
 
 @dataclass(frozen=True)
@@ -198,6 +206,10 @@ class TunerSnapshot:
 
     available: bool
     reason: str | None = None
+    # The most recent reading of this capture, for a caller that wants to say when
+    # the tuner was last asked anything. To DATE a figure, use `reading_for`: the
+    # game can pass a turn between two queries of one capture, and blending them
+    # would file one figure's number under another figure's turn.
     reading: TunerReading | None = None
     amenities: tuple[CityAmenities, ...] = ()
     maintenance: Maintenance | None = None
@@ -206,30 +218,44 @@ class TunerSnapshot:
     # this map was read successfully; one present here says which of the three
     # absences applied to IT, which is not always the same for every figure.
     absences: tuple[tuple[str, str], ...] = ()
+    # The reading that dates each figure, keyed by the same catalog id. Recorded per
+    # figure because each query asks the game its own turn and is answered by the
+    # live game, not by the logs.
+    readings: tuple[tuple[str, TunerReading], ...] = ()
 
     def absence(self, query_id: str) -> str | None:
         return next((why for q, why in self.absences if q == query_id), None)
+
+    def reading_for(self, query_id: str) -> TunerReading | None:
+        """The reading that dates THIS figure, or None if it was never read."""
+        return next((r for q, r in self.readings if q == query_id), None)
 
 
 TUNER_SNAPSHOT_OFF = TunerSnapshot(available=False, reason=TUNER_OFF.reason)
 
 
 def _ask(provider: TunerProvider, query_id: str, fn: Callable[[], object], empty: object):
-    """Call one figure, and pair it with the reason belonging to THAT call.
+    """Call one figure, and pair it with the reason AND reading belonging to THAT call.
 
     Guarded so a provider that raises on one figure cannot lose the other two, and
-    the reason recorded is read immediately after this call -- before anything else
-    on the provider has a chance to clear or replace it for the next figure.
+    both the reason and the reading are read immediately after this call -- before
+    anything else on the provider has a chance to clear or replace them for the next
+    figure. The reading is what dates this figure, so taking it at any other moment
+    would be taking another query's turn.
     """
     try:
         result = fn()
     except Exception as exc:      # a provider's own failures are many shapes; never propagate
-        return empty, f"reading {query_id} raised {exc!r}"
+        return empty, f"reading {query_id} raised {exc!r}", None
+    try:
+        reading = provider.reading()
+    except Exception:
+        reading = None
     if not result:
         reason = getattr(provider, "reason", None)
         if reason:
-            return result, reason
-    return result, None
+            return result, reason, reading
+    return result, None, reading
 
 
 def capture(provider: TunerProvider) -> TunerSnapshot:
@@ -242,14 +268,12 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
     if not getattr(provider, "available", False):
         return TunerSnapshot(available=False, reason=getattr(provider, "reason", None))
 
-    try:
-        reading = provider.reading()
-    except Exception:
-        reading = None
-
-    amenities, amenities_why = _ask(provider, "amenities", provider.amenities, ())
-    maintenance, maintenance_why = _ask(provider, "maintenance", provider.maintenance, None)
-    build_options, build_options_why = _ask(provider, "build_options", provider.build_options, ())
+    amenities, amenities_why, amenities_read = _ask(
+        provider, "amenities", provider.amenities, ())
+    maintenance, maintenance_why, maintenance_read = _ask(
+        provider, "maintenance", provider.maintenance, None)
+    build_options, build_options_why, build_options_read = _ask(
+        provider, "build_options", provider.build_options, ())
 
     absences = tuple(
         (query_id, why)
@@ -260,14 +284,25 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
         )
         if why
     )
+    readings = tuple(
+        (query_id, reading)
+        for query_id, reading in (
+            ("amenities", amenities_read),
+            ("maintenance", maintenance_read),
+            ("build_options", build_options_read),
+        )
+        if reading is not None
+    )
     return TunerSnapshot(
         available=True,
         reason=None,
-        reading=reading,
+        # The last reading taken, not a blend: `reading_for` is what dates a figure.
+        reading=readings[-1][1] if readings else None,
         amenities=tuple(amenities),
         maintenance=maintenance,
         build_options=tuple(build_options),
         absences=absences,
+        readings=readings,
     )
 
 

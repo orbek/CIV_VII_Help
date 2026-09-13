@@ -20,6 +20,25 @@ from .base import BuildOption, CityAmenities, Maintenance, SettlementOptions
 # transient failure, so it is read as absence and never retried.
 NOT_IMPLEMENTED = "Not Implemented."
 
+# The first line of every reply names the game's OWN current turn. Asked once per
+# query rather than once per capture on purpose: a turn read separately could
+# advance before the figures it was meant to date, and the logs' own turn is not
+# this turn at all -- the logs are complete only through the last finished turn,
+# while the socket reads the live game, and the two disagree exactly when the
+# player is mid-turn. `Game.GetCurrentGameTurn()` was verified live in
+# GameCore_Tuner during the spike, where it answered 59. It is NOT separately
+# verified in the InGame VM that build_options uses, which is why it gets its own
+# pcall ahead of the body's: if the call is missing there, the figures still print
+# and the client reports build_options absent rather than filing real figures under
+# a turn nobody named.
+TURN_FIELD = "turn"
+
+_TURN_LUA = (
+    'local okTurn,errTurn=pcall(function() '
+    'print("' + TURN_FIELD + '", Game.GetCurrentGameTurn()) end) '
+    'if not okTurn then print("PROBEERR", tostring(errTurn)) end '
+)
+
 # Every body below is wrapped in its own pcall. An uncaught error in a Lua
 # chunk aborts the whole chunk, so a call that does not exist in this VM would
 # otherwise silence the sentinel this module's caller appends after the query
@@ -27,6 +46,7 @@ NOT_IMPLEMENTED = "Not Implemented."
 # apart from a game that simply is not running. Printing "PROBEERR" instead
 # turns that silence into a line the client can recognise immediately.
 _MAINTENANCE_LUA = (
+    _TURN_LUA +
     'local ok,err=pcall(function() '
     'local t=Players[Game.GetLocalPlayer()]:GetTreasury() '
     'print("total", t:GetTotalMaintenance()) '
@@ -39,6 +59,7 @@ _MAINTENANCE_LUA = (
 )
 
 _AMENITIES_LUA = (
+    _TURN_LUA +
     'local ok,err=pcall(function() '
     'for _,c in Players[Game.GetLocalPlayer()]:GetCities():Members() do '
     'local g=c:GetGrowth() '
@@ -54,6 +75,7 @@ _AMENITIES_LUA = (
 # build); the outer pcall added here also covers GetTurnsLeft, which is not
 # expected to fail but must not be allowed to abort the whole reply if it does.
 _BUILD_OPTIONS_LUA = (
+    _TURN_LUA +
     'local ok,err=pcall(function() '
     'for _,c in Players[Game.GetLocalPlayer()]:GetCities():Members() do '
     'local q=c:GetBuildQueue() '
@@ -83,6 +105,27 @@ def looks_unreachable(lines: list[str]) -> bool:
 
 def _fields(line: str) -> list[str]:
     return [p for p in line.split("\t") if p != ""]
+
+
+def split_turn(lines: list[str]) -> tuple[int | None, list[str]]:
+    """The game turn this reply named, and the reply with that line removed.
+
+    `None` means the reply carried no turn, which is not a figure the caller may
+    paper over: a value that cannot be dated must be reported absent rather than
+    filed under whatever turn happened to be lying around.
+    """
+    turn: int | None = None
+    rest: list[str] = []
+    for line in lines:
+        parts = _fields(line)
+        if turn is None and len(parts) == 2 and parts[0] == TURN_FIELD:
+            try:
+                turn = int(parts[1])
+                continue
+            except ValueError:
+                pass      # not the turn line after all; keep it for the parser
+        rest.append(line)
+    return turn, rest
 
 
 def _parse_maintenance(lines: list[str]) -> Maintenance:
@@ -158,4 +201,5 @@ CATALOG: dict[str, Query] = {
     )
 }
 
-__all__ = ["CATALOG", "NOT_IMPLEMENTED", "Query", "looks_unreachable"]
+__all__ = ["CATALOG", "NOT_IMPLEMENTED", "Query", "TURN_FIELD",
+           "looks_unreachable", "split_turn"]

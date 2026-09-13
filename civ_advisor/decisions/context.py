@@ -384,14 +384,18 @@ class DecisionContext:
 
         live_filled: set[str] = set()
         live_turn: int | None = None
+        # Dated by the build_options query's OWN reading, not by whatever the tuner was
+        # asked last: each query asks the live game its own turn, and a capture can
+        # straddle a turn boundary.
+        build_read = self.tuner.reading_for("build_options")
         if values["completion_turns"] is None and self.tuner.available \
-                and self.tuner.reading is not None:
+                and build_read is not None:
             offer = next((so for so in self.tuner.build_options if so.city == city), None)
             option = offer.offers(item) if offer is not None else None
             if option is not None:
                 values["completion_turns"] = float(option.turns)
                 live_filled.add("completion_turns")
-                live_turn = self.tuner.reading.turn
+                live_turn = build_read.turn
                 fact_ids.append(f"tuner.build_option.{city}.{option.item}.{live_turn}")
 
         return Previews(item=item, observed_turn=max(turns) if turns else live_turn,
@@ -444,15 +448,22 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
     # anything cites it, so a card citing one of these ids resolves the same whether the
     # citation was built here or read back through the API. Frozen to the reading this
     # snapshot carries -- never re-asked while a request is being served.
+    # Each figure is dated by the reading of the query that produced IT. One reading
+    # for the whole capture would file an amenities figure under the build queue's turn
+    # the moment the game passed a turn between the two questions.
     tuner = tuner if tuner is not None else TUNER_SNAPSHOT_OFF
-    if tuner.available and tuner.reading is not None:
+    amenities_read = tuner.reading_for("amenities") if tuner.available else None
+    maintenance_read = tuner.reading_for("maintenance") if tuner.available else None
+    build_read = tuner.reading_for("build_options") if tuner.available else None
+    if amenities_read is not None:
         for amenities in tuner.amenities:
-            amenities_fact(ledger, tuner.reading, amenities)
-        if tuner.maintenance is not None:
-            tuner_net_gold_fact(ledger, tuner.reading, tuner.maintenance)
+            amenities_fact(ledger, amenities_read, amenities)
+    if maintenance_read is not None and tuner.maintenance is not None:
+        tuner_net_gold_fact(ledger, maintenance_read, tuner.maintenance)
+    if build_read is not None:
         for settlement_options in tuner.build_options:
             for option in settlement_options.options:
-                build_option_fact(ledger, tuner.reading, settlement_options.city, option)
+                build_option_fact(ledger, build_read, settlement_options.city, option)
 
     settlements = []
     completed_by_city: dict[str, list[str]] = {}
@@ -503,8 +514,8 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
         # thing (`tuner_net_gold_fact` in evidence.py) rather than leaving the figure
         # unknown for the one turn the logs have not caught up.
         net_gold=(ledger.get(f"gold.net.{snapshot.analysis_turn}")
-                 or (ledger.get(f"tuner.net_gold.{tuner.reading.turn}")
-                     if tuner.available and tuner.reading is not None else None)),
+                 or (ledger.get(f"tuner.net_gold.{maintenance_read.turn}")
+                     if maintenance_read is not None else None)),
         happiness=ledger.get(f"happiness.total.{snapshot.analysis_turn}"),
         age=ledger.get(f"age.observed.{snapshot.analysis_turn}"),
         identity=ledger.get("identity.human"),

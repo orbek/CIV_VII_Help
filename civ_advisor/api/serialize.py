@@ -358,6 +358,10 @@ def tuner_to_dict(tuner: object | None) -> dict:
     the reason travels rather than a bare `False`. `source` is always the literal
     `"live_reading"`: this is the one channel that carries values the game never wrote
     to a log, and the browser must never mistake one for a player's own report.
+
+    Each figure carries its OWN reading. Every query asks the live game for its own
+    turn, and a capture that straddles a turn boundary would otherwise publish one
+    figure under another figure's turn.
     """
     available = bool(tuner is not None and getattr(tuner, "available", False))
     reason = getattr(tuner, "reason", None) if tuner is not None else None
@@ -368,6 +372,14 @@ def tuner_to_dict(tuner: object | None) -> dict:
         if tuner is None or not hasattr(tuner, "absence"):
             return None
         return tuner.absence(query_id)
+
+    def read(query_id: str) -> dict | None:
+        """The reading that dates this figure, as the page needs to label it."""
+        if not available or tuner is None or not hasattr(tuner, "reading_for"):
+            return None
+        r = tuner.reading_for(query_id)
+        return None if r is None else {"turn": r.turn, "read_at": r.read_at,
+                                       "state": r.state}
 
     return {
         "available": available,
@@ -384,6 +396,7 @@ def tuner_to_dict(tuner: object | None) -> dict:
             for a in (getattr(tuner, "amenities", ()) if available else ())
         ],
         "amenities_reason": absence("amenities"),
+        "amenities_read": read("amenities"),
         "maintenance": ({
             "total": maintenance.total, "buildings": maintenance.buildings,
             "districts": maintenance.districts, "units": maintenance.units,
@@ -391,12 +404,14 @@ def tuner_to_dict(tuner: object | None) -> dict:
             "unattributed": maintenance.unattributed, "net_gold": maintenance.net_gold,
         } if maintenance is not None else None),
         "maintenance_reason": absence("maintenance"),
+        "maintenance_read": read("maintenance"),
         "build_options": [
             {"city": so.city,
              "options": [{"item": o.item, "turns": o.turns} for o in so.options]}
             for so in (getattr(tuner, "build_options", ()) if available else ())
         ],
         "build_options_reason": absence("build_options"),
+        "build_options_read": read("build_options"),
     }
 
 

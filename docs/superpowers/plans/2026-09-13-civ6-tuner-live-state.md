@@ -1388,7 +1388,16 @@ git commit -m "Make happiness and upkeep conditional on a live tuner"
 
 **Interfaces:**
 - Consumes: `GameProfile.tuner`, `TunerProvider`.
-- Produces: `Snapshot.tuner: TunerProvider` (never `None`; `TUNER_OFF` when there is none), `Store.rebuild()` unchanged in signature.
+- Produces: `Snapshot.tuner: TunerSnapshot` (never `None`; `TUNER_SNAPSHOT_OFF` when
+  there is none), `civ_advisor.tuner.base.capture(provider) -> TunerSnapshot`,
+  `Store.rebuild()` unchanged in signature.
+
+**Corrected after Task 6 review.** The snapshot carries FROZEN readings captured
+during the rebuild, never a live provider. A live socket on a published snapshot
+would put socket I/O on the HTTP request path, let a request read through a socket
+a later rebuild had closed, and — worst — return figures from whatever turn the game
+is on now while filing them under a snapshot dated to an earlier turn. The provider
+is opened, read once, and closed within the rebuild.
 
 - [ ] **Step 1: Write the failing tests**
 

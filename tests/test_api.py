@@ -770,7 +770,12 @@ def test_a_capability_gap_coexists_with_the_real_data_it_does_not_gate(civ6_dir)
     data both would draw from is there together."""
     from civ_advisor.games.civ6 import CIV6
 
-    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+    from .conftest import unreachable_tuner
+
+    # A real Civ VI running on this machine would otherwise answer the tuner and turn
+    # this into a different test than the one it claims to be.
+    with TestClient(create_app(civ6_dir, poll_interval=60,
+                               profile=unreachable_tuner(CIV6))) as c:
         body = c.get("/api/briefing").json()
     caps = body["status"]["game"]["active"]["capabilities"]
     assert caps["maintenance"]["supported"] is False and caps["maintenance"]["reason"]
@@ -794,7 +799,12 @@ def test_the_victory_tab_s_leaderboards_coexist_with_its_strategy_gap(civ6_dir):
     defect as economy's, just on the other tab."""
     from civ_advisor.games.civ6 import CIV6
 
-    with TestClient(create_app(civ6_dir, poll_interval=60, profile=CIV6)) as c:
+    from .conftest import unreachable_tuner
+
+    # A real Civ VI running on this machine would otherwise answer the tuner and turn
+    # this into a different test than the one it claims to be.
+    with TestClient(create_app(civ6_dir, poll_interval=60,
+                               profile=unreachable_tuner(CIV6))) as c:
         body = c.get("/api/briefing").json()
     caps = body["status"]["game"]["active"]["capabilities"]
     assert caps["victory_paths"]["supported"] is False and caps["victory_paths"]["reason"]

@@ -1,3 +1,4 @@
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -43,13 +44,27 @@ def civ6_dir() -> Path:
     return FIXTURE_CIV6_DIR
 
 
-from civ_advisor.games.civ6 import CIV6  # noqa: E402
+from civ_advisor.games.base import GameProfile
+from civ_advisor.games.civ6 import CIV6
+from civ_advisor.tuner.client import open_tuner  # noqa: E402
 from civ_advisor.store import Store  # noqa: E402
+
+
+def unreachable_tuner(profile: GameProfile) -> GameProfile:
+    """The same profile, with its tuner pointed somewhere nothing can listen.
+
+    Without this a test's result depends on whether the developer happens to have
+    Civilization VI open: the real CIV6 profile dials 127.0.0.1:4318, so a running
+    game turns "the socket is closed" tests into "the socket answered" ones. Port 1
+    is reserved and cannot be bound, so the refusal is a property of the test rather
+    than of the machine it runs on.
+    """
+    return replace(profile, tuner=lambda: open_tuner(port=1, timeout=0.2))
 
 
 @pytest.fixture
 def civ6_store(civ6_dir: Path) -> Store:
-    return Store(civ6_dir, profile=CIV6)
+    return Store(civ6_dir, profile=unreachable_tuner(CIV6))
 
 
 @pytest.fixture

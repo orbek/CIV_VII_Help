@@ -1,0 +1,187 @@
+"""What the tuner can be asked, and what its answers are.
+
+The shape follows civ_advisor/ruleset/base.py on purpose: a closed set of
+questions with typed answers, and no `query(lua)` on the Protocol. A caller
+cannot ask this package to run arbitrary code in the player's game, because
+there is no method that would take it.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass
+from enum import StrEnum
+from typing import Protocol, runtime_checkable
+
+from civ_advisor.games.base import Capability
+
+# Capabilities a tuner reading can support. Declared here rather than in the
+# profile so one list governs both the profile's declaration and the conformance
+# test that keeps them honest.
+TUNER_BACKED = frozenset({Capability.HAPPINESS, Capability.MAINTENANCE})
+
+
+class TunerUnavailable(StrEnum):
+    """Why there is no reading. Three genuinely different situations.
+
+    Only NOT_ENABLED is something the player can fix, and saying the wrong one
+    would send them to change a setting that is already correct.
+    """
+
+    NOT_ENABLED = "not_enabled"          # the socket is closed; EnableTuner is 0
+    NOT_ANSWERING = "not_answering"      # enabled, but no game is running or it did not reply
+    UNREACHABLE = "unreachable"          # answered, but this figure exists in no VM
+
+
+@dataclass(frozen=True)
+class TunerReading:
+    """When a reading was taken, and from which VM.
+
+    A log row is something the game wrote on its own; this is a value we asked
+    for at a moment we chose. Both facts travel with every figure, which is why
+    `read_at` exists beside `turn`.
+    """
+
+    turn: int
+    read_at: str      # ISO 8601, the wall-clock instant of the query
+    state: str        # the Lua VM name, e.g. "GameCore_Tuner"
+
+    def __post_init__(self) -> None:
+        if not self.state:
+            raise ValueError("a reading must name the state it was read from")
+
+
+@dataclass(frozen=True)
+class CityAmenities:
+    """One settlement's amenities and the sources that explain them."""
+
+    city: str
+    total: int
+    from_luxuries: int
+    from_civics: int
+    from_entertainment: int
+    housing: int
+    food_surplus: int
+
+    def __post_init__(self) -> None:
+        named = self.from_luxuries + self.from_civics + self.from_entertainment
+        if named > self.total:
+            raise ValueError(
+                f"sources ({named}) exceed the total they explain ({self.total})")
+
+    @property
+    def unexplained(self) -> int:
+        """Amenities the game reports that these sources do not account for.
+
+        Civ VI exposes only three of its amenity sources to this VM, so a
+        positive remainder is expected and is reported rather than hidden.
+        """
+        return self.total - (self.from_luxuries + self.from_civics + self.from_entertainment)
+
+
+@dataclass(frozen=True)
+class Maintenance:
+    """The gold breakdown the logs cannot supply."""
+
+    total: int
+    buildings: int
+    districts: int
+    units: int
+    gold: int
+    gold_yield: int
+
+    def __post_init__(self) -> None:
+        if self.buildings + self.districts + self.units != self.total:
+            raise ValueError(
+                "breakdown does not sum to the total; this is a parsing bug, "
+                "not a fact about the game")
+
+    @property
+    def net_gold(self) -> int:
+        """Gold per turn after upkeep -- the figure the profile calls impossible."""
+        return self.gold_yield - self.total
+
+
+@dataclass(frozen=True)
+class BuildOption:
+    """One thing a settlement may build, and how long it would take.
+
+    Both halves come from the game. Neither is derivable from the ruleset,
+    because the estimate depends on this settlement's production.
+    """
+
+    item: str
+    turns: int
+
+    def __post_init__(self) -> None:
+        if self.turns < 0:
+            raise ValueError(f"turns must not be negative, got {self.turns}")
+
+
+@dataclass(frozen=True)
+class SettlementOptions:
+    """Everything one settlement may build right now.
+
+    An empty tuple means the game offered nothing, which is a fact. A settlement
+    that was never asked about is absent from the collection instead.
+    """
+
+    city: str
+    options: tuple[BuildOption, ...]
+
+    def offers(self, item: str) -> BuildOption | None:
+        return next((o for o in self.options if o.item == item), None)
+
+
+@runtime_checkable
+class TunerProvider(Protocol):
+    """A closed set of questions. There is deliberately no `query(lua)`."""
+
+    @property
+    def available(self) -> bool: ...
+    @property
+    def reason(self) -> str | None: ...
+    @property
+    def unavailable(self) -> TunerUnavailable | None: ...
+    def reading(self) -> TunerReading | None: ...
+    def amenities(self) -> tuple[CityAmenities, ...]: ...
+    def maintenance(self) -> Maintenance | None: ...
+    def build_options(self) -> tuple[SettlementOptions, ...]: ...
+
+
+@dataclass(frozen=True)
+class NullTuner:
+    """No readings, and a reason that says which absence this is."""
+
+    unavailable: TunerUnavailable
+    _reason: str
+
+    @property
+    def available(self) -> bool:
+        return False
+
+    @property
+    def reason(self) -> str:
+        return self._reason
+
+    def reading(self) -> TunerReading | None:
+        return None
+
+    def amenities(self) -> tuple[CityAmenities, ...]:
+        return ()
+
+    def maintenance(self) -> Maintenance | None:
+        return None
+
+    def build_options(self) -> tuple[SettlementOptions, ...]:
+        return ()
+
+
+TUNER_OFF = NullTuner(
+    TunerUnavailable.NOT_ENABLED,
+    "Civilization VI reports amenities, upkeep and build options only through its "
+    "tuner socket, which is off. Set `EnableTuner 1` under [Debug] in the game's "
+    "AppOptions.txt and restart the game. The advisor never edits that file.",
+)
+
+__all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
+           "SettlementOptions", "TUNER_BACKED", "TUNER_OFF", "TunerProvider",
+           "TunerReading", "TunerUnavailable"]

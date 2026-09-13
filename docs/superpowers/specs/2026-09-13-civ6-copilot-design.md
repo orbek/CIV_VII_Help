@@ -188,9 +188,13 @@ Precisely:
    answer cited. From each such fact: its `value` if numeric; its
    `observed_turn`; and every numeral in its `note`, because notes are written
    by the deterministic layer from the data ("Threshold 12", "luxuries 3").
-   Nothing else — not the player's message, not the previous exchange, not the
-   analysis turn unless a cited fact carries it (`turn.analysis` exists so the
-   model can cite it).
+   Nothing else — not the text of the player's message as typed, not the
+   previous exchange, not the analysis turn unless a cited fact carries it
+   (`turn.analysis` exists so the model can cite it). A **player report** is a
+   cited fact like any other: it is a first-class `SourceKind`, dated to the
+   turn it was read and stamped with when it was entered, so a figure the
+   player recorded through Refine is traceable and may be quoted — under rule
+   6.
 3. **How a written number matches.** A numeral `N` written with `d` decimal
    places matches an admitted value `V` when `N == round(V, d)`. A numeral
    ending in `%` also matches `V` when `N == round(100 · V, d)` and the fact's
@@ -205,6 +209,14 @@ Precisely:
 5. **An answer with no citations may contain no numbers.** "That is not
    something the advisor can see" is a grounded answer. "It is usually about
    10 turns" is not, and is rejected.
+6. **A player's figure is attributed, or the answer is rejected.** When a
+   number in the prose is grounded *only* by a cited `player_report` fact, the
+   prose must attribute it — one of a fixed set of phrases: *you reported*,
+   *your report*, *you told the advisor*, *you entered*, *you said* — so "the
+   8 turns you reported on turn 59" passes and "the Granary takes 8 turns"
+   does not. The game did not say 8; the player did, and the sentence must say
+   so. This is the provenance rule applied to prose: the drawer already badges
+   the fact *your report*; the words may not un-badge it.
 
 The same check is applied to the four existing per-decision questions. The
 rule is one function, `copilot/grounding.py:check`, and both `questions.py` and
@@ -304,6 +316,16 @@ because collapsing it into either of the others would repeat the defect. The
 five ways a tuner figure can be absent become six, and the README's list is
 updated to say so.
 
+**A single refusal is not evidence of anything.** Measured on 2026-09-13:
+against a stable loaded match, 8 of 8 connections succeeded; during menu and
+load transitions the listener cycles and a connection is refused. So
+`open_tuner` retries a refused connection a bounded number of times —
+`CONNECT_ATTEMPTS = 3`, `CONNECT_RETRY_SECONDS = 0.25` apart, under a second
+in total — before it consults the file at all. Two refusals in a row are still
+not a fact about the flag; they are what sends the advisor to read the file
+that is. The retry is bounded because a poll runs every second and must not
+stall behind a game that is genuinely closed.
+
 The file is consulted only when a connection is refused, and only for the game
 whose default directory it lives in — a `--logs-dir` override points at logs,
 not at the game, and says nothing about where `AppOptions.txt` is.
@@ -366,7 +388,12 @@ CityManager.RequestOperation(city, CityOperationTypes.BUILD, tParameters);
 
 and reads the queue back at line 1894 with
 `buildQueue:GetCurrentProductionTypeHash()`. That establishes the bindings the
-UI uses in the `InGame` VM. It establishes **nothing** about whether a chunk
+UI uses in the `InGame` VM. One thing about that VM *is* settled: reading the
+game's turn there, which the tuner spec left unverified, was confirmed against
+a loaded match on 2026-09-13 — `Game.GetCurrentGameTurn()` answered 49 in
+`InGame`, with build options returned for two cities — so build options are
+dated by the game's own turn and will not go dark. The README's paragraph
+saying otherwise is retired. It establishes **nothing** about whether a chunk
 sent through the tuner socket may call them, whether `CityManager` validates
 the request, or what a refused request does. `GetCurrentProductionTypeHash`
 was found *absent* in `GameCore_Tuner` during the read spike; whether it is
@@ -378,7 +405,11 @@ answer.
 An action begins as a **proposal**. The model may include one in a composed
 answer only when acting is enabled for this run *and* this poll's tuner
 reading includes the city ids and item hashes the operation needs; otherwise
-the response grammar has no `proposal` field at all. A proposal names the
+the response grammar has no `proposal` field at all. That reading —
+`build_option_ids`, the walk that carries each city's id and each item's hash —
+is taken only on a run started with `--allow-actions`. A normal advisory run
+never asks for it: the read surface stays proportional to what the run can do,
+and a poll costs one query fewer. A proposal names the
 operation, the city and the item — by name, from enums built from this poll's
 reading — and the evidence ids that motivated it.
 
@@ -569,6 +600,12 @@ Consequences:
   excluded, citations stripped, numbers in notes admitted, numbers in the
   player's text not admitted, numbers with no citation rejected. Plus the
   existing `questions.validate` tests extended with an ungrounded number.
+- **Isolation from the machine.** No default-suite test may depend on whether
+  port 4318 is listening. Two shipped tests did — they asserted `NOT_ENABLED`
+  after a bare refusal, and failed with a game at the menu — and are fixed by
+  pointing the profile's tuner factory at a port that cannot be listening or
+  injecting the provider, never by skipping when a socket is found. A test
+  that passes only when the developer has no game open is not a test.
 - **The flag** — `read_enable_tuner` against temporary files: `1`, `0`, no
   line, no `[Debug]` section, a commented-out line, an absent file, an
   unreadable file; and `open_tuner` against a refused port with each file

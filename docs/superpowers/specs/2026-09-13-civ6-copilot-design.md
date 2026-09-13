@@ -218,6 +218,29 @@ Precisely:
    so. This is the provenance rule applied to prose: the drawer already badges
    the fact *your report*; the words may not un-badge it.
 
+7. **A number the player has only just typed is not a fact, and may not be
+   cited.** "Should I take the 8-turn Granary?" carries an 8 that is
+   undated, unstored and unverified — it exists only in the sentence they
+   wrote a moment ago. Citing it would launder the player's own guess into an
+   apparent finding and reflect it back as though the advisor had established
+   it, which is the failure the whole rule exists to prevent. It becomes
+   citable the moment they record it through Refine, because recording is what
+   makes it dated and stored.
+
+   The prose MAY still repeat it, attributed as *their claim* and never as a
+   citation — "you mention 8 turns". Keep these phrases distinct from rule 6's:
+   a player report is a dated observation the advisor holds, this is an
+   unverified assertion made in conversation, and the two must not read alike.
+
+   **Where a grounded figure for the same thing exists and disagrees, the
+   answer must say so** rather than silently preferring either: "you mention 8
+   turns; the tuner read 4 for the Granary in Rome on turn 49." Both numbers,
+   the disagreement named, neither reconciled away. This is deliberately the
+   same rule already settled for a live reading's turn against the logs' turn —
+   it should read as that rule applied again, not as a new one. A player
+   misremembering a figure and the advisor quietly adopting it is precisely how
+   a grounded system starts producing ungrounded advice.
+
 The same check is applied to the four existing per-decision questions. The
 rule is one function, `copilot/grounding.py:check`, and both `questions.py` and
 the conversation call it.

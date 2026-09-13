@@ -33,21 +33,41 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_
 
 SCHEMA_VERSION = 1
 
+_NO_TUNER = (
+    "This figure comes from the game's tuner socket, which is not connected."
+)
 
-def capability_report(profile: GameProfile) -> dict[str, dict]:
+
+def capability_report(profile: GameProfile, tuner: object | None = None) -> dict[str, dict]:
     """Every capability this build models, whether this game supports it, and why not.
 
     Exhaustive on purpose, and the reason ships with the answer: the UI must be able to
     say "Civ VI's logs do not record which victory a rival is pursuing" rather than
     quietly rendering one panel fewer, which is indistinguishable from a quiet game.
+
+    A tuner-backed capability is live only for a poll in which the socket
+    answered. The three ways it can be absent are told apart, because only one
+    of them is something the player can fix.
     """
-    return {
-        c.value: {"supported": profile.supports(c), "reason": profile.reason(c)}
-        for c in Capability
-    }
+    live = bool(tuner is not None and getattr(tuner, "available", False))
+    tuner_reason = getattr(tuner, "reason", None) if tuner is not None else None
+    report: dict[str, dict] = {}
+    for c in Capability:
+        if c in profile.tuner_backed:
+            report[c.value] = {
+                "supported": live,
+                "reason": None if live else (tuner_reason or _NO_TUNER),
+                "source": "tuner",
+            }
+        else:
+            report[c.value] = {
+                "supported": profile.supports(c),
+                "reason": profile.reason(c),
+            }
+    return report
 
 
-def game_to_dict(resolution: Resolution) -> dict:
+def game_to_dict(resolution: Resolution, tuner: object | None = None) -> dict:
     """Which game is being advised on, how that was decided, and what else is on offer.
 
     `mode` and `disagrees` are not decoration: a pinned choice that detection contradicts
@@ -56,16 +76,16 @@ def game_to_dict(resolution: Resolution) -> dict:
     """
     from civ_advisor.games.registry import get_profile, profile_ids
 
-    def described(profile) -> dict:
+    def described(profile, profile_tuner: object | None = None) -> dict:
         return {"id": profile.id, "display_name": profile.display_name,
-                "capabilities": capability_report(profile)}
+                "capabilities": capability_report(profile, tuner=profile_tuner)}
 
     active = resolution.profile
     return {
         "mode": resolution.mode,
         "pinned": resolution.pinned_id,
         "active": None if active is None else dict(
-            described(active), logs_dir=str(resolution.logs_dir)),
+            described(active, tuner), logs_dir=str(resolution.logs_dir)),
         "disagrees": resolution.disagrees,
         "detection": {
             "game": resolution.detected_id,
@@ -76,6 +96,7 @@ def game_to_dict(resolution: Resolution) -> dict:
                 for c in resolution.candidates
             ],
         },
+        # Non-active profiles keep the no-tuner call: nothing has been asked of them.
         "games": [described(get_profile(g)) for g in profile_ids()],
     }
 

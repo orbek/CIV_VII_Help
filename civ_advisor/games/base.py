@@ -74,6 +74,13 @@ class GameProfile:
     # player's game rewrites, and a profile is a module-level constant built at import
     # time. Calling it is what re-checks the file; see ruleset/civ6.py:open_ruleset.
     ruleset: Callable[[], "RulesetProvider"] | None = None
+    # Capabilities this game can support ONLY through a live tuner reading.
+    # Deliberately not in `capabilities`: they are conditional on a socket that
+    # is off by default, so declaring them unconditionally would promise a panel
+    # the advisor usually cannot fill.
+    tuner_backed: frozenset[Capability] = frozenset()
+    # Factory for this game's tuner provider, or None if it has no such socket.
+    tuner: Callable[[], object] | None = None
 
     def supports(self, capability: Capability) -> bool:
         return capability in self.capabilities

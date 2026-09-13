@@ -75,6 +75,10 @@ def test_every_unsupported_capability_carries_a_reason(profile):
         if profile.supports(capability):
             assert profile.reason(capability) is None, \
                 f"{profile.id} declares {capability.value} supported AND gives a reason it is not"
+        elif capability in profile.tuner_backed:
+            # Not a fixed reason: this capability's absence is explained by the live
+            # tuner state (see capability_report), not by a static profile string.
+            continue
         else:
             assert profile.reason(capability), \
                 f"{profile.id} does not support {capability.value} and does not say why"

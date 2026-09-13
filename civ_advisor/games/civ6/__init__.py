@@ -17,6 +17,8 @@ from civ_advisor.ingest.tactical import (
 )
 from civ_advisor.ingest.textlogs import read_player_identities
 from civ_advisor.ruleset.civ6 import open_ruleset
+from civ_advisor.tuner.base import TUNER_BACKED
+from civ_advisor.tuner.client import open_tuner
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
@@ -61,13 +63,16 @@ CIV6 = GameProfile(
     knowledge_package="civ_advisor.knowledge.civ6",
     # What Civ VI's logs cannot support, and therefore what this build must
     # not claim for it. AI_Victories exists but records era strategies, not
-    # victory paths (spec §3.2); there is no amenities, maintenance, deal or
-    # combat-odds log at all (spec §3.5). TOURISM and DIPLOMATIC_FAVOR are
-    # NOT declared here even though Player_Stats_2.csv presumably carries
-    # them: no reader for that file exists yet, and a capability is a promise
-    # to fill a panel -- declaring one with nothing behind it is the exact
-    # defect this phase exists to prevent. Add them back only alongside a
-    # Player_Stats_2.csv reader and the canonical fields it would populate.
+    # victory paths (spec §3.2); there is no deal or combat-odds log at all
+    # (spec §3.5). HAPPINESS and MAINTENANCE moved to `tuner_backed`: Civ VI's
+    # logs cannot support them, but its tuner socket can, when the player has
+    # turned it on -- so they are conditional on a live reading rather than
+    # permanently unsupported. TOURISM and DIPLOMATIC_FAVOR are NOT declared
+    # here even though Player_Stats_2.csv presumably carries them: no reader
+    # for that file exists yet, and a capability is a promise to fill a panel
+    # -- declaring one with nothing behind it is the exact defect this phase
+    # exists to prevent. Add them back only alongside a Player_Stats_2.csv
+    # reader and the canonical fields it would populate.
     #
     # VICTORY_PATHS stays undeclared. AI_Research and AI_GovtPolicies score
     # the AI's tech and civic preferences, and phase 3 answered the question
@@ -85,18 +90,14 @@ CIV6 = GameProfile(
         Capability.INSTALLED_RULESET,
     }),
     ruleset=open_ruleset,
+    tuner_backed=TUNER_BACKED,
+    tuner=open_tuner,
     unsupported=(
         (Capability.VICTORY_PATHS,
          "Civ VI's AI_Victories.csv records era and posture strategies "
          "(STRATEGY_DARKAGE, STRATEGY_EARLY_EXPLORATION), not which victory a rival is "
          "pursuing. Reading them as victory paths would assert a pursuit the log does "
          "not state."),
-        (Capability.HAPPINESS,
-         "Civ VI writes no amenities log. DynamicEmpires.csv supplies the golden-age "
-         "flag; the happiness numbers have no substitute."),
-        (Capability.MAINTENANCE,
-         "Civ VI logs a gold balance but no maintenance breakdown, so net gold per turn "
-         "cannot be computed."),
         (Capability.PEACE_DEALS,
          "Civ VI has no DiplomacyDeals.log, so a signed peace treaty is not observable "
          "and a war alert cannot be cleared by one."),

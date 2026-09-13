@@ -288,3 +288,38 @@ def test_an_absurdly_precise_numeral_is_rejected_in_words_not_by_raising():
 def test_a_value_written_with_absurd_but_harmless_precision_still_matches():
     assert check(f"Your net gold is {'7.' + '0' * 9000} per turn.",
                  cited("gold.net.59"), FACTS).ok
+
+
+# ---- a note is prose about the figure; a token in one is not a figure ---------------
+
+def test_a_timestamp_and_a_digest_in_a_note_admit_nothing():
+    """The deterministic layer no longer writes provenance into a note (it lives in
+    `source_detail`), but rule 2 admits a note's numerals from ANY fact, so a note that
+    carries one again must not reopen the hole. Verified against the exact attack: 14
+    and 32 out of the timestamp, 40 out of "40e2" inside the digest."""
+    note = ("Read from DebugGameplay.sqlite in your installed game files, last written "
+            "2026-09-13 14:32 UTC, sha256 9f3a1c7b40e2.")
+    facts = [{"id": "r", "value": 90, "unit": None, "observed_turn": None,
+              "kind": "installed_ruleset", "note": note}]
+    text = ("The Library costs 90 production [r]. That is about 14 turns, returning 40 "
+            "science by turn 32.")
+
+    got = check(text, cited("r"), facts)
+
+    assert not got.ok
+    assert got.ungrounded == ("14", "40", "32")
+
+
+def test_a_date_in_a_note_does_not_admit_negative_numbers():
+    facts = [{"id": "r", "value": 90, "unit": None, "observed_turn": None,
+              "note": "Written 2026-09-13."}]
+    got = check("The reserve fell by -9 gold.", cited("r"), facts)
+    assert not got.ok and got.ungrounded == ("-9",)
+
+
+def test_a_figure_stated_in_a_note_is_still_admitted():
+    """Rule 2 is not narrowed for what it was written for: the deterministic layer's own
+    sentences about the figure, which do carry real numbers."""
+    assert check("Luxuries give 1 and entertainment 2.",
+                 cited("tuner.amenities.Rome.60"), FACTS).ok
+    assert check("Your reserve is 152 gold.", cited("gold.net.59"), FACTS).ok

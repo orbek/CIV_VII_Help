@@ -1,8 +1,9 @@
 """The number rule, spec section 4.3, as one pure function.
 
 Every number in generated prose must be a number that appears in a fact the answer
-cited: the fact's value, its observed turn, or a numeral in its note (notes are written
-by the deterministic layer from the data). Nothing else is admitted -- not the player's
+cited: the fact's value, its observed turn, or a numeral in its note that is a figure
+rather than part of a token (notes are written by the deterministic layer from the data;
+`figures_in_note` says which of their numbers count and why). Nothing else is admitted -- not the player's
 message, not an earlier exchange, not arithmetic the model did itself. A figure a
 player might want derived is a resolver's job, as a DERIVED fact citing its inputs.
 
@@ -217,6 +218,38 @@ def _decimal(value) -> Decimal | None:
     return None      # a string value is a name, not a number source
 
 
+# A numeral inside a TOKEN is not a figure: a hex digest ("9f3a1c7b40e2" offers 9, 3, 1,
+# 7, 40, 2), a date ("2026-09-13" offers 2026 and, because of the hyphens, -09 and -13),
+# a clock time ("14:32"), an identifier ("BUILDING_2"). Each is matched here so that
+# `figures_in_note` can drop it.
+_NOTE_TOKEN = re.compile(
+    r"\d+(?::\d+)+"                      # 14:32, 14:32:05
+    r"|\d{4}-\d{2}-\d{2}"                # 2026-09-13
+    r"|[0-9]*[A-Za-z_][A-Za-z0-9_]*"      # anything with a letter in it: 9f3a1c7b40e2
+)
+
+
+def figures_in_note(note: str) -> tuple[Numeral, ...]:
+    """The numerals in a fact's note that are FIGURES, which is what rule 2 admits.
+
+    Rule 2 admits a note's numbers because notes are written by the deterministic layer
+    about the figure -- "Luxuries 1, civics 0, entertainment 2" is as much a reading as
+    the value beside it. A number that is part of a token is not one of those: a sha256,
+    a modification time, a date, an identifier. Admitting them was how a ruleset fact
+    handed generated prose a dozen arbitrary digits, enough to state a payback period
+    computed from nothing -- and, because a digest differs per install, enough to make
+    validation pass on one player's machine and fail on another's. A date is worse than
+    it looks: "2026-09-13" parses as 2026, -09 and -13, so it admits NEGATIVE values.
+
+    Provenance no longer goes into a note at all (`EvidenceFact.source_detail` holds it).
+    This is the second line: rule 2 reaches every fact, and the next note written with a
+    timestamp in it must not reopen the hole. It can only ever REMOVE numbers from the
+    admitted pool, so it cannot license a figure -- at worst it rejects prose that quoted
+    a number out of an identifier, which is prose quoting an identifier as a figure.
+    """
+    return numerals_in(_NOTE_TOKEN.sub(lambda m: " " * len(m.group(0)), note))
+
+
 def admitted(facts: Iterable[Mapping]) -> tuple[Admitted, ...]:
     """Every number the cited facts carry: value, observed turn, numerals in the note."""
     out: list[Admitted] = []
@@ -229,7 +262,7 @@ def admitted(facts: Iterable[Mapping]) -> tuple[Admitted, ...]:
         turn = _decimal(fact.get("observed_turn"))
         if turn is not None:
             out.append(Admitted(turn, False, player))
-        for n in numerals_in(str(fact.get("note") or "")):
+        for n in figures_in_note(str(fact.get("note") or "")):
             out.append(Admitted(n.value, False, player))
     return tuple(out)
 
@@ -336,4 +369,4 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
 
 
 __all__ = ["ATTRIBUTION", "CLAIM", "Admitted", "Grounding", "NUMBER_WORDS", "Numeral",
-           "admitted", "check", "numerals_in", "quantity_claims"]
+           "admitted", "check", "figures_in_note", "numerals_in", "quantity_claims"]

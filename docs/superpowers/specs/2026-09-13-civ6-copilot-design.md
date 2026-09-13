@@ -623,11 +623,17 @@ rejected as a false assurance.
    numerals. The alternative — treating no words as numbers and relying on the
    prompt — is weaker; the alternative in the other direction — rejecting
    *one* — will reject ordinary prose. Recommendation: as written.
-2. **The player's own numbers.** A player who types "should I take the 8-turn
-   Granary?" will get generated prose that may not say "8" unless a cited fact
-   has it. The deterministic answer quotes their words, so nothing is lost;
-   but the rule is strict on purpose and this is where it will be felt.
-   Recommendation: keep it strict; loosening it is one line if review prefers.
+2. **The player's own numbers.** RESOLVED in review: a player report IS a
+   citable fact. It is already a first-class source kind here, carrying a
+   value, an `observed_turn` and a `reported_at` -- dated, labelled and
+   stored, which is exactly the traceability the rule demands. Excluding it
+   would have meant the copilot could not discuss the very figures the Refine
+   flow exists to collect, which is a hole rather than rigour. The condition
+   is attribution: prose citing a player report must say whose it is and when
+   ("the 8 turns you reported on turn 59"), never state it unattributed as
+   though the game had said it. The number rule is unchanged -- every number
+   must still appear in a cited fact; a player report is now one of the kinds
+   of fact it may appear in.
 3. **Save acknowledgement.** Once per sitting, journaled. Review may prefer
    once per action; it costs a click per proposal. Recommendation: per
    sitting.

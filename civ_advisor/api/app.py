@@ -67,7 +67,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                *, profile: GameProfile | None,
                selector: GameSelector | None = None,
                storage_base: Path | None = None,
-               archiving: bool = True) -> FastAPI:
+               archiving: bool = True,
+               use_tuner: bool = True) -> FastAPI:
     context_store = ContextStore()
     history = change_tracking.History()
 
@@ -115,7 +116,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     store = Store(logs_dir, None if profile is None else archive_for(profile),
                   commentary_worker=commentary_worker,
-                  identity_provider=identity_provider, profile=profile)
+                  identity_provider=identity_provider, profile=profile,
+                  use_tuner=use_tuner)
     resolution = selector.resolve()
 
     def activate(new: Resolution) -> bool:

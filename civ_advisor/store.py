@@ -239,7 +239,7 @@ class Store:
     def __init__(self, logs_dir: Path | None, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
                  identity_provider: Callable[[Snapshot], dict] | None = None,
-                 *, profile: GameProfile | None) -> None:
+                 *, profile: GameProfile | None, use_tuner: bool = True) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision
@@ -248,6 +248,11 @@ class Store:
         self.logs_dir = logs_dir
         self.profile = profile
         self.archive_root = archive_root
+        # `--no-tuner` is a decision by THIS run, not a property of the game, so it
+        # lives here rather than on the profile: a profile is a process-wide
+        # singleton, and mutating one to disable its tuner would disable it for
+        # every store in the interpreter, permanently and undetectably.
+        self.use_tuner = use_tuner
         self._pending_switch = False   # a game switch forces the next snapshot to a new epoch
         # Bumped on every ACTUAL switch_to (not a no-op one). `profile`/`logs_dir` alone
         # cannot detect an A->B->A sequence: profile objects are per-game singletons, so
@@ -344,7 +349,11 @@ class Store:
         # snapshot a request handler could read a later turn's figures through, and
         # nothing for a later rebuild to race while closing it.
         provider = TUNER_OFF
-        factory = getattr(profile, "tuner", None)
+        # `--no-tuner` is a decision by this run, not a property of the game, which is
+        # why it lives on the Store and not on the profile: `self.use_tuner` gates the
+        # lookup rather than a mutated profile ever being asked to hand over a factory
+        # it does not have.
+        factory = getattr(profile, "tuner", None) if self.use_tuner else None
         if factory is not None:
             try:
                 provider = factory()

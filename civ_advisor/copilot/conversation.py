@@ -335,7 +335,11 @@ def _value(fact: EvidenceFact) -> str:
 def _absence_sentence(absence: Absence) -> str:
     """One absence, with the cause it was established from -- never a general one."""
     cause = f" ({absence.cause})" if absence.cause else ""
-    return f"Not available — {absence.describe()}{cause}."
+    # An absence's detail may already end in a stop -- the ones that name another
+    # question do, because they end in a sentence. Do not add a second one.
+    body = f"{absence.describe()}{cause}".rstrip()
+    end = "" if body.endswith((".", "!", "?")) else "."
+    return f"Not available — {body}{end}"
 
 
 def fallback(request: ChatRequest, resolved: Resolved, reason: str = "") -> ChatAnswer:

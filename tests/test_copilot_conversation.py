@@ -207,3 +207,17 @@ def test_the_disagreement_rule_is_enforced_on_a_composed_answer(context):
                     "so that is what the advisor can establish.",
             "evidence_ids": [fact.id], "unknowns": []}
     assert conv.validate_answer(made, resolved, both).generated
+
+
+def test_an_absence_that_ends_in_a_sentence_does_not_get_a_second_full_stop():
+    """Seen live: "... ask `empire.upkeep`.." — the detail already ended in a stop."""
+    from civ_advisor.copilot.catalog import Absence, Unanswerable
+    from civ_advisor.copilot.conversation import _absence_sentence
+
+    ends_in_stop = Absence("empire.net_gold", Unanswerable.NOT_LOGGED,
+                           "Civilization VI writes no log for this; ask `empire.upkeep`.")
+    assert _absence_sentence(ends_in_stop).endswith("`empire.upkeep`.")
+    assert not _absence_sentence(ends_in_stop).endswith("..")
+
+    bare = Absence("empire.net_gold", Unanswerable.NOT_LOGGED, "no rival row to compare")
+    assert _absence_sentence(bare).endswith("compare.")

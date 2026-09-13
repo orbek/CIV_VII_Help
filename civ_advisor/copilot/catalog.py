@@ -38,6 +38,11 @@ class Unanswerable(StrEnum):
     ORACLE_HIDDEN = "oracle_hidden"            # it exists, and Oracle is off
     BAD_PARAMETER = "bad_parameter"            # a value outside the parameter's set
     NOT_IN_CATALOG = "not_in_catalog"
+    # The source was consulted, it answered, and its answer holds nothing for this
+    # subject. That is an EMPTY RESULT, which is a fact about the game, and not an
+    # inability to see -- the two were one sentence until this kind existed, and the
+    # first read as a failure of the advisor when nothing had failed at all.
+    ANSWERED_EMPTY = "answered_empty"
 
 
 @dataclass(frozen=True)
@@ -296,46 +301,101 @@ def _reports(context: DecisionContext, params: dict[str, str]) -> Resolution:
 
 # ---- live tuner resolvers (Task 7) -----------------------------------------------------
 
-def _tuner_absent(question_id: str, context: DecisionContext, query_id: str) -> Resolution:
-    """The absence for a live question, naming the tuner's OWN cause -- never a guess.
+def _tuner_silence(question_id: str, context: DecisionContext,
+                   query_id: str) -> Resolution | None:
+    """The absence for a live question when the tuner said NOTHING about this figure --
+    or None when it answered, and the caller must look at what it answered.
 
-    `tuner.absence(query_id)` is the reason for THIS figure specifically, which can
-    differ from the tuner's blanket `reason` when some figures answered and this one
-    did not. `cause` carries the TunerUnavailable value itself, not just its prose, so
-    a consumer can branch on it rather than pattern-match a sentence.
+    Three situations that must never share a sentence, and only the first two are in
+    here because only the first two are failures:
+
+    - the tuner was never read: its own blanket `reason` and `unavailable` cause.
+    - the tuner was read and THIS figure failed: `absence(query_id)`, the provider's own
+      reason for this query, which can differ from every other query's in the same poll.
+    - the tuner was read, answered, and simply has no row for the subject asked about.
+      That is NOT handled here: it is not a failure, `None` is returned, and the caller
+      declares it as `ANSWERED_EMPTY` naming the subject and the reading's turn. The old
+      code funnelled it into `detail or "the tuner supplied no reading for this"` -- a
+      working tuner reported as silent, for any city the logs know and the reply did not.
     """
     tuner = context.tuner
-    detail = tuner.absence(query_id) if tuner.available else tuner.reason
-    return Resolution(absence=Absence(
-        question_id, Unanswerable.TUNER_ABSENT,
-        detail or "the tuner supplied no reading for this",
-        cause=None if tuner.unavailable is None else tuner.unavailable.value))
+    if not tuner.available:
+        return Resolution(absence=Absence(
+            question_id, Unanswerable.TUNER_ABSENT,
+            tuner.reason or "the tuner has not been read this poll",
+            cause=None if tuner.unavailable is None else tuner.unavailable.value))
+    why = tuner.absence(query_id)
+    if why:
+        return Resolution(absence=Absence(question_id, Unanswerable.TUNER_ABSENT, why))
+    if tuner.reading_for(query_id) is None:
+        # Either nothing asked the tuner for this figure this poll, or it was asked and
+        # no reading came back to date the answer. Which of the two is not established
+        # from the snapshot, so neither is asserted -- what is true of both is said.
+        return Resolution(absence=Absence(
+            question_id, Unanswerable.TUNER_ABSENT,
+            "nothing dates this figure to a turn of the running game this poll, so no "
+            "live reading can be quoted for it"))
+    return None
+
+
+def _read_at(context: DecisionContext, query_id: str) -> str:
+    """The turn a query's own reply was stamped with, for the sentence that says the
+    tuner answered. Never another query's: one reading per query, by design."""
+    reading = context.tuner.reading_for(query_id)
+    return "an unstamped turn" if reading is None else f"turn {reading.turn}"
 
 
 def _amenities(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    silent = _tuner_silence("settlement.amenities", context, "amenities")
+    if silent is not None:
+        return silent
     tuner = context.tuner
-    reading = tuner.reading_for("amenities") if tuner.available else None
     row = next((a for a in tuner.amenities if a.city == params["city"]), None)
-    if reading is None or row is None:
-        return _tuner_absent("settlement.amenities", context, "amenities")
-    return Resolution(facts=(evidence.amenities_fact(context.ledger, reading, row),))
+    if row is None:
+        return Resolution(absence=Absence(
+            "settlement.amenities", Unanswerable.ANSWERED_EMPTY,
+            f"the tuner answered the amenities query at {_read_at(context, 'amenities')} "
+            f"and its reply names no settlement called {params['city']}"))
+    return Resolution(facts=(evidence.amenities_fact(
+        context.ledger, tuner.reading_for("amenities"), row),))
 
 
 def _upkeep(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    silent = _tuner_silence("empire.upkeep", context, "maintenance")
+    if silent is not None:
+        return silent
     tuner = context.tuner
-    reading = tuner.reading_for("maintenance") if tuner.available else None
-    if reading is None or tuner.maintenance is None:
-        return _tuner_absent("empire.upkeep", context, "maintenance")
-    return Resolution(facts=(evidence.tuner_net_gold_fact(context.ledger, reading,
-                                                          tuner.maintenance),))
+    if tuner.maintenance is None:
+        return Resolution(absence=Absence(
+            "empire.upkeep", Unanswerable.ANSWERED_EMPTY,
+            f"the tuner answered the maintenance query at "
+            f"{_read_at(context, 'maintenance')} and its reply carried no maintenance "
+            "figure"))
+    return Resolution(facts=(evidence.tuner_net_gold_fact(
+        context.ledger, tuner.reading_for("maintenance"), tuner.maintenance),))
 
 
 def _live_options(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    silent = _tuner_silence("settlement.build_options", context, "build_options")
+    if silent is not None:
+        return silent
     tuner = context.tuner
-    reading = tuner.reading_for("build_options") if tuner.available else None
+    reading = tuner.reading_for("build_options")
     so = next((s for s in tuner.build_options if s.city == params["city"]), None)
-    if reading is None or so is None:
-        return _tuner_absent("settlement.build_options", context, "build_options")
+    if so is None:
+        return Resolution(absence=Absence(
+            "settlement.build_options", Unanswerable.ANSWERED_EMPTY,
+            f"the tuner answered the build options query at "
+            f"{_read_at(context, 'build_options')} and its reply names no settlement "
+            f"called {params['city']}"))
+    if not so.options:
+        # An empty option list is what the GAME said, not something the advisor failed
+        # to see: the settlement can build nothing right now. Saying "cannot see that"
+        # here would hide a real answer behind a false one.
+        return Resolution(absence=Absence(
+            "settlement.build_options", Unanswerable.ANSWERED_EMPTY,
+            f"the tuner answered at {_read_at(context, 'build_options')} and says "
+            f"{params['city']} can build nothing right now"))
     return Resolution(facts=tuple(
         evidence.build_option_fact(context.ledger, reading, so.city, o) for o in so.options))
 

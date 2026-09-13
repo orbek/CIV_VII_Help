@@ -260,7 +260,8 @@ def test_page_has_intel_tab_production_sections_and_wipe_copy(client):
 def test_briefing_serves_every_section_from_one_revision(client):
     body = client.get("/api/briefing").json()
     assert set(body) == {"status", "state", "insights", "hidden_insights", "intel",
-                         "tactical", "commentary", "decisions", "changes", "record"}
+                         "tactical", "commentary", "decisions", "changes", "record",
+                         "tuner"}
     status = body["status"]
     assert status["schema_version"] == 1 and status["revision"] >= 1
     assert status["session"] and status["epoch"] == 1

@@ -148,6 +148,51 @@
     return out;
   }
 
+  /* ---- the live tuner's pre-fill for the Refine flow ----------------------------
+
+     A tuner reading is a value the advisor asked the running game for at a moment it
+     chose. It pre-fills the Refine form so the player is not asked to retype what the
+     game already told the advisor -- but it is a suggestion, not a submission: the
+     player still presses Record before it becomes their own report. These two lookups
+     are pure so the wiring that decides WHAT gets pre-filled can be tested without a
+     DOM, leaving app.js only the job of putting it on screen. */
+
+  /* This settlement's live build options, or null: the tuner never answered for it, or
+     is off, or has no reading for this city. */
+  function tunerLiveOptions(tuner, city) {
+    if (!tuner || !tuner.available) return null;
+    var found = null;
+    (tuner.build_options || []).forEach(function (so) {
+      if (so.city === city) found = so;
+    });
+    return found;
+  }
+
+  /* How many turns the tuner said this settlement's build of `item` would take, or
+     null if it did not answer for this item. The only metric a live reading may
+     pre-fill -- see `civ_advisor/decisions/context.py:Previews` for why the other
+     three stay for the ruleset or the player alone. */
+  function tunerLiveTurns(liveOptions, item) {
+    if (!liveOptions) return null;
+    var match = null;
+    (liveOptions.options || []).forEach(function (o) {
+      if (o.item === item) match = o;
+    });
+    return match ? match.turns : null;
+  }
+
+  /* The badge text for one evidence fact's source kind. Its own case for a live
+     reading, distinct from both "you told us" (typed) and a bare log row (the game's
+     own write) -- the confusion this label exists to prevent from reaching the page. */
+  function factKindLabel(kind) {
+    if (kind === "player_report") return "you told us";
+    if (kind === "live_reading") return "read live";
+    if (kind === "derived") return "computed";
+    if (kind === "rule") return "advisor rule";
+    if (kind === "installed_ruleset") return "your installed ruleset";
+    return "log";
+  }
+
   /* ---- the decision brief ------------------------------------------------------
 
      Grouping overlapping warnings by subject, without losing any of them. Two rival
@@ -272,6 +317,8 @@
     fingerprint: fingerprint, acknowledgementKey: acknowledgementKey,
     isAcknowledged: isAcknowledged, commentaryExplains: commentaryExplains,
     SEVERITY_ORDER: SEVERITY_ORDER,
+    tunerLiveOptions: tunerLiveOptions, tunerLiveTurns: tunerLiveTurns,
+    factKindLabel: factKindLabel,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Civ7Briefing = api;

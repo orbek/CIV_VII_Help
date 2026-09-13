@@ -349,6 +349,57 @@ def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...])
     }
 
 
+def tuner_to_dict(tuner: object | None) -> dict:
+    """One tuner rebuild, ready for the page.
+
+    Every reported figure carries the turn and instant it was read, and a figure the
+    tuner could not supply says why -- "not enabled", "not answering" and "unreachable"
+    are three different statements and only the browser needs to tell them apart, so
+    the reason travels rather than a bare `False`. `source` is always the literal
+    `"live_reading"`: this is the one channel that carries values the game never wrote
+    to a log, and the browser must never mistake one for a player's own report.
+    """
+    available = bool(tuner is not None and getattr(tuner, "available", False))
+    reason = getattr(tuner, "reason", None) if tuner is not None else None
+    reading = getattr(tuner, "reading", None) if available else None
+    maintenance = getattr(tuner, "maintenance", None) if available else None
+
+    def absence(query_id: str) -> str | None:
+        if tuner is None or not hasattr(tuner, "absence"):
+            return None
+        return tuner.absence(query_id)
+
+    return {
+        "available": available,
+        "reason": None if available else reason,
+        "source": "live_reading",
+        "turn": reading.turn if reading is not None else None,
+        "read_at": reading.read_at if reading is not None else None,
+        "state": reading.state if reading is not None else None,
+        "amenities": [
+            {"city": a.city, "total": a.total, "from_luxuries": a.from_luxuries,
+             "from_civics": a.from_civics, "from_entertainment": a.from_entertainment,
+             "housing": a.housing, "food_surplus": a.food_surplus,
+             "unexplained": a.unexplained}
+            for a in (getattr(tuner, "amenities", ()) if available else ())
+        ],
+        "amenities_reason": absence("amenities"),
+        "maintenance": ({
+            "total": maintenance.total, "buildings": maintenance.buildings,
+            "districts": maintenance.districts, "units": maintenance.units,
+            "gold": maintenance.gold, "gold_yield": maintenance.gold_yield,
+            "unattributed": maintenance.unattributed, "net_gold": maintenance.net_gold,
+        } if maintenance is not None else None),
+        "maintenance_reason": absence("maintenance"),
+        "build_options": [
+            {"city": so.city,
+             "options": [{"item": o.item, "turns": o.turns} for o in so.options]}
+            for so in (getattr(tuner, "build_options", ()) if available else ())
+        ],
+        "build_options_reason": absence("build_options"),
+    }
+
+
 def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult,
                      changes: dict | None = None, record: dict | None = None,
                      decisions: dict | None = None, game: dict | None = None) -> dict:
@@ -374,6 +425,7 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
         "decisions": decisions,
         "changes": changes,
         "record": record,
+        "tuner": tuner_to_dict(snapshot.tuner),
     }
 
 

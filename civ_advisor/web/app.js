@@ -2,7 +2,8 @@
   /* The response and coverage rules live in briefing.js so they can be tested by
      executing them rather than by grepping this file. */
   const B = window.Civ7Briefing;
-  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines, pinnedGameGap } = B;
+  const { acceptResponse, seen: seenIn, ago: AGO, coverageLines, pinnedGameGap,
+    tunerLiveOptions, tunerLiveTurns, factKindLabel } = B;
   const $ = (sel) => document.querySelector(sel);
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -108,7 +109,7 @@
     /* Everything on screen was computed under the previous game. Clear it before the
        new brief lands rather than leaving one game's advice under another's name. */
     state.data = null; state.insights = []; state.intel = []; state.decisions = null;
-    state.changes = null; state.tactical = null; state.commentary = null;
+    state.changes = null; state.tactical = null; state.commentary = null; state.tuner = null;
     render();
     refresh();
   });
@@ -174,6 +175,7 @@
     state.decisions = body.decisions;
     state.changes = body.changes;
     state.record = body.record;
+    state.tuner = body.tuner;
     state.connected = true;
     state.lastUpdate = Date.now();
     render();
@@ -1142,23 +1144,34 @@
   function factNode(fact, facts) {
     const node = el("div", "fact");
     const label = el("p", "fact-label");
-    label.append(document.createTextNode(fact.label + " "),
-      el("span", "fact-kind", fact.kind === "player_report" ? "you told us"
-        : fact.kind === "derived" ? "computed" : fact.kind === "rule" ? "advisor rule"
-        : fact.kind === "installed_ruleset" ? "your installed ruleset" : "log"));
+    // A live reading gets its own class as well as its own words: "read live" must
+    // never be mistaken at a glance for "you told us" (typed) or a plain log row
+    // (the game's own write), which is exactly the confusion this label exists to
+    // prevent from reaching the page.
+    const isLive = fact.kind === "live_reading";
+    const kindSpan = el("span", isLive ? "fact-kind fact-kind-live" : "fact-kind",
+      factKindLabel(fact.kind));
+    label.append(document.createTextNode(fact.label + " "), kindSpan);
     if (fact.provenance === "oracle") label.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     node.append(label);
     const value = fact.value === null || fact.value === undefined ? "—" : String(fact.value);
     node.append(el("p", "fact-value", fact.unit ? `${value} ${fact.unit}` : value));
     const meta = [];
-    if (fact.observed_turn !== null && fact.observed_turn !== undefined) {
+    if (isLive) {
+      // The turn this figure describes, and the wall-clock instant it was asked for,
+      // travel together: a live reading is a value asked for at a moment the advisor
+      // chose, not something the game logged on its own, so both belong beside each
+      // other rather than one under "observed" and the other under "entered" (which
+      // reads as something the player typed).
+      meta.push(`observed turn ${fact.observed_turn}, read ${fact.reported_at || "—"}`);
+    } else if (fact.observed_turn !== null && fact.observed_turn !== undefined) {
       meta.push(`observed turn ${fact.observed_turn}`
         + (fact.age ? ` (${fact.age} turn${fact.age === 1 ? "" : "s"} ago)` : ""));
     } else {
       meta.push("no turn recorded");
     }
     if (fact.source_file) meta.push(`from ${fact.source_file}`);
-    if (fact.reported_at) meta.push(`entered ${fact.reported_at}`);
+    if (!isLive && fact.reported_at) meta.push(`entered ${fact.reported_at}`);
     node.append(el("p", "fact-meta", meta.join(" · ")));
     if (fact.note) node.append(el("p", "fact-note", fact.note));
     if ((fact.contributing || []).length) {
@@ -1200,13 +1213,18 @@
     const city = card.id.split(".").slice(2).join(".");
     const context = (state.decisions && state.decisions.context) || {};
     const settlement = (context.settlements || []).find((s) => s.city === city);
+    const liveOptions = tunerLiveOptions(state.tuner, city);
     const panel = el("details", "refine");
     panel.open = Boolean(state.refineStatus[city]);
     panel.append(el("summary", null, "Refine this recommendation"));
     panel.append(el("p", "refine-note",
       "Read these off the game's own preview for this settlement and enter them here. "
       + "They are recorded as your report, dated to the turn you read them, and are "
-      + "discarded if this game is reloaded or this settlement's queue changes."));
+      + "discarded if this game is reloaded or this settlement's queue changes."
+      + (liveOptions
+        ? ` A live tuner reading has pre-filled what it saw as of turn ${state.tuner.turn} `
+          + `(${state.tuner.read_at}); it is only a suggestion until you press Record.`
+        : "")));
 
     const form = el("form");
     form.dataset.focusKey = `refine:${city}`;
@@ -1217,6 +1235,11 @@
     optionsInput.type = "text";
     optionsInput.name = "available_options";
     optionsInput.placeholder = "BUILDING_MONUMENT, BUILDING_AMPHITHEATER";
+    if (liveOptions) {
+      optionsInput.value = liveOptions.options.map((o) => o.item).join(", ");
+      options.append(el("span", "refine-live",
+        `live_reading — read turn ${state.tuner.turn} (${state.tuner.read_at})`));
+    }
     options.append(optionsInput);
     form.append(options);
 
@@ -1236,15 +1259,24 @@
     const grid = el("div", "refine-grid");
     const items = refinableItems(card);
     items.forEach((item) => {
+      // The tuner's own build-queue estimate for THIS item, if it read one. Only
+      // `completion_turns` -- the one figure the game states per settlement, per item;
+      // it never supplies the other three metrics.
+      const liveTurns = tunerLiveTurns(liveOptions, item);
       REFINE_METRICS.forEach(([metric, label, unit]) => {
         const field = el("label", null);
         field.append(el("span", null, metric === "yield_delta"
           ? `${itemName(item)} — ${family} ${label}` : `${itemName(item)} — ${label}`));
+        if (metric === "completion_turns" && liveTurns !== null) {
+          field.append(el("span", "refine-live",
+            `live_reading — read turn ${state.tuner.turn} (${state.tuner.read_at})`));
+        }
         const input = el("input");
         input.type = "number";
         input.step = "any";
         input.name = `preview.${item}.${metric}`;
         input.dataset.unit = metric === "yield_delta" ? `${family} ${unit}` : unit;
+        if (metric === "completion_turns" && liveTurns !== null) input.value = liveTurns;
         field.append(input);
         grid.append(field);
       });
@@ -1728,7 +1760,7 @@
         // the new brief lands rather than leaving one game's advice under another's
         // name for however long the round trip to refresh() takes.
         state.data = null; state.insights = []; state.intel = []; state.decisions = null;
-        state.changes = null; state.tactical = null; state.commentary = null;
+        state.changes = null; state.tactical = null; state.commentary = null; state.tuner = null;
         render();
       }
       refresh();

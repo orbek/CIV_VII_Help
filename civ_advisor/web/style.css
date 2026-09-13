@@ -462,6 +462,12 @@ td.behind { color: var(--brass); }
 .fact-note { margin: .15rem 0; font-size: .82rem; }
 .fact-kind { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
   border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; padding: .02rem .3rem; }
+/* Distinct from a log row's plain outline and from "you told us": a value asked for
+   live, from the running game, at a moment the advisor chose -- not typed, not logged. */
+.fact-kind-live { border-color: #5a9c8a; color: #5a9c8a; }
+
+/* ---- a live reading's pre-fill in the refine form ------------------------------ */
+.refine-live { color: #5a9c8a; font-size: .72rem; }
 
 /* ---- refinement panel --------------------------------------------------------- */
 .refine { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed rgba(139, 133, 120, .35); }

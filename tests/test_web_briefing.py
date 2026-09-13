@@ -364,3 +364,47 @@ def test_generated_prose_may_only_explain_the_decision_context_it_was_written_ab
     """)
     assert result["matching"] is True
     assert all(value is False for key, value in result.items() if key != "matching"), result
+
+
+# ---- the live tuner's pre-fill for the Refine flow -------------------------------
+
+def test_tuner_live_options_finds_this_citys_reading():
+    tuner = {"available": True, "build_options": [
+        {"city": "Rome", "options": [{"item": "BUILDING_GRANARY", "turns": 4}]},
+        {"city": "Athens", "options": []},
+    ]}
+    result = run_js(f"return B.tunerLiveOptions({json.dumps(tuner)}, 'Rome');")
+    assert result["city"] == "Rome"
+    assert result["options"][0]["item"] == "BUILDING_GRANARY"
+
+
+def test_tuner_live_options_is_null_with_no_reading_for_this_city():
+    tuner = {"available": True, "build_options": [{"city": "Athens", "options": []}]}
+    assert run_js(f"return B.tunerLiveOptions({json.dumps(tuner)}, 'Rome');") is None
+
+
+def test_tuner_live_options_is_null_when_the_tuner_is_off():
+    tuner = {"available": False, "build_options": []}
+    assert run_js(f"return B.tunerLiveOptions({json.dumps(tuner)}, 'Rome');") is None
+    assert run_js("return B.tunerLiveOptions(null, 'Rome');") is None
+
+
+def test_tuner_live_turns_reads_this_items_estimate():
+    options = {"city": "Rome", "options": [{"item": "BUILDING_GRANARY", "turns": 4}]}
+    assert run_js(f"return B.tunerLiveTurns({json.dumps(options)}, 'BUILDING_GRANARY');") == 4
+
+
+def test_tuner_live_turns_is_null_for_an_item_the_tuner_did_not_answer():
+    options = {"city": "Rome", "options": [{"item": "BUILDING_GRANARY", "turns": 4}]}
+    assert run_js(
+        f"return B.tunerLiveTurns({json.dumps(options)}, 'BUILDING_AMPHITHEATER');") is None
+    assert run_js("return B.tunerLiveTurns(null, 'BUILDING_GRANARY');") is None
+
+
+def test_a_live_reading_gets_its_own_badge_text():
+    """Distinct from both "you told us" (typed) and a bare log row -- the confusion this
+    label exists to prevent from reaching the page."""
+    assert run_js('return B.factKindLabel("live_reading");') == "read live"
+    assert run_js('return B.factKindLabel("player_report");') == "you told us"
+    assert run_js('return B.factKindLabel("log");') == "log"
+    assert run_js('return B.factKindLabel("something_else");') == "log"

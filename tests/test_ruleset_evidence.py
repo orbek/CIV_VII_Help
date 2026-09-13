@@ -62,7 +62,14 @@ def test_a_ruleset_fact_must_name_its_source_file():
 
 def test_the_browser_renders_the_new_kind():
     """A fact whose kind the UI does not know falls through to the word "log", which
-    would present the ruleset as something the game wrote this turn."""
-    app_js = Path("civ_advisor/web/app.js").read_text(encoding="utf-8")
+    would present the ruleset as something the game wrote this turn.
 
-    assert "installed_ruleset" in app_js
+    The mapping itself now lives in briefing.js's `factKindLabel` (moved there so it can
+    be executed under node rather than only grepped), and app.js loads that file
+    alongside its own -- see civ_advisor/web/index.html, which serves both to the
+    browser -- so either file naming the kind keeps this claim true for what a player's
+    browser actually runs."""
+    app_js = Path("civ_advisor/web/app.js").read_text(encoding="utf-8")
+    briefing_js = Path("civ_advisor/web/briefing.js").read_text(encoding="utf-8")
+
+    assert "installed_ruleset" in app_js + briefing_js

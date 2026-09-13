@@ -22,8 +22,12 @@ from civ_advisor.knowledge.catalog import Catalog, load_catalog
 from civ_advisor.ruleset.base import NO_RULESET, RulesetProvider
 from civ_advisor.state.models import GameState
 from civ_advisor.store import Snapshot
+from civ_advisor.tuner.base import TunerSnapshot, TUNER_SNAPSHOT_OFF
 
-from .evidence import YIELD_STATS, EvidenceLedger, build_ledger, ruleset_fact
+from .evidence import (
+    YIELD_STATS, EvidenceLedger, amenities_fact, build_ledger, build_option_fact,
+    ruleset_fact, tuner_net_gold_fact,
+)
 from .models import EvidenceFact, PlayerContext, PlayerReport, Prerequisite
 
 # The report vocabulary. A submission naming anything else is refused, so the panel
@@ -213,14 +217,18 @@ def _changed_dependencies(claimed: dict[str, object], current: dict[str, object]
 @dataclass(frozen=True)
 class Previews:
     """Preview figures for one candidate item in one settlement — the player's own where
-    supplied, filled from the installed ruleset (Civ VI only) where they are not.
+    supplied, filled from the installed ruleset (Civ VI only) or a live tuner reading
+    where they are not.
 
-    Every metric is optional and stays `None` when it was not supplied by either source.
+    Every metric is optional and stays `None` when it was not supplied by any source.
     A comparison that needs a missing metric must say what is missing, not substitute
-    zero. `ruleset_filled` names which metrics came from the ruleset rather than the
-    player, so a caller can say which is which rather than letting one look like the
-    other — see `DecisionContext.previews` for why the player's own figure always wins
-    where both exist.
+    zero. `ruleset_filled` and `live_filled` name which metrics came from the ruleset and
+    from a live tuner reading rather than the player, so a caller can say which is which
+    rather than letting one look like another — see `DecisionContext.previews` for why
+    the player's own figure always wins where more than one source has it.
+
+    A `live_filled` metric is a pre-fill offered to the Refine flow, not a submission:
+    the player still confirms or corrects it, and it is never recorded as their report.
     """
 
     item: str
@@ -231,6 +239,7 @@ class Previews:
     observed_turn: int | None = None
     fact_ids: tuple[str, ...] = ()
     ruleset_filled: frozenset[str] = frozenset()
+    live_filled: frozenset[str] = frozenset()
 
     def missing(self, *metrics: str) -> tuple[str, ...]:
         return tuple(m for m in metrics if getattr(self, m) is None)
@@ -281,6 +290,7 @@ class DecisionContext:
     defense_titles: tuple[str, ...] = ()
     insight_ids: tuple[str, ...] = ()
     ruleset: RulesetProvider = NO_RULESET
+    tuner: TunerSnapshot = TUNER_SNAPSHOT_OFF
 
     # -- what the player told us ---------------------------------------------------
 
@@ -313,15 +323,19 @@ class DecisionContext:
 
     def previews(self, city: str, item: str, stat: str | None = None) -> Previews:
         """This item's preview figures: the player's own reports first, then whatever
-        the installed ruleset can fill in for what they left blank.
+        the installed ruleset can fill in for what they left blank, then a live tuner
+        reading of this settlement's actual build options.
 
-        The player's report always wins where both exist. It is a live observation of
-        this settlement now; a ruleset figure is a general fact about the installed
-        file, not about this city or this turn — a specific, current observation
-        outranks a general one, and silently replacing what someone typed with a
-        database value is exactly the kind of confusable-sources problem this project's
-        provenance labelling exists to prevent. So the ruleset is consulted only for a
-        metric the player left `None`, never to override one they supplied.
+        The player's report always wins where more than one source has it. It is a
+        current observation of this settlement; a ruleset figure is a general fact about
+        the installed file, and a tuner reading -- while specific to this settlement and
+        this turn -- was asked for by the advisor, not confirmed by the player looking at
+        their own screen. Silently replacing what someone typed with either would be
+        exactly the kind of confusable-sources problem this project's provenance
+        labelling exists to prevent. So the ruleset and the tuner are each consulted only
+        for a metric the player left `None`, never to override one they supplied -- and
+        a tuner-filled metric is a Refine pre-fill, not a submission: the caller must
+        still let the player confirm or correct it before it becomes their report.
 
         `stat` (the yield family this decision is about, e.g. "culture") is what makes
         `yield_delta` fillable at all: `Previews` carries one undated float with no
@@ -332,11 +346,10 @@ class DecisionContext:
 
         `completion_turns` is never filled from the ruleset, on purpose: how long an
         item takes in one settlement depends on that settlement's own production, which
-        no ruleset row states and no log records either. `happiness_cost` is also never
-        filled: the ruleset has no field for it. Reading one would need
-        `Buildings.Entertainment`, which is a schema extension this task did not judge
-        worth making for one metric — a decision, not an oversight; see
-        `docs/architecture/adr-002-ruleset-derived-figures.md`.
+        no ruleset row states and no log records either -- but a live tuner reading of
+        THIS settlement's build queue does state it, which is why the tuner, and only
+        the tuner, may fill it. `happiness_cost` is filled by neither: the ruleset has no
+        field for it, and the tuner exposes no such figure either.
         """
         values: dict[str, float | None] = {m: None for m in PREVIEW_METRICS}
         turns: list[int] = []
@@ -369,9 +382,22 @@ class DecisionContext:
                     values["gold_upkeep"] = float(item_facts.maintenance.value)
                     ruleset_filled.add("gold_upkeep")
 
-        return Previews(item=item, observed_turn=max(turns) if turns else None,
+        live_filled: set[str] = set()
+        live_turn: int | None = None
+        if values["completion_turns"] is None and self.tuner.available \
+                and self.tuner.reading is not None:
+            offer = next((so for so in self.tuner.build_options if so.city == city), None)
+            option = offer.offers(item) if offer is not None else None
+            if option is not None:
+                values["completion_turns"] = float(option.turns)
+                live_filled.add("completion_turns")
+                live_turn = self.tuner.reading.turn
+                fact_ids.append(f"tuner.build_option.{city}.{option.item}.{live_turn}")
+
+        return Previews(item=item, observed_turn=max(turns) if turns else live_turn,
                         fact_ids=tuple(sorted(fact_ids)),
-                        ruleset_filled=frozenset(ruleset_filled), **values)
+                        ruleset_filled=frozenset(ruleset_filled),
+                        live_filled=frozenset(live_filled), **values)
 
     def settlement(self, city: str) -> SettlementView | None:
         return next((s for s in self.settlements if s.city == city), None)
@@ -384,7 +410,8 @@ class DecisionContext:
 
 def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
                   oracle: bool = True, catalog: Catalog | None = None,
-                  ruleset: RulesetProvider | None = None) -> DecisionContext:
+                  ruleset: RulesetProvider | None = None,
+                  tuner: TunerSnapshot | None = None) -> DecisionContext:
     """Everything the culture pilot may read, from this snapshot in this evidence mode."""
     state = snapshot.state
     # Civ VI's own catalog is deliberately empty (spec: no guide has been reviewed
@@ -412,6 +439,20 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
         if item_facts is not None:
             for figure in item_facts.figures:
                 ruleset_fact(ledger, figure)
+
+    # A live tuner reading, same as the ruleset above: added to the ledger before
+    # anything cites it, so a card citing one of these ids resolves the same whether the
+    # citation was built here or read back through the API. Frozen to the reading this
+    # snapshot carries -- never re-asked while a request is being served.
+    tuner = tuner if tuner is not None else TUNER_SNAPSHOT_OFF
+    if tuner.available and tuner.reading is not None:
+        for amenities in tuner.amenities:
+            amenities_fact(ledger, tuner.reading, amenities)
+        if tuner.maintenance is not None:
+            tuner_net_gold_fact(ledger, tuner.reading, tuner.maintenance)
+        for settlement_options in tuner.build_options:
+            for option in settlement_options.options:
+                build_option_fact(ledger, tuner.reading, settlement_options.city, option)
 
     settlements = []
     completed_by_city: dict[str, list[str]] = {}
@@ -456,7 +497,14 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
         comparisons={stat: fact for stat in YIELD_STATS
                      if (fact := ledger.get(f"comparison.{stat}.{snapshot.analysis_turn}"))
                      is not None},
-        net_gold=ledger.get(f"gold.net.{snapshot.analysis_turn}"),
+        # The log-derived figure wins where both exist -- it comes from the player's own
+        # stats and treasury logs. Only when no turn has been logged yet does this fall
+        # back to the live tuner reading, which asks the running game for the same
+        # thing (`tuner_net_gold_fact` in evidence.py) rather than leaving the figure
+        # unknown for the one turn the logs have not caught up.
+        net_gold=(ledger.get(f"gold.net.{snapshot.analysis_turn}")
+                 or (ledger.get(f"tuner.net_gold.{tuner.reading.turn}")
+                     if tuner.available and tuner.reading is not None else None)),
         happiness=ledger.get(f"happiness.total.{snapshot.analysis_turn}"),
         age=ledger.get(f"age.observed.{snapshot.analysis_turn}"),
         identity=ledger.get("identity.human"),
@@ -466,6 +514,7 @@ def build_context(snapshot: Snapshot, player: PlayerContext | None = None,
                              if i.severity == severity) if oracle else (),
         insight_ids=tuple(i.id for i in insights),
         ruleset=ruleset,
+        tuner=tuner,
     )
 
 

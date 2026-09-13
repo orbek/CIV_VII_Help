@@ -6,7 +6,7 @@ import pytest
 
 from civ_advisor.tuner.base import (
     BuildOption, CityAmenities, Maintenance, NullTuner, SettlementOptions,
-    TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable,
+    TUNER_ABSENT, TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable,
 )
 
 
@@ -70,9 +70,38 @@ def test_the_off_singleton_says_which_absence_it_is():
     assert TUNER_OFF.unavailable is TunerUnavailable.NOT_ENABLED
 
 
-def test_the_three_absences_are_distinct():
-    """Told apart on purpose: only one of them is fixable by the player."""
-    assert len(set(TunerUnavailable)) == 3
+def test_the_four_absences_are_distinct_causes_worded_differently():
+    """Told apart on purpose: only NOT_ENABLED is fixable by the player, and a game
+    that has no socket at all is not a game whose socket is switched off. Four
+    members is not the claim -- four DIFFERENT statements is, so the prose each one
+    carries is checked for being distinct too."""
+    assert len(set(TunerUnavailable)) == 4
+    assert {c.value for c in TunerUnavailable} == {
+        "not_enabled", "not_answering", "unreachable", "no_socket"}
+
+    said = {
+        TunerUnavailable.NOT_ENABLED: TUNER_OFF.reason,
+        TunerUnavailable.NO_SOCKET: TUNER_ABSENT.reason,
+        TunerUnavailable.NOT_ANSWERING: NullTuner(
+            TunerUnavailable.NOT_ANSWERING, "the game did not answer").reason,
+        TunerUnavailable.UNREACHABLE: NullTuner(
+            TunerUnavailable.UNREACHABLE, "no VM implements this call").reason,
+    }
+    assert len(set(said.values())) == 4
+    # The two that are easiest to confuse, stated as what each must and must not say.
+    assert "EnableTuner" in said[TunerUnavailable.NOT_ENABLED]
+    assert "EnableTuner" not in said[TunerUnavailable.NO_SOCKET]
+    assert "nothing you could enable" in said[TunerUnavailable.NO_SOCKET]
+
+
+def test_the_absent_singleton_offers_no_setting_to_change():
+    """A game with no socket has nothing to switch on. Naming Civ VI's AppOptions.txt
+    to a player of another game would send them to edit a file for a game they are not
+    playing, about a setting that game does not have."""
+    assert TUNER_ABSENT.unavailable is TunerUnavailable.NO_SOCKET
+    assert TUNER_ABSENT.available is False
+    assert "AppOptions" not in TUNER_ABSENT.reason
+    assert "Civilization VI" not in TUNER_ABSENT.reason
 
 
 def test_null_tuner_satisfies_the_protocol():

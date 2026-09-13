@@ -1,7 +1,7 @@
 """The tuner is read once per rebuild, frozen into the snapshot, never costs a poll
 that worked, and one bad figure does not take the others down with it."""
 from civ_advisor.tuner.base import (
-    CityAmenities, Maintenance, SettlementOptions, TUNER_SNAPSHOT_OFF,
+    CityAmenities, Maintenance, SettlementOptions, TunerUnavailable,
 )
 
 
@@ -12,11 +12,39 @@ def test_a_snapshot_always_carries_a_tuner(civ6_store):
     assert snap.tuner is not None
 
 
-def test_a_game_with_no_tuner_factory_gets_the_off_singleton(civ7_store):
-    """Not `is`: capture() reconstructs the off-shaped snapshot from whatever
-    provider it was given, rather than special-casing the singleton by identity."""
+def test_a_game_with_no_tuner_factory_is_told_it_has_no_socket(civ7_store):
+    """Not "your socket is off". Civ VII has no tuner at all, and the snapshot used to
+    carry Civ VI's prose -- so a Civ VII player was told to set `EnableTuner 1` in
+    Civilization VI's AppOptions.txt, naming a cause that does not exist and a fix they
+    cannot make. This ships in /api/briefing."""
     snap = civ7_store.rebuild()
-    assert snap.tuner == TUNER_SNAPSHOT_OFF
+    assert snap.tuner.available is False
+    assert snap.tuner.unavailable is TunerUnavailable.NO_SOCKET
+    assert "EnableTuner" not in snap.tuner.reason
+    assert "AppOptions" not in snap.tuner.reason
+    assert "Civilization VI" not in snap.tuner.reason
+    assert "no tuner socket" in snap.tuner.reason
+
+
+def test_a_game_that_has_a_socket_is_still_told_the_socket_is_off(civ6_store):
+    """The other half: NO_SOCKET must not swallow the one absence a player CAN act on.
+    Civ VI has a tuner, so a closed socket is still the actionable "switch it on"."""
+    snap = civ6_store.rebuild()
+    assert snap.tuner.available is False
+    assert snap.tuner.unavailable is TunerUnavailable.NOT_ENABLED
+    assert "EnableTuner" in snap.tuner.reason
+
+
+def test_no_tuner_says_this_run_chose_not_to_ask(civ6_store):
+    """`--no-tuner` is neither absence: the game has a socket and nothing is wrong
+    with it. Repeating either of the other two reasons would send the player to fix
+    something that is not broken."""
+    civ6_store.use_tuner = False
+    snap = civ6_store.rebuild()
+    assert snap.tuner.available is False
+    assert "--no-tuner" in snap.tuner.reason
+    assert "EnableTuner" not in snap.tuner.reason
+    assert "no tuner socket" not in snap.tuner.reason
 
 
 def test_a_tuner_that_raises_does_not_fail_the_rebuild(civ6_store):

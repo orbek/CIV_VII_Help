@@ -20,15 +20,17 @@ from typing import Callable, Protocol, runtime_checkable
 
 
 class TunerUnavailable(StrEnum):
-    """Why there is no reading. Three genuinely different situations.
+    """Why there is no reading. Four genuinely different situations.
 
     Only NOT_ENABLED is something the player can fix, and saying the wrong one
-    would send them to change a setting that is already correct.
+    would send them to change a setting that is already correct -- or, for
+    NO_SOCKET, a setting that does not exist in the game they are playing.
     """
 
     NOT_ENABLED = "not_enabled"          # the socket is closed; EnableTuner is 0
     NOT_ANSWERING = "not_answering"      # enabled, but no game is running or it did not reply
     UNREACHABLE = "unreachable"          # answered, but this figure exists in no VM
+    NO_SOCKET = "no_socket"              # this game has no tuner socket to enable at all
 
 
 @dataclass(frozen=True)
@@ -195,6 +197,13 @@ TUNER_OFF = NullTuner(
 )
 
 
+TUNER_ABSENT = NullTuner(
+    TunerUnavailable.NO_SOCKET,
+    "This game has no tuner socket. These figures have no source here, and there is "
+    "nothing you could enable that would add one.",
+)
+
+
 @dataclass(frozen=True)
 class TunerSnapshot:
     """What the tuner said during ONE rebuild, frozen and dated to that turn.
@@ -215,7 +224,7 @@ class TunerSnapshot:
     maintenance: Maintenance | None = None
     build_options: tuple[SettlementOptions, ...] = ()
     # Why a particular figure is missing, keyed by catalog id. A figure absent from
-    # this map was read successfully; one present here says which of the three
+    # this map was read successfully; one present here says which of the four
     # absences applied to IT, which is not always the same for every figure.
     absences: tuple[tuple[str, str], ...] = ()
     # The reading that dates each figure, keyed by the same catalog id. Recorded per
@@ -315,6 +324,6 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
 
 
 __all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
-           "SettlementOptions", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
+           "SettlementOptions", "TUNER_ABSENT", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
            "TunerProvider", "TunerReading", "TunerSnapshot", "TunerUnavailable",
            "capture"]

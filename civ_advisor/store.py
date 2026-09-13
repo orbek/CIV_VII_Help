@@ -23,13 +23,25 @@ from civ_advisor.ingest.load import RawLogs, load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.models import GameState
 from civ_advisor.tuner.base import (
-    NullTuner, TUNER_OFF, TUNER_SNAPSHOT_OFF, TunerSnapshot, TunerUnavailable, capture,
+    NullTuner, TUNER_ABSENT, TUNER_SNAPSHOT_OFF, TunerSnapshot,
+    TunerUnavailable, capture,
 )
 
 if TYPE_CHECKING:
     from civ_advisor.llm.worker import CommentaryWorker
 
 log = logging.getLogger(__name__)
+
+# The tuner was not asked because THIS RUN said not to ask -- not because the socket is
+# off and not because the game lacks one. The enum has no member for a choice the
+# advisor made about itself, so the prose carries the real cause, which is what a
+# player reads. Saying "set EnableTuner 1" here would send someone to change a setting
+# that is very likely already correct.
+_NO_TUNER_THIS_RUN = NullTuner(
+    TunerUnavailable.NOT_ENABLED,
+    "This run was started with --no-tuner, so the advisor never contacted the game's "
+    "tuner socket. Nothing about the game is wrong; drop the flag to read these figures.",
+)
 
 ARCHIVE_SUFFIXES = {".csv", ".log"}  # mirror every log the game writes, not just the ones we parse
 
@@ -348,13 +360,22 @@ class Store:
         # nothing live survives the rebuild, so there is nothing on a published
         # snapshot a request handler could read a later turn's figures through, and
         # nothing for a later rebuild to race while closing it.
-        provider = TUNER_OFF
+        # Three different absences, and each must name its own cause. A game with no
+        # tuner factory has no socket AT ALL, which is not a socket that is switched
+        # off: Civ VII has no tuner, and telling a Civ VII player to set `EnableTuner 1`
+        # in Civilization VI's AppOptions.txt names a cause that does not exist and a
+        # fix they cannot make. `--no-tuner` is a third thing again -- this run chose
+        # not to ask, and nothing about the game is wrong.
+        #
         # `--no-tuner` is a decision by this run, not a property of the game, which is
-        # why it lives on the Store and not on the profile: `self.use_tuner` gates the
-        # lookup rather than a mutated profile ever being asked to hand over a factory
-        # it does not have.
-        factory = getattr(profile, "tuner", None) if self.use_tuner else None
-        if factory is not None:
+        # why it lives on the Store and not on the profile: `self.use_tuner` gates
+        # whether the factory is CALLED, never whether the game is said to have one.
+        factory = getattr(profile, "tuner", None)
+        if factory is None:
+            provider = TUNER_ABSENT
+        elif not self.use_tuner:
+            provider = _NO_TUNER_THIS_RUN
+        else:
             try:
                 provider = factory()
             except Exception:       # a third-party socket has many failure shapes
@@ -385,7 +406,7 @@ class Store:
 
     @staticmethod
     def _close_tuner(provider: object) -> None:
-        """Close a tuner provider's socket if it has one. TUNER_OFF and every NullTuner do not."""
+        """Close a tuner provider's socket if it has one. Every NullTuner does not."""
         close = getattr(provider, "close", None)
         if callable(close):
             try:

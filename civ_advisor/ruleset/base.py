@@ -145,6 +145,11 @@ class BuildingFacts:
     prereq_district: RulesetFigure | None = None
     prereq_tech: RulesetFigure | None = None
     prereq_civic: RulesetFigure | None = None
+    housing: RulesetFigure | None = None
+    entertainment: RulesetFigure | None = None
+    citizen_slots: RulesetFigure | None = None
+    is_wonder: RulesetFigure | None = None
+    requires_placement: RulesetFigure | None = None
     yields: tuple[RulesetFigure, ...] = ()
     mentions: tuple[RulesetMention, ...] = ()
     counts: tuple[RulesetCount, ...] = ()
@@ -154,7 +159,8 @@ class BuildingFacts:
         """The stateable figures, in a stable order. Mentions and counts are not here:
         neither is a figure, and must never be folded into a list of them."""
         named = (self.cost, self.maintenance, self.prereq_district, self.prereq_tech,
-                 self.prereq_civic)
+                 self.prereq_civic, self.housing, self.entertainment, self.citizen_slots,
+                 self.is_wonder, self.requires_placement)
         return tuple(f for f in named if f is not None) + self.yields
 
 
@@ -166,11 +172,78 @@ class DistrictFacts:
     cost: RulesetFigure | None = None
     prereq_tech: RulesetFigure | None = None
     prereq_civic: RulesetFigure | None = None
+    housing: RulesetFigure | None = None
+    entertainment: RulesetFigure | None = None
+    citizen_slots: RulesetFigure | None = None
+    maintenance: RulesetFigure | None = None
 
     @property
     def figures(self) -> tuple[RulesetFigure, ...]:
-        return tuple(f for f in (self.cost, self.prereq_tech, self.prereq_civic)
-                     if f is not None)
+        return tuple(f for f in (self.cost, self.prereq_tech, self.prereq_civic,
+                                 self.housing, self.entertainment, self.citizen_slots,
+                                 self.maintenance) if f is not None)
+
+
+@dataclass(frozen=True)
+class ImprovementFacts:
+    """Every in-scope figure about one tile improvement, each carrying its own row."""
+
+    improvement: str
+    prereq_tech: RulesetFigure | None = None
+    prereq_civic: RulesetFigure | None = None
+    housing: RulesetFigure | None = None
+    yields: tuple[RulesetFigure, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.prereq_tech, self.prereq_civic, self.housing)
+                     if f is not None) + self.yields
+
+
+@dataclass(frozen=True)
+class PolicyFacts:
+    """Which slot a policy fills and what unlocks it. What it DOES is a modifier the
+    ruleset does not quantify, so it is a mention and never a figure -- ADR-002."""
+
+    policy: str
+    slot: RulesetFigure | None = None
+    prereq_civic: RulesetFigure | None = None
+    mentions: tuple[RulesetMention, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.slot, self.prereq_civic) if f is not None)
+
+
+@dataclass(frozen=True)
+class GovernmentFacts:
+    """Every in-scope figure about one government, each carrying its own row."""
+
+    government: str
+    prereq_civic: RulesetFigure | None = None
+    tier: RulesetFigure | None = None
+    slots: tuple[RulesetFigure, ...] = ()     # one per Government_SlotCounts row
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.prereq_civic, self.tier) if f is not None) + self.slots
+
+
+@dataclass(frozen=True)
+class ResourceFacts:
+    """Every in-scope figure about one resource, each carrying its own row."""
+
+    resource: str
+    resource_class: RulesetFigure | None = None
+    happiness: RulesetFigure | None = None     # a stated 0 is a figure, not absence
+    prereq_tech: RulesetFigure | None = None
+    prereq_civic: RulesetFigure | None = None
+    yields: tuple[RulesetFigure, ...] = ()
+
+    @property
+    def figures(self) -> tuple[RulesetFigure, ...]:
+        return tuple(f for f in (self.resource_class, self.happiness, self.prereq_tech,
+                                 self.prereq_civic) if f is not None) + self.yields
 
 
 @dataclass(frozen=True)
@@ -243,13 +316,18 @@ class UnitFacts:
     prereq_civic: RulesetFigure | None = None
     strategic_resource: RulesetFigure | None = None
     upgrades_to: RulesetFigure | None = None
+    moves: RulesetFigure | None = None
+    range: RulesetFigure | None = None
+    domain: RulesetFigure | None = None
+    promotion_class: RulesetFigure | None = None
     mentions: tuple[RulesetMention, ...] = ()
 
     @property
     def figures(self) -> tuple[RulesetFigure, ...]:
         return tuple(f for f in (self.cost, self.maintenance, self.combat,
                                  self.ranged_combat, self.prereq_tech, self.prereq_civic,
-                                 self.strategic_resource, self.upgrades_to)
+                                 self.strategic_resource, self.upgrades_to, self.moves,
+                                 self.range, self.domain, self.promotion_class)
                      if f is not None)
 
 
@@ -278,6 +356,16 @@ class RulesetProvider(Protocol):
     def civic(self, civic_type: str) -> CivicFacts | None: ...
 
     def unit(self, unit_type: str) -> UnitFacts | None: ...
+
+    def parameter(self, name: str) -> RulesetFigure | None: ...
+
+    def improvement(self, improvement_type: str) -> ImprovementFacts | None: ...
+
+    def policy(self, policy_type: str) -> PolicyFacts | None: ...
+
+    def government(self, government_type: str) -> GovernmentFacts | None: ...
+
+    def resource(self, resource_type: str) -> ResourceFacts | None: ...
 
 
 @dataclass(frozen=True)
@@ -318,12 +406,28 @@ class NullRuleset:
     def unit(self, unit_type: str) -> UnitFacts | None:
         return None
 
+    def parameter(self, name: str) -> RulesetFigure | None:
+        return None
+
+    def improvement(self, improvement_type: str) -> ImprovementFacts | None:
+        return None
+
+    def policy(self, policy_type: str) -> PolicyFacts | None:
+        return None
+
+    def government(self, government_type: str) -> GovernmentFacts | None:
+        return None
+
+    def resource(self, resource_type: str) -> ResourceFacts | None:
+        return None
+
 
 NO_RULESET = NullRuleset("This game ships no queryable ruleset, so every figure in a "
                          "recommendation comes from your own preview.")
 
 
 __all__ = ["NO_RULESET", "BoostFacts", "BuildingFacts", "CivicFacts", "DistrictFacts",
-           "NullRuleset", "RulesetCount", "RulesetFigure", "RulesetIdentity",
+           "GovernmentFacts", "ImprovementFacts", "NullRuleset", "PolicyFacts",
+           "ResourceFacts", "RulesetCount", "RulesetFigure", "RulesetIdentity",
            "RulesetMention", "RulesetOutOfScope", "RulesetProvider", "TechnologyFacts",
            "UnitFacts"]

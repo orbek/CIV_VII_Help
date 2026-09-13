@@ -14,7 +14,8 @@ SCHEMA = """
 CREATE TABLE Buildings (
     BuildingType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, Maintenance INTEGER,
     PrereqDistrict TEXT, PrereqTech TEXT, PrereqCivic TEXT, Housing INTEGER,
-    IsWonder BOOLEAN);
+    IsWonder BOOLEAN, Entertainment INTEGER, CitizenSlots INTEGER,
+    RequiresPlacement BOOLEAN);
 CREATE TABLE Building_YieldChanges (
     BuildingType TEXT NOT NULL, YieldType TEXT NOT NULL, YieldChange INTEGER,
     PRIMARY KEY (BuildingType, YieldType));
@@ -30,11 +31,13 @@ CREATE TABLE ModifierArguments (
 ROWS = {
     "Buildings": [
         ("BUILDING_LIBRARY", "LOC_BUILDING_LIBRARY_NAME", 90, 1,
-         "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0),
+         "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0, 0, None, 0),
         ("BUILDING_BANK", "LOC_BUILDING_BANK_NAME", 220, 2,
-         "DISTRICT_COMMERCIAL_HUB", "TECH_BANKING", "", 0, 0),
+         "DISTRICT_COMMERCIAL_HUB", "TECH_BANKING", "", 0, 0, 0, None, 0),
         ("BUILDING_GREAT_LIBRARY", "LOC_BUILDING_GREAT_LIBRARY_NAME", 400, 0,
-         "DISTRICT_CAMPUS", "TECH_RECORDED_HISTORY", "", 0, 1),
+         "DISTRICT_CAMPUS", "TECH_RECORDED_HISTORY", "", 0, 1, 0, None, 0),
+        ("BUILDING_GRANARY", "LOC_BUILDING_GRANARY_NAME", 65, 0, "DISTRICT_CITY_CENTER",
+         "TECH_POTTERY", "", 2, 0, 0, None, 0),
     ],
     "Building_YieldChanges": [
         ("BUILDING_LIBRARY", "YIELD_SCIENCE", 2),
@@ -60,7 +63,8 @@ ROWS = {
 SCHEMA += """
 CREATE TABLE Districts (
     DistrictType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER,
-    PrereqTech TEXT, PrereqCivic TEXT);
+    PrereqTech TEXT, PrereqCivic TEXT, Housing INTEGER, Entertainment INTEGER,
+    CitizenSlots INTEGER, Maintenance INTEGER);
 CREATE TABLE Technologies (
     TechnologyType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, EraType TEXT);
 CREATE TABLE TechnologyPrereqs (
@@ -77,13 +81,41 @@ CREATE TABLE Boosts (
 CREATE TABLE Units (
     UnitType TEXT NOT NULL PRIMARY KEY, Name TEXT, Cost INTEGER, Maintenance INTEGER,
     Combat INTEGER, RangedCombat INTEGER, PrereqTech TEXT, PrereqCivic TEXT,
-    StrategicResource TEXT);
+    StrategicResource TEXT, BaseMoves INTEGER, Range INTEGER, Domain TEXT,
+    PromotionClass TEXT);
 CREATE TABLE UnitUpgrades (
     Unit TEXT NOT NULL PRIMARY KEY, UpgradeUnit TEXT NOT NULL);
+CREATE TABLE GlobalParameters (Name TEXT NOT NULL PRIMARY KEY, Value TEXT);
+CREATE TABLE Improvements (
+    ImprovementType TEXT NOT NULL PRIMARY KEY, Name TEXT, PrereqTech TEXT, PrereqCivic TEXT,
+    Housing INTEGER);
+CREATE TABLE Improvement_YieldChanges (
+    ImprovementType TEXT NOT NULL, YieldType TEXT NOT NULL, YieldChange INTEGER,
+    PRIMARY KEY (ImprovementType, YieldType));
+CREATE TABLE Policies (
+    PolicyType TEXT NOT NULL PRIMARY KEY, Name TEXT, GovernmentSlotType TEXT, PrereqCivic TEXT);
+CREATE TABLE Governments (
+    GovernmentType TEXT NOT NULL PRIMARY KEY, Name TEXT, PrereqCivic TEXT, Tier INTEGER);
+CREATE TABLE Government_SlotCounts (
+    GovernmentType TEXT NOT NULL, GovernmentSlotType TEXT NOT NULL, NumSlots INTEGER,
+    PRIMARY KEY (GovernmentType, GovernmentSlotType));
+CREATE TABLE Resources (
+    ResourceType TEXT NOT NULL PRIMARY KEY, Name TEXT, ResourceClassType TEXT,
+    Happiness INTEGER, PrereqTech TEXT, PrereqCivic TEXT);
+CREATE TABLE Resource_YieldChanges (
+    ResourceType TEXT NOT NULL, YieldType TEXT NOT NULL, YieldChange INTEGER,
+    PRIMARY KEY (ResourceType, YieldType));
+CREATE TABLE Terrain_YieldChanges (
+    TerrainType TEXT NOT NULL, YieldType TEXT NOT NULL, YieldChange INTEGER,
+    PRIMARY KEY (TerrainType, YieldType));
+CREATE TABLE Feature_YieldChanges (
+    FeatureType TEXT NOT NULL, YieldType TEXT NOT NULL, YieldChange INTEGER,
+    PRIMARY KEY (FeatureType, YieldType));
 """
 
 ROWS.update({
-    "Districts": [("DISTRICT_CAMPUS", "LOC_DISTRICT_CAMPUS_NAME", 54, "TECH_WRITING", "")],
+    "Districts": [("DISTRICT_CAMPUS", "LOC_DISTRICT_CAMPUS_NAME", 54, "TECH_WRITING", "",
+                   0, 0, None, 0)],
     "Technologies": [("TECH_WRITING", "LOC_TECH_WRITING_NAME", 50, "ERA_ANCIENT"),
                      ("TECH_POTTERY", "LOC_TECH_POTTERY_NAME", 25, "ERA_ANCIENT")],
     "TechnologyPrereqs": [("TECH_WRITING", "TECH_POTTERY")],
@@ -94,10 +126,29 @@ ROWS.update({
                 "UNIT_SCOUT", None, None, None),
                (4, None, "CIVIC_STATE_WORKFORCE", 40,
                 "BOOST_TRIGGER_HAVE_X_UNIQUE_SPECIALTY_DISTRICTS", None, None, None, 1)],
-    "Units": [("UNIT_WARRIOR", "LOC_UNIT_WARRIOR_NAME", 40, 0, 20, 0, "", "", ""),
+    "Units": [("UNIT_WARRIOR", "LOC_UNIT_WARRIOR_NAME", 40, 0, 20, 0, "", "", "",
+               2, 0, "DOMAIN_LAND", "PROMOTION_CLASS_MELEE"),
               ("UNIT_SWORDSMAN", "LOC_UNIT_SWORDSMAN_NAME", 90, 2, 36, 0,
-               "TECH_IRON_WORKING", "", "RESOURCE_IRON")],
+               "TECH_IRON_WORKING", "", "RESOURCE_IRON",
+               2, 0, "DOMAIN_LAND", "PROMOTION_CLASS_MELEE"),
+              ("UNIT_ARCHER", "LOC_UNIT_ARCHER_NAME", 60, 1, 15, 25, "TECH_ARCHERY", "", "",
+               2, 2, "DOMAIN_LAND", "PROMOTION_CLASS_RANGED")],
     "UnitUpgrades": [("UNIT_WARRIOR", "UNIT_SWORDSMAN")],
+    "GlobalParameters": [("CITY_AMENITIES_FOR_FREE", "0"), ("CITY_GROWTH_THRESHOLD", "15"),
+                         ("CITY_MIN_RANGE", "3"), ("TRADE_ROUTE_BASE_RANGE", "15")],
+    "Improvements": [("IMPROVEMENT_FARM", "LOC_IMPROVEMENT_FARM_NAME", "", "", 1)],
+    "Improvement_YieldChanges": [("IMPROVEMENT_FARM", "YIELD_FOOD", 1),
+                                 ("IMPROVEMENT_FARM", "YIELD_PRODUCTION", 0)],
+    "Policies": [("POLICY_URBAN_PLANNING", "LOC_POLICY_URBAN_PLANNING_NAME",
+                  "SLOT_ECONOMIC", "CIVIC_CODE_OF_LAWS")],
+    "Governments": [("GOVERNMENT_CLASSICAL_REPUBLIC", "LOC_GOVERNMENT_CLASSICAL_REPUBLIC_NAME",
+                     "CIVIC_POLITICAL_PHILOSOPHY", 1)],
+    "Government_SlotCounts": [("GOVERNMENT_CLASSICAL_REPUBLIC", "SLOT_DIPLOMATIC", 1),
+                              ("GOVERNMENT_CLASSICAL_REPUBLIC", "SLOT_ECONOMIC", 2),
+                              ("GOVERNMENT_CLASSICAL_REPUBLIC", "SLOT_WILDCARD", 1)],
+    "Resources": [("RESOURCE_SILK", "LOC_RESOURCE_SILK_NAME", "RESOURCECLASS_LUXURY", 4, "", ""),
+                  ("RESOURCE_IRON", "LOC_RESOURCE_IRON_NAME", "RESOURCECLASS_STRATEGIC", 0,
+                   "TECH_BRONZE_WORKING", "")],
 })
 
 
@@ -128,3 +179,10 @@ def make_ruleset(tmp_path: Path, name: str = "DebugGameplay.sqlite",
     finally:
         connection.close()
     return path
+
+
+def build_fixture(path: Path, **kwargs) -> Path:
+    """Alias for `make_ruleset` taking a full file path rather than a directory plus a
+    name — the shape `tests/test_ruleset_growth.py` calls with. Kept as an alias rather
+    than a rename, since other tests already call `make_ruleset` with its own signature."""
+    return make_ruleset(path.parent, name=path.name, **kwargs)

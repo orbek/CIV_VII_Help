@@ -44,7 +44,8 @@ from pathlib import Path
 from typing import Sequence
 
 from .base import (
-    BoostFacts, BuildingFacts, CivicFacts, DistrictFacts, NullRuleset, RulesetCount,
+    BoostFacts, BuildingFacts, CivicFacts, DistrictFacts, GovernmentFacts,
+    ImprovementFacts, NullRuleset, PolicyFacts, ResourceFacts, RulesetCount,
     RulesetFigure, RulesetIdentity, RulesetMention, RulesetOutOfScope, RulesetProvider,
     TechnologyFacts, UnitFacts,
 )
@@ -61,9 +62,11 @@ DEFAULT_DATABASE = (Path.home() / "Library" / "Application Support"
 # than two that can drift apart.
 READABLE_COLUMNS: dict[str, frozenset[str]] = {
     "Buildings": frozenset({"BuildingType", "Cost", "Maintenance", "PrereqDistrict",
-                            "PrereqTech", "PrereqCivic"}),
+                            "PrereqTech", "PrereqCivic", "Housing", "Entertainment",
+                            "CitizenSlots", "IsWonder", "RequiresPlacement"}),
     "Building_YieldChanges": frozenset({"BuildingType", "YieldType", "YieldChange"}),
-    "Districts": frozenset({"DistrictType", "Cost", "PrereqTech", "PrereqCivic"}),
+    "Districts": frozenset({"DistrictType", "Cost", "PrereqTech", "PrereqCivic", "Housing",
+                            "Entertainment", "CitizenSlots", "Maintenance"}),
     "Technologies": frozenset({"TechnologyType", "Cost", "EraType"}),
     "TechnologyPrereqs": frozenset({"Technology", "PrereqTech"}),
     "Civics": frozenset({"CivicType", "Cost", "EraType"}),
@@ -74,9 +77,40 @@ READABLE_COLUMNS: dict[str, frozenset[str]] = {
     "Boosts": frozenset({"BoostID", "TechnologyType", "CivicType", "Boost", "BoostClass",
                          "Unit1Type", "BuildingType", "DistrictType", "NumItems"}),
     "Units": frozenset({"UnitType", "Cost", "Maintenance", "Combat", "RangedCombat",
-                        "PrereqTech", "PrereqCivic", "StrategicResource"}),
+                        "PrereqTech", "PrereqCivic", "StrategicResource", "BaseMoves",
+                        "Range", "Domain", "PromotionClass"}),
     "UnitUpgrades": frozenset({"Unit", "UpgradeUnit"}),
+    "GlobalParameters": frozenset({"Name", "Value"}),
+    "Improvements": frozenset({"ImprovementType", "PrereqTech", "PrereqCivic", "Housing"}),
+    "Improvement_YieldChanges": frozenset({"ImprovementType", "YieldType", "YieldChange"}),
+    "Policies": frozenset({"PolicyType", "GovernmentSlotType", "PrereqCivic"}),
+    "Governments": frozenset({"GovernmentType", "PrereqCivic", "Tier"}),
+    "Government_SlotCounts": frozenset({"GovernmentType", "GovernmentSlotType", "NumSlots"}),
+    "Resources": frozenset({"ResourceType", "ResourceClassType", "Happiness", "PrereqTech",
+                            "PrereqCivic"}),
+    "Resource_YieldChanges": frozenset({"ResourceType", "YieldType", "YieldChange"}),
+    "Terrain_YieldChanges": frozenset({"TerrainType", "YieldType", "YieldChange"}),
+    "Feature_YieldChanges": frozenset({"FeatureType", "YieldType", "YieldChange"}),
 }
+
+# GlobalParameters rows the copilot may quote, by name. Read by NAME from a fixed set,
+# never by a name the model produced: adding one means reading its row from the
+# installed file and writing it here. Every entry below was read on 2026-09-13.
+RULE_PARAMETERS: frozenset[str] = frozenset({
+    "CITY_AMENITIES_FOR_FREE",          # 0
+    "CITY_GROWTH_THRESHOLD",            # 15
+    "CITY_GROWTH_EXPONENT",             # 1.5
+    "CITY_GROWTH_MULTIPLIER",           # 8
+    "CITY_MIN_RANGE",                   # 3
+    "CITY_POPULATION_COAST",            # 3
+    "CITY_POPULATION_NO_WATER",         # 2
+    "CITY_POPULATION_RIVER_LAKE",       # 5
+    "CITY_POPULATION_AQUEDUCT_BOOST",   # 2
+    "TRADE_ROUTE_BASE_RANGE",           # 15
+    "WAR_WEARINESS_PER_UNIT_KILLED",    # 3
+    "WAR_WEARINESS_PER_COMBAT_IN_FOREIGN_LANDS",   # 2
+    "WAR_WEARINESS_PER_COMBAT_IN_ALLIED_LANDS",    # 1
+})
 
 READABLE_TABLES = frozenset(READABLE_COLUMNS)
 
@@ -353,6 +387,140 @@ class Civ6Ruleset:
 
         return make
 
+    def _yield_figures(self, table: str, key_column: str, subject: str,
+                       label: str) -> tuple[RulesetFigure, ...]:
+        """Every flat yield row for one subject, shared by improvements and resources
+        the same way `Building_YieldChanges` is read inline for buildings."""
+        try:
+            rows = self._select(table, ("YieldType", "YieldChange"), {key_column: subject})
+        except sqlite3.OperationalError:
+            return ()
+        return tuple(
+            RulesetFigure(subject=subject, label=f"{label} {_yield_label(y['YieldType'])} yield",
+                          value=y["YieldChange"], unit="per turn", table=table,
+                          column="YieldChange", row_key=(subject, y["YieldType"]),
+                          identity=self._identity)
+            for y in rows)
+
+    def parameter(self, name: str) -> RulesetFigure | None:
+        if name not in RULE_PARAMETERS:
+            return None     # not a gap in the file: a name outside the fixed set
+        return self._read_verified("parameter", name, lambda: self._read_parameter(name))
+
+    def _read_parameter(self, name: str) -> RulesetFigure | None:
+        try:
+            rows = self._select("GlobalParameters", ("Value",), {"Name": name})
+        except sqlite3.OperationalError:
+            return None
+        if not rows or _absent(rows[0]["Value"]):
+            return None
+        raw = rows[0]["Value"]
+        try:
+            value: float | int | str = int(raw)
+        except (TypeError, ValueError):
+            try:
+                value = float(raw)
+            except (TypeError, ValueError):
+                value = str(raw)
+        return RulesetFigure(subject=name, label=f"Game rule {name}", value=value, unit=None,
+                             table="GlobalParameters", column="Value", row_key=(name,),
+                             identity=self._identity)
+
+    def improvement(self, improvement_type: str) -> ImprovementFacts | None:
+        return self._read_verified("improvement", improvement_type,
+                                   lambda: self._read_improvement(improvement_type))
+
+    def _read_improvement(self, improvement_type: str) -> ImprovementFacts | None:
+        try:
+            rows = self._select("Improvements", ("PrereqTech", "PrereqCivic", "Housing"),
+                                {"ImprovementType": improvement_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(improvement_type)
+        make = self._figure_maker("Improvements", improvement_type, (improvement_type,), rows[0])
+        return ImprovementFacts(
+            improvement=improvement_type,
+            prereq_tech=make("PrereqTech", f"{name} requires technology", None),
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            housing=make("Housing", f"{name} housing", "housing"),
+            yields=self._yield_figures("Improvement_YieldChanges", "ImprovementType",
+                                       improvement_type, name))
+
+    def policy(self, policy_type: str) -> PolicyFacts | None:
+        return self._read_verified("policy", policy_type, lambda: self._read_policy(policy_type))
+
+    def _read_policy(self, policy_type: str) -> PolicyFacts | None:
+        try:
+            rows = self._select("Policies", ("GovernmentSlotType", "PrereqCivic"),
+                                {"PolicyType": policy_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(policy_type)
+        make = self._figure_maker("Policies", policy_type, (policy_type,), rows[0])
+        return PolicyFacts(
+            policy=policy_type,
+            slot=make("GovernmentSlotType", f"{name} fills slot", None),
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            mentions=(RulesetMention(
+                subject=policy_type, label=f"{name} has an effect",
+                detail=("The ruleset records which slot it fills and what unlocks it. What "
+                        "it does is a modifier chain whose magnitude no row states.")),))
+
+    def government(self, government_type: str) -> GovernmentFacts | None:
+        return self._read_verified("government", government_type,
+                                   lambda: self._read_government(government_type))
+
+    def _read_government(self, government_type: str) -> GovernmentFacts | None:
+        try:
+            rows = self._select("Governments", ("PrereqCivic", "Tier"),
+                                {"GovernmentType": government_type})
+            slot_rows = self._select("Government_SlotCounts", ("GovernmentSlotType", "NumSlots"),
+                                     {"GovernmentType": government_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(government_type)
+        make = self._figure_maker("Governments", government_type, (government_type,), rows[0])
+        slots = tuple(
+            RulesetFigure(subject=government_type,
+                          label=f"{name} {_yield_label(s['GovernmentSlotType'].removeprefix('SLOT_'))} slots",
+                          value=s["NumSlots"], unit="slots", table="Government_SlotCounts",
+                          column="NumSlots", row_key=(government_type, s["GovernmentSlotType"]),
+                          identity=self._identity)
+            for s in slot_rows)
+        return GovernmentFacts(
+            government=government_type,
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            tier=make("Tier", f"{name} tier", None), slots=slots)
+
+    def resource(self, resource_type: str) -> ResourceFacts | None:
+        return self._read_verified("resource", resource_type,
+                                   lambda: self._read_resource(resource_type))
+
+    def _read_resource(self, resource_type: str) -> ResourceFacts | None:
+        try:
+            rows = self._select("Resources", ("ResourceClassType", "Happiness", "PrereqTech",
+                                              "PrereqCivic"), {"ResourceType": resource_type})
+        except sqlite3.OperationalError:
+            return None
+        if not rows:
+            return None
+        name = _title(resource_type)
+        make = self._figure_maker("Resources", resource_type, (resource_type,), rows[0])
+        return ResourceFacts(
+            resource=resource_type,
+            resource_class=make("ResourceClassType", f"{name} resource class", None),
+            happiness=make("Happiness", f"{name} amenities when improved", "amenities"),
+            prereq_tech=make("PrereqTech", f"{name} requires technology", None),
+            prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            yields=self._yield_figures("Resource_YieldChanges", "ResourceType", resource_type,
+                                       name))
+
     def building(self, building_type: str) -> BuildingFacts | None:
         return self._read_verified(
             "building", building_type, lambda: self._read_building(building_type))
@@ -364,7 +532,8 @@ class Civ6Ruleset:
         try:
             rows = self._select("Buildings",
                                 ("Cost", "Maintenance", "PrereqDistrict", "PrereqTech",
-                                 "PrereqCivic"),
+                                 "PrereqCivic", "Housing", "Entertainment", "CitizenSlots",
+                                 "IsWonder", "RequiresPlacement"),
                                 {"BuildingType": building_type})
         except sqlite3.OperationalError:
             # The installed ruleset's schema does not match what this provider expects
@@ -400,6 +569,12 @@ class Civ6Ruleset:
             prereq_district=make("PrereqDistrict", f"{name} requires district", None),
             prereq_tech=make("PrereqTech", f"{name} requires technology", None),
             prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
+            housing=make("Housing", f"{name} housing", "housing"),
+            entertainment=make("Entertainment", f"{name} amenities", "amenities"),
+            citizen_slots=make("CitizenSlots", f"{name} citizen slots", "slots"),
+            is_wonder=make("IsWonder", f"{name} is a wonder", None),
+            requires_placement=make("RequiresPlacement", f"{name} requires plot placement",
+                                    None),
             yields=yields, mentions=mentions, counts=counts,
         )
 
@@ -448,7 +623,9 @@ class Civ6Ruleset:
 
     def _read_district(self, district_type: str) -> DistrictFacts | None:
         try:
-            rows = self._select("Districts", ("Cost", "PrereqTech", "PrereqCivic"),
+            rows = self._select("Districts",
+                                ("Cost", "PrereqTech", "PrereqCivic", "Housing",
+                                 "Entertainment", "CitizenSlots", "Maintenance"),
                                 {"DistrictType": district_type})
         except sqlite3.OperationalError:
             return None
@@ -460,7 +637,11 @@ class Civ6Ruleset:
             district=district_type,
             cost=make("Cost", f"{name} district production cost", "production"),
             prereq_tech=make("PrereqTech", f"{name} district requires technology", None),
-            prereq_civic=make("PrereqCivic", f"{name} district requires civic", None))
+            prereq_civic=make("PrereqCivic", f"{name} district requires civic", None),
+            housing=make("Housing", f"{name} district housing", "housing"),
+            entertainment=make("Entertainment", f"{name} district amenities", "amenities"),
+            citizen_slots=make("CitizenSlots", f"{name} district citizen slots", "slots"),
+            maintenance=make("Maintenance", f"{name} district maintenance", "gold per turn"))
 
     def _boosts(self, column: str, subject: str) -> tuple[BoostFacts, ...]:
         """Every eureka or inspiration attached to one technology or civic."""
@@ -556,7 +737,8 @@ class Civ6Ruleset:
         try:
             rows = self._select("Units",
                                 ("Cost", "Maintenance", "Combat", "RangedCombat",
-                                 "PrereqTech", "PrereqCivic", "StrategicResource"),
+                                 "PrereqTech", "PrereqCivic", "StrategicResource",
+                                 "BaseMoves", "Range", "Domain", "PromotionClass"),
                                 {"UnitType": unit_type})
         except sqlite3.OperationalError:
             return None
@@ -593,7 +775,16 @@ class Civ6Ruleset:
             prereq_tech=make("PrereqTech", f"{name} requires technology", None),
             prereq_civic=make("PrereqCivic", f"{name} requires civic", None),
             strategic_resource=make("StrategicResource", f"{name} requires resource", None),
-            upgrades_to=upgrades_to, mentions=mentions)
+            upgrades_to=upgrades_to,
+            moves=make("BaseMoves", f"{name} moves", "moves"),
+            # `Range` on a melee unit's row genuinely stores 0, meaning "no ranged
+            # attack" -- the same shape as `RangedCombat` above, but here 0 is still a
+            # stated fact (a unit's range being 0 is what makes it melee), not a
+            # meaningless placeholder, so it is deliberately NOT `zero_is_absent`.
+            range=make("Range", f"{name} range", "tiles"),
+            domain=make("Domain", f"{name} domain", None),
+            promotion_class=make("PromotionClass", f"{name} promotion class", None),
+            mentions=mentions)
 
     # -- construction --------------------------------------------------------------
 

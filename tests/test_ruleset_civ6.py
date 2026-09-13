@@ -59,8 +59,8 @@ def test_the_modifier_tables_are_not_readable(ruleset):
 
 
 def test_a_readable_table_still_refuses_an_unlisted_column(ruleset):
-    with pytest.raises(RulesetOutOfScope, match="Housing"):
-        ruleset._select("Buildings", ("Housing",), {"BuildingType": "BUILDING_LIBRARY"})
+    with pytest.raises(RulesetOutOfScope, match="Description"):
+        ruleset._select("Buildings", ("Description",), {"BuildingType": "BUILDING_LIBRARY"})
 
 
 def test_building_modifiers_may_be_counted_but_never_read(ruleset):

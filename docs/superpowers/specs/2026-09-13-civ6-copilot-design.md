@@ -188,9 +188,10 @@ Precisely:
    answer cited. From each such fact: its `value` if numeric; its
    `observed_turn`; and every numeral in its `note`, because notes are written
    by the deterministic layer from the data ("Threshold 12", "luxuries 3").
-   Nothing else — not the text of the player's message as typed, not the
-   previous exchange, not the analysis turn unless a cited fact carries it
-   (`turn.analysis` exists so the model can cite it). A **player report** is a
+   Nothing else — not the text of the player's message as typed (rule 7 says
+   what may be done with those), not the previous exchange, not the analysis
+   turn unless a cited fact carries it (`turn.analysis` exists so the model
+   can cite it). A **player report** is a
    cited fact like any other: it is a first-class `SourceKind`, dated to the
    turn it was read and stamped with when it was entered, so a figure the
    player recorded through Refine is traceable and may be quoted — under rule
@@ -212,11 +213,41 @@ Precisely:
 6. **A player's figure is attributed, or the answer is rejected.** When a
    number in the prose is grounded *only* by a cited `player_report` fact, the
    prose must attribute it — one of a fixed set of phrases: *you reported*,
-   *your report*, *you told the advisor*, *you entered*, *you said* — so "the
-   8 turns you reported on turn 59" passes and "the Granary takes 8 turns"
-   does not. The game did not say 8; the player did, and the sentence must say
-   so. This is the provenance rule applied to prose: the drawer already badges
-   the fact *your report*; the words may not un-badge it.
+   *your report*, *you told the advisor*, *you entered*, *you recorded* — so
+   "the 8 turns you reported on turn 59" passes and "the Granary takes 8
+   turns" does not. The game did not say 8; the player did, and the sentence
+   must say so. This is the provenance rule applied to prose: the drawer
+   already badges the fact *your report*; the words may not un-badge it.
+7. **A number the player just typed is their claim, not a fact — and a
+   grounded figure that disagrees with it is stated, never reconciled away.**
+   Ruled in review: a number typed into the box is neither dated nor stored,
+   and admitting it as citable would launder the player's own guess into an
+   apparent fact reflected back at them as established. So it is not a
+   citation. The prose *may* repeat it, attributed as a claim made a moment
+   ago — a second fixed set of phrases, kept apart from rule 6's because the
+   two are different in kind: *you mention*, *you mentioned*, *you say*, *you
+   wrote*, *your message*. "You mention 8 turns" passes; "the Granary takes 8
+   turns" does not, and neither does "the 8 turns you reported" when nothing
+   was reported. And when the answer cites a grounded figure for the same
+   thing, the prose must carry that figure too, beside the claim: "you mention
+   8 turns; the tuner read 4 for the Granary in Rome on turn 49" — both
+   numbers, the disagreement named, neither preferred. This is the rule the
+   tuner work already settled for a reading's turn against the logs' turn,
+   applied to a player's figure against the advisor's: two sources that
+   disagree are both reported as read. A player misremembering a figure and
+   the advisor quietly adopting it is exactly how a grounded system starts
+   giving ungrounded advice.
+
+   What the check enforces, stated so nobody relies on more: a repeated typed
+   numeral must be accompanied by a claim phrase, and — when the answer cites
+   any fact with a numeric value — the prose must also state at least one of
+   the cited values. That is a mechanical proxy for "the disagreement is
+   named"; whether the two numbers are about the *same thing* is judged by the
+   player from the evidence drawer, as in §4.3's closing paragraph. The
+   deterministic answer always lists the player's typed numbers as *your
+   statement, not a figure the advisor holds* beside every grounded figure it
+   resolved, so the comparison is on screen whether or not the model writes
+   it.
 
 7. **A number the player has only just typed is not a fact, and may not be
    cited.** "Should I take the 8-turn Granary?" carries an 8 that is
@@ -621,7 +652,10 @@ Consequences:
 - **Grounding** — table-driven tests of `check`: digits, decimals, percentages
   against ratios, thousands separators, negatives, number words, *one*
   excluded, citations stripped, numbers in notes admitted, numbers in the
-  player's text not admitted, numbers with no citation rejected. Plus the
+  player's text not admitted as citations, a typed number repeated as the
+  player's claim admitted, a typed number repeated while a cited figure goes
+  unstated rejected, a player-report figure attributed or rejected, numbers
+  with no citation rejected. Plus the
   existing `questions.validate` tests extended with an ungrounded number.
 - **Isolation from the machine.** No default-suite test may depend on whether
   port 4318 is listening. Two shipped tests did — they asserted `NOT_ENABLED`
@@ -693,7 +727,10 @@ rejected as a false assurance.
    ("the 8 turns you reported on turn 59"), never state it unattributed as
    though the game had said it. The number rule is unchanged -- every number
    must still appear in a cited fact; a player report is now one of the kinds
-   of fact it may appear in.
+   of fact it may appear in. Ruled again on the follow-up: a number that exists
+   only in the text just typed into the box stays excluded as a citation -- it
+   is their claim, may be repeated only as such, and a grounded figure that
+   disagrees is stated beside it (rule 7).
 3. **Save acknowledgement.** Once per sitting, journaled. Review may prefer
    once per action; it costs a click per proposal. Recommendation: per
    sitting.

@@ -244,7 +244,7 @@ CATALOG: dict[str, Query] = {
         Query("build_options", "InGame", _BUILD_OPTIONS_LUA, "2026-09-13",
               _parse_build_options),
         Query("build_options_ids", "InGame", _BUILD_OPTION_IDS_LUA,
-              "pending: Task 1's write spike has not yet run against a live game",
+              "2026-09-13",
               _parse_build_option_ids),
     )
 }

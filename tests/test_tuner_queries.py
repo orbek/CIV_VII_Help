@@ -134,16 +134,35 @@ _SYNTHETIC_BUILD_OPTION_ID_LINES = [
 
 
 def test_build_option_ids_carry_the_city_id_the_hash_and_placement():
-    rows = CATALOG["build_options_ids"].parse(_SYNTHETIC_BUILD_OPTION_ID_LINES)
+    """Against a REAL capture, taken from a running game on 2026-09-13, turn 112.
+
+    This replaced a synthetic fixture as soon as a live game was available. The
+    write spike had not run, but this query only prints -- so the capture cost
+    nothing and no throwaway save was needed to take it.
+    """
+    rows = CATALOG["build_options_ids"].parse(lines("query_buildoptions_ids.bin"))
     by_city = {r.city: r for r in rows}
-    first = next(iter(by_city.values()))
-    assert isinstance(first.city_id, int)
-    for o in first.options:
-        assert isinstance(o.item_hash, int) and o.item.startswith("BUILDING_")
-        assert o.requires_placement in (True, False)
-        assert o.turns >= 0
-    assert by_city["Rome"].city_id == 65536
-    assert by_city["Puteoli"].options[0].requires_placement is True
+    assert set(by_city) == {"Washington", "New York", "Philadelphia"}
+    assert by_city["Washington"].city_id == 65536
+    assert by_city["New York"].city_id == 131073
+
+    barracks = by_city["Washington"].offers("BUILDING_BARRACKS")
+    assert barracks.item_hash == 1697130061
+    assert barracks.requires_placement is False
+    assert barracks.turns == 7
+
+    # A wonder needs a plot chosen; an ordinary building does not. Both shapes are
+    # in this one capture, which is why it is worth keeping.
+    gardens = by_city["Washington"].offers("BUILDING_HANGING_GARDENS")
+    assert gardens.requires_placement is True
+    assert gardens.item_hash == -754251518
+
+    for city in by_city.values():
+        assert isinstance(city.city_id, int)
+        for o in city.options:
+            assert isinstance(o.item_hash, int) and o.item.startswith("BUILDING_")
+            assert o.requires_placement in (True, False)
+            assert o.turns >= 0
 
 
 def test_build_option_ids_runs_in_the_ui_state():

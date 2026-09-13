@@ -12,6 +12,7 @@ it: `uint32` LE length including the NUL, `int32` LE tag, NUL-terminated UTF-8.
 | `query_buildoptions.bin` | What each city may build and its turn cost | The phase-4 dead end. Note Puteoli's costs (60/65/180) dwarf Rome's — real data, not a uniform fixture. |
 | `query_not_implemented.bin` | `GetTurnsLeft` in the GameCore VM raising `Not Implemented.` with a Lua traceback | A binding that exists and does not work. Must be read as absence, never as a retryable error. The traceback spans a frame boundary, so it also exercises reassembly. |
 | `query_missing_binding.bin` | `type(g.GetAmenitiesNeeded)` -> `nil` | A binding that does not exist at all — the other absence case. |
+| `query_buildoptions_ids.bin` | Three settlements with their city ids, and every option's item hash, placement flag and turn cost | Taken on a later day than the others (turn 112, three cities). Kept because it carries both shapes an action needs: an ordinary building that needs no plot, and a wonder that does. It was captured WITHOUT the write spike having run — this query only prints, so no save was risked to take it. |
 
 These are captures, not hand-written. Do not edit them to make a test pass:
 if a test disagrees with these bytes, the test is wrong about the protocol.

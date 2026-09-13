@@ -141,6 +141,37 @@ The default is to try connecting — one refused connection when the tuner is
 off costs nothing, so `--no-tuner` exists for anyone who wants the advisor to
 make no attempt at all.
 
+**Where the figures appear.** Amenities and the upkeep breakdown render on the
+Economy tab; build options reach the **Refine this recommendation** flow, where
+they pre-fill the figures that flow otherwise asks you to type in by hand. A
+pre-filled value is labelled *read live*, never as something you told the
+advisor — it stays a suggestion until you press Record, and pressing Record is
+what makes it your own report.
+
+**Why you may see two turn numbers.** The tuner reads the game as it is right
+now; the logs are complete only through the last turn you finished. So a live
+figure can legitimately sit one turn ahead, and the page says so — *"read turn
+60, logs complete through 59"* — rather than quietly filing it under the turn
+the rest of the brief is about. The reverse is not normal: a reading dated
+*behind* the logs means something real happened, such as a reloaded save or a
+different game answering the socket, so the advisor reports both numbers and
+says they disagree instead of picking one.
+
+**A figure it cannot date is withheld**, not shown bare. Each of the five ways
+a tuner figure can be missing is reported as itself: the tuner is off, this run
+passed `--no-tuner`, this game has no socket at all, the socket is open but
+nothing answered, or the game simply does not implement that call. Only the
+first is something you can fix, which is why they are never collapsed into one
+message.
+
+**One thing is unverified.** Reading the current turn is confirmed in the
+gameplay VM but not in the UI VM that build options use. If it turns out to be
+missing there, build options report themselves absent with a reason — no figure
+is ever misdated — but they would be unavailable until someone checks. With a
+match running and the tuner on, this settles it in one run:
+
+    uv run pytest tests/live -p no:cacheprovider
+
 ## Before you end this turn
 
 The top of the page answers four questions in order.

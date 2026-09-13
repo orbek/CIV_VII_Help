@@ -490,6 +490,15 @@ def tuner_to_dict(tuner: object | None, analysis_turn: int | None = None) -> dic
         ],
         "build_options_reason": absence("build_options"),
         "build_options_read": read("build_options"),
+        "build_option_ids": [
+            {"city": so.city, "city_id": so.city_id,
+             "options": [{"item": o.item, "item_hash": o.item_hash,
+                          "requires_placement": o.requires_placement, "turns": o.turns}
+                         for o in so.options]}
+            for so in (getattr(tuner, "build_option_ids", ()) if available else ())
+        ],
+        "build_option_ids_reason": absence("build_options_ids"),
+        "build_option_ids_read": read("build_options_ids"),
     }
 
 

@@ -1,8 +1,13 @@
 """The tuner is read once per rebuild, frozen into the snapshot, never costs a poll
 that worked, and one bad figure does not take the others down with it."""
+from civ_advisor.games.civ6 import CIV6
+from civ_advisor.store import Store
 from civ_advisor.tuner.base import (
     CityAmenities, Maintenance, SettlementOptions, TunerUnavailable,
 )
+from civ_advisor.tuner.client import open_tuner
+
+from tests.test_tuner_client import FakeGame, replies
 
 
 def test_a_snapshot_always_carries_a_tuner(civ6_store):
@@ -162,3 +167,25 @@ def test_a_figure_absence_names_its_own_cause(civ6_store):
     assert tuner.absence("amenities") == "amenities-specific reason"
     assert tuner.absence("maintenance") == "maintenance-specific reason"
     assert tuner.absence("build_options") == "build-options-specific reason"
+
+
+def test_build_options_ids_is_asked_only_when_a_run_allows_acting(civ6_dir):
+    """A normal advisory run sends exactly the three queries it sends today -- an
+    assertion of the COUNT, not just "the fourth query's absence is harmless",
+    because a poll that silently grew a fourth query would still pass a test that
+    only checked the first three came back."""
+    game = FakeGame(replies())
+    try:
+        profile = CIV6.__class__(
+            **{**CIV6.__dict__, "tuner": lambda: open_tuner(port=game.port, timeout=3.0)})
+
+        store = Store(civ6_dir, profile=profile, allow_actions=False)
+        store.rebuild()
+        assert len(game.asked) == 3
+
+        game.asked.clear()
+        store = Store(civ6_dir, profile=profile, allow_actions=True)
+        store.rebuild()
+        assert len(game.asked) == 4
+    finally:
+        game.close()

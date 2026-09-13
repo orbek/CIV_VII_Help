@@ -13,8 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from .base import (
-    CityAmenities, Maintenance, NullTuner, SettlementOptions, TUNER_NOT_ANSWERING_ENABLED,
-    TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable, tuner_unestablished,
+    CityAmenities, Maintenance, NullTuner, SettlementOptionIds, SettlementOptions,
+    TUNER_NOT_ANSWERING_ENABLED, TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable,
+    tuner_unestablished,
 )
 from .options import TunerFlag, read_enable_tuner
 from .protocol import TAG_COMMAND, TAG_HANDSHAKE, consume, frame, output_text, parse_states
@@ -199,6 +200,9 @@ class Civ6Tuner:
 
     def build_options(self) -> tuple[SettlementOptions, ...]:
         return self._answer("build_options") or ()
+
+    def build_option_ids(self) -> tuple[SettlementOptionIds, ...]:
+        return self._answer("build_options_ids") or ()
 
 
 def open_tuner(port: int = PORT, timeout: float = 3.0, app_options: Path | None = None, *,

@@ -13,7 +13,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from .base import BuildOption, CityAmenities, Maintenance, SettlementOptions
+from .base import (
+    BuildOption, BuildOptionId, CityAmenities, Maintenance, SettlementOptionIds,
+    SettlementOptions,
+)
 
 # The game raises this, with a Lua traceback, for a binding that exists but is
 # not wired up in that VM. It is a permanent property of the game, not a
@@ -83,6 +86,31 @@ _BUILD_OPTIONS_LUA = (
     'local ok2,can=pcall(function() return q:CanProduce(row.Hash,true) end) '
     'if ok2 and can then print(Locale.Lookup(c:GetName()), row.BuildingType, '
     'q:GetTurnsLeft(row.Hash)) end end end end) '
+    'if not ok then print("PROBEERR", tostring(err)) end'
+)
+
+
+# The same walk as _BUILD_OPTIONS_LUA, carrying the integers an operation would need:
+# the city's id and the row's hash. `RequiresPlacement` says whether the game's own UI
+# would send this item into placement mode rather than the queue; the catalog will
+# never offer such an item to set_production. This query is READ-ONLY -- it enumerates
+# what CanProduce already says yes to, the same call `_BUILD_OPTIONS_LUA` makes, and
+# writes nothing to the game. It has NOT yet been verified against a live reply: the
+# write spike that was to capture tests/fixtures/tuner/query_buildoptions_ids.bin
+# (Task 1 of the copilot plan) is deferred pending a human running it against a
+# throwaway save, so `verified_on` says so honestly rather than claiming a date this
+# Lua was never actually run on. The parser below is exercised in
+# tests/test_tuner_queries.py against lines built in the test itself, not against a
+# captured fixture, for the same reason.
+_BUILD_OPTION_IDS_LUA = (
+    _TURN_LUA +
+    'local ok,err=pcall(function() '
+    'for _,c in Players[Game.GetLocalPlayer()]:GetCities():Members() do '
+    'local q=c:GetBuildQueue() '
+    'for row in GameInfo.Buildings() do '
+    'local ok2,can=pcall(function() return q:CanProduce(row.Hash,true) end) '
+    'if ok2 and can then print(c:GetID(), Locale.Lookup(c:GetName()), row.BuildingType, '
+    'row.Hash, tostring(row.RequiresPlacement), q:GetTurnsLeft(row.Hash)) end end end end) '
     'if not ok then print("PROBEERR", tostring(err)) end'
 )
 
@@ -165,6 +193,23 @@ def _parse_amenities(lines: list[str]) -> tuple[CityAmenities, ...]:
     return tuple(out)
 
 
+def _parse_build_option_ids(lines: list[str]) -> tuple[SettlementOptionIds, ...]:
+    grouped: dict[tuple[int, str], list[BuildOptionId]] = {}
+    for line in lines:
+        parts = _fields(line)
+        if len(parts) != 6:
+            continue
+        city_id, city, item, item_hash, placement, turns = parts
+        try:
+            grouped.setdefault((int(city_id), city), []).append(BuildOptionId(
+                item=item, item_hash=int(item_hash),
+                requires_placement=placement.lower() == "true", turns=int(turns)))
+        except ValueError:
+            continue
+    return tuple(SettlementOptionIds(city_id=cid, city=name, options=tuple(opts))
+                 for (cid, name), opts in grouped.items())
+
+
 def _parse_build_options(lines: list[str]) -> tuple[SettlementOptions, ...]:
     grouped: dict[str, list[BuildOption]] = {}
     for line in lines:
@@ -198,6 +243,9 @@ CATALOG: dict[str, Query] = {
               _parse_amenities),
         Query("build_options", "InGame", _BUILD_OPTIONS_LUA, "2026-09-13",
               _parse_build_options),
+        Query("build_options_ids", "InGame", _BUILD_OPTION_IDS_LUA,
+              "pending: Task 1's write spike has not yet run against a live game",
+              _parse_build_option_ids),
     )
 }
 

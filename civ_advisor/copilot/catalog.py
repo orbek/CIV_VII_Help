@@ -100,6 +100,9 @@ def _city_names(context: DecisionContext) -> tuple[str, ...]:
         for so in tuner.build_options:
             if so.city not in names:
                 names.append(so.city)
+        for so in tuner.build_option_ids:
+            if so.city not in names:
+                names.append(so.city)
     return tuple(names)
 
 
@@ -256,6 +259,52 @@ def _reports(context: DecisionContext, params: dict[str, str]) -> Resolution:
     return Resolution(facts=tuple(r.fact() for r in context.player.reports))
 
 
+# ---- live tuner resolvers (Task 7) -----------------------------------------------------
+
+def _tuner_absent(question_id: str, context: DecisionContext, query_id: str) -> Resolution:
+    """The absence for a live question, naming the tuner's OWN cause -- never a guess.
+
+    `tuner.absence(query_id)` is the reason for THIS figure specifically, which can
+    differ from the tuner's blanket `reason` when some figures answered and this one
+    did not. `cause` carries the TunerUnavailable value itself, not just its prose, so
+    a consumer can branch on it rather than pattern-match a sentence.
+    """
+    tuner = context.tuner
+    detail = tuner.absence(query_id) if tuner.available else tuner.reason
+    return Resolution(absence=Absence(
+        question_id, Unanswerable.TUNER_ABSENT,
+        detail or "the tuner supplied no reading for this",
+        cause=None if tuner.unavailable is None else tuner.unavailable.value))
+
+
+def _amenities(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    tuner = context.tuner
+    reading = tuner.reading_for("amenities") if tuner.available else None
+    row = next((a for a in tuner.amenities if a.city == params["city"]), None)
+    if reading is None or row is None:
+        return _tuner_absent("settlement.amenities", context, "amenities")
+    return Resolution(facts=(evidence.amenities_fact(context.ledger, reading, row),))
+
+
+def _upkeep(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    tuner = context.tuner
+    reading = tuner.reading_for("maintenance") if tuner.available else None
+    if reading is None or tuner.maintenance is None:
+        return _tuner_absent("empire.upkeep", context, "maintenance")
+    return Resolution(facts=(evidence.tuner_net_gold_fact(context.ledger, reading,
+                                                          tuner.maintenance),))
+
+
+def _live_options(context: DecisionContext, params: dict[str, str]) -> Resolution:
+    tuner = context.tuner
+    reading = tuner.reading_for("build_options") if tuner.available else None
+    so = next((s for s in tuner.build_options if s.city == params["city"]), None)
+    if reading is None or so is None:
+        return _tuner_absent("settlement.build_options", context, "build_options")
+    return Resolution(facts=tuple(
+        evidence.build_option_fact(context.ledger, reading, so.city, o) for o in so.options))
+
+
 # ---- ruleset-backed resolvers (Task 6) ------------------------------------------------
 
 def _ruleset(question_id: str, lookup: str, param: str, *, id_prefix: str) -> Resolver:
@@ -303,6 +352,14 @@ CATALOG: dict[str, Question] = {
                  _brief, verified_on="2026-09-13"),
         Question("player.reports", "Figures you have told the advisor this sitting.", _reports,
                  verified_on="2026-09-13"),
+        Question("settlement.amenities", "One settlement's amenities and their sources, read "
+                 "live from the game.", _amenities,
+                 params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),
+        Question("empire.upkeep", "Net gold after upkeep, read live from the game.", _upkeep,
+                 verified_on="2026-09-13"),
+        Question("settlement.build_options", "What one settlement may build right now and how "
+                 "many turns each would take, read live.", _live_options,
+                 params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),
         Question("ruleset.building", "A building's cost, upkeep, prerequisites, flat yields, "
                  "housing, entertainment and whether it needs a plot, from your installed ruleset.",
                  _ruleset("ruleset.building", "building", "item", id_prefix="ruleset"),

@@ -116,3 +116,39 @@ def test_a_good_reply_does_not_read_as_unreachable():
 def test_parsing_a_truncated_reply_raises_rather_than_inventing_a_figure():
     with pytest.raises(ValueError):
         CATALOG["maintenance"].parse(["total\t1"])
+
+
+# `query_buildoptions_ids.bin` does not exist: Task 1's write spike, which was to capture
+# it from a live game, is DEFERRED per docs/superpowers/sdd .../progress.md ("needs the
+# user's running game and a save they are willing to damage, which they have not yet
+# supplied"). Fabricating a fake ".bin" and calling it a capture would be exactly the
+# defect tests/fixtures/tuner/README.md warns against ("these are captures, not
+# hand-written"), so this parser is exercised against lines built in the test itself --
+# the same shape the real reply will have, six tab-separated fields per row -- and
+# labelled as synthetic rather than pretending to be real bytes off a socket.
+_SYNTHETIC_BUILD_OPTION_ID_LINES = [
+    "65536\tRome\tBUILDING_GRANARY\t123456789\tfalse\t8",
+    "65536\tRome\tBUILDING_LIBRARY\t987654321\tfalse\t11",
+    "65537\tPuteoli\tBUILDING_MONUMENT\t555555555\ttrue\t60",
+]
+
+
+def test_build_option_ids_carry_the_city_id_the_hash_and_placement():
+    rows = CATALOG["build_options_ids"].parse(_SYNTHETIC_BUILD_OPTION_ID_LINES)
+    by_city = {r.city: r for r in rows}
+    first = next(iter(by_city.values()))
+    assert isinstance(first.city_id, int)
+    for o in first.options:
+        assert isinstance(o.item_hash, int) and o.item.startswith("BUILDING_")
+        assert o.requires_placement in (True, False)
+        assert o.turns >= 0
+    assert by_city["Rome"].city_id == 65536
+    assert by_city["Puteoli"].options[0].requires_placement is True
+
+
+def test_build_option_ids_runs_in_the_ui_state():
+    assert CATALOG["build_options_ids"].state == "InGame"
+
+
+def test_build_option_ids_lua_is_a_constant():
+    assert "{" not in CATALOG["build_options_ids"].lua and "%s" not in CATALOG["build_options_ids"].lua

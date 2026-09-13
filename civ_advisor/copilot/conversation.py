@@ -308,10 +308,28 @@ def validate_answer(request: ChatRequest, resolved: Resolved, data: dict) -> Cha
 # ---- the deterministic answer -----------------------------------------------------------
 
 def _value(fact: EvidenceFact) -> str:
+    """One fact's value in words -- the DETERMINISTIC prose, shown first and shown
+    whenever a generation fails or is rejected, so this is the sentence a player
+    reads far more often than any model's.
+
+    Rounded to one decimal place when the value is a float: a real live probe of
+    the running game asked `empire.upkeep` and got "12.8984375 per turn" here,
+    because `fact.value` carries the tuner's full float precision (by design --
+    see queries.py's `_parse_number`) and nothing downstream of it rounded before
+    this f-string. One decimal is chosen deliberately, not four: gold per turn to
+    the nearest tenth is a figure a player can act on, and four decimals of a Lua
+    float is noise pretending to be precision. The stored `fact.value` is
+    untouched; `grounding.check`'s `_matches` already tolerates a numeral written
+    with fewer decimal places than the fact it cites (spec 4.3 rule 3), so
+    rounding here cannot make this sentence fail its own validator.
+    """
     if fact.value is None:
         return "no value"
     unit = f" {fact.unit}" if fact.unit else ""
-    return f"{fact.value}{unit}"
+    value = fact.value
+    if isinstance(value, float) and not isinstance(value, bool):
+        value = round(value, 1)
+    return f"{value}{unit}"
 
 
 def _absence_sentence(absence: Absence) -> str:

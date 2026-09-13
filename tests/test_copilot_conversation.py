@@ -130,6 +130,27 @@ def test_the_fallback_repeats_a_typed_number_only_as_the_players_statement(conte
     assert conv.grounding.check(answer.text, (), [], player_text="is 8 turns for a Granary good?").ok
 
 
+def test_fallback_rounds_a_float_facts_value_to_one_decimal(context):
+    """The bug this guards: asking `empire.upkeep` against a real running game
+    produced "Your net gold per turn, read live: 12.8984375 per turn" -- the
+    DETERMINISTIC answer, shown first and shown on every generation failure, so
+    this is the sentence a player reads far more often than any model's. It came
+    from `fallback` -> `_value` printing `fact.value` bare; the tuner carries full
+    float precision by design (see queries.py's `_parse_number`), so nothing
+    upstream of `_value` was ever going to round it."""
+    from civ_advisor.decisions.models import EvidenceFact, SourceKind
+    from civ_advisor.advisors.base import Provenance
+
+    fact = EvidenceFact(
+        id="tuner.net_gold.126", label="Your net gold per turn, read live",
+        source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
+        observed_turn=126, reported_at="2026-09-13T18:59:04+00:00",
+        value=12.8984375, unit="per turn")
+    answer = conv.fallback(request(context), conv.Resolved(facts=(fact,)))
+    assert "12.8984375" not in answer.text
+    assert "12.9 per turn" in answer.text
+
+
 def test_source_phrases_keep_the_five_kinds_apart(context):
     resolved = conv.resolve(request(context), (conv.Selected("empire.comparison", {"stat": "culture"}),))
     phrases = {conv.source_phrase(f) for f in resolved.facts}

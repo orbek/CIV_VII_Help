@@ -12,6 +12,11 @@ FACTS = [
     {"id": "identity.human", "value": "CIVILIZATION_ROME / LEADER_TRAJAN", "unit": None,
      "observed_turn": None, "note": None},
     {"id": "gold.balance.59", "value": -12.5, "unit": "gold", "observed_turn": 59, "note": None},
+    # The exact figure from the live probe that showed the conversation layer's
+    # prose was NOT rounding: `t.maintenance()` on a real game answered
+    # net_gold == 12.8984375 on turn 126.
+    {"id": "tuner.net_gold.126", "value": 12.8984375, "unit": "per turn",
+     "observed_turn": 126, "note": None},
 ]
 
 
@@ -76,6 +81,20 @@ def test_a_non_ratio_is_not_a_percentage():
 def test_thousands_separators_are_stripped():
     facts = FACTS + [{"id": "x", "value": 1250, "unit": "gold", "observed_turn": 59, "note": None}]
     assert check("You hold 1,250 gold.", cited("x"), facts).ok
+
+
+def test_rule_3_lets_a_rounded_numeral_match_a_fact_with_more_precision():
+    """Spec 4.3 rule 3. This is the tolerance that keeps rounding for DISPLAY
+    (conversation.py's `_value`, and the web's `formatFactValue`) from making an
+    honest generated answer fail its own validator: a model that writes "12.9"
+    from a fact whose stored value is 12.8984375 must still ground, or every
+    truthful rounded answer would be rejected and the copilot would silently fall
+    back to deterministic prose forever."""
+    assert check("Net gold is 12.9 per turn.", cited("tuner.net_gold.126"), FACTS).ok
+    # A wrong rounding at the same precision is still caught: rounded to two
+    # places 12.8984375 is 12.90, not 12.85 -- tolerance for PRECISION is not
+    # tolerance for an invented digit.
+    assert not check("Net gold is 12.85 per turn.", cited("tuner.net_gold.126"), FACTS).ok
 
 
 def test_a_negative_matches_only_a_negative():

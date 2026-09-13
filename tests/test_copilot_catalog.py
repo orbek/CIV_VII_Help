@@ -5,11 +5,13 @@ import re
 import pytest
 
 from civ_advisor.copilot.catalog import (
-    CATALOG, TYPE_KEY, Absence, ParamKind, Unanswerable, ask, choices,
+    CATALOG, TYPE_KEY, Absence, ParamKind, Unanswerable, _not_logged, ask, choices,
 )
 from civ_advisor.decisions.context import build_context
 from civ_advisor.decisions.models import SourceKind
+from civ_advisor.games.base import Capability
 from civ_advisor.games.civ7 import CIV7
+from civ_advisor.tuner.base import TunerSnapshot, TUNER_SNAPSHOT_OFF
 
 
 @pytest.fixture
@@ -85,6 +87,43 @@ def test_a_capability_this_game_does_not_log_is_absent_with_the_profiles_own_rea
     assert got.absence.kind is Unanswerable.TUNER_ABSENT   # Civ VI backs it by tuner
     assert got.absence.cause in {"not_enabled", "not_answering", "unreachable",
                                  "no_socket", "not_asked"}
+
+
+def test_not_logged_with_an_available_tuner_names_the_live_question_not_silence(civ6_store):
+    """The second live defect, distinct from the rounding one: with the tuner working,
+    `empire.net_gold` used to answer "the tuner supplied no reading this poll" in the
+    same second `empire.upkeep` (the SAME tuner) answered with a real figure --
+    `tuner.reason` is None exactly when the tuner is fine, so printing it as the reason
+    for absence was always going to be false the moment the tuner worked. The message
+    must instead say the log has nothing and name the question that reads it live."""
+    live_context = build_context(civ6_store.rebuild(), tuner=TunerSnapshot(available=True))
+    got = _not_logged(live_context, "empire.net_gold", Capability.MAINTENANCE)
+    assert got.absence.kind is Unanswerable.NOT_LOGGED
+    assert "supplied no reading" not in got.absence.detail
+    assert "empire.upkeep" in got.absence.detail
+
+    got = _not_logged(live_context, "empire.happiness", Capability.HAPPINESS)
+    assert got.absence.kind is Unanswerable.NOT_LOGGED
+    assert "supplied no reading" not in got.absence.detail
+    assert "settlement.amenities" in got.absence.detail
+
+
+def test_not_logged_with_an_unavailable_tuner_still_uses_the_tuners_own_cause(civ6_context):
+    """The tuner really is silent here (`TUNER_SNAPSHOT_OFF`), so ITS reason is the
+    honest one, and this must stay a `TUNER_ABSENT` absence, not fold into NOT_LOGGED."""
+    got = _not_logged(civ6_context, "empire.net_gold", Capability.MAINTENANCE)
+    assert got.absence.kind is Unanswerable.TUNER_ABSENT
+    assert got.absence.detail == TUNER_SNAPSHOT_OFF.reason
+    assert "empire.upkeep" not in got.absence.detail
+
+
+def test_not_logged_for_a_capability_no_tuner_could_ever_back_uses_the_profiles_reason(civ7_context):
+    """Civ VII declares no `tuner_backed` capabilities at all; Faith is genuinely
+    unsupported, with its own real prose -- neither the tuner's cause nor a live
+    question belongs anywhere near this message."""
+    got = _not_logged(civ7_context, "empire.everything", Capability.FAITH)
+    assert got.absence.kind is Unanswerable.NOT_LOGGED
+    assert got.absence.detail == "Civ VII has no Faith yield."
 
 
 def test_an_oracle_question_in_fair_mode_is_hidden_not_missing(civ7_store):

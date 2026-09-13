@@ -84,6 +84,12 @@ class Question:
     params: tuple[Param, ...] = ()
     verified_on: str = ""
     oracle: bool = False      # answered only with Oracle on
+    # Set on the question that reads THIS capability live when a game's log cannot.
+    # `_not_logged` derives which question to name from this field rather than a
+    # hardcoded capability -> question-id table in the absence message, so a
+    # question added or renamed later cannot leave that message pointing at a
+    # question that no longer exists or missing one that now covers it.
+    live_answers: Capability | None = None
 
 
 def _city_names(context: DecisionContext) -> tuple[str, ...]:
@@ -152,16 +158,45 @@ def ask(context: DecisionContext, question_id: str, params: dict[str, str]) -> R
 
 # ---- log-backed resolvers ------------------------------------------------------------
 
+def _live_question_for(capability: Capability) -> Question | None:
+    """Which catalog question reads `capability` live, if any -- see
+    `Question.live_answers` for why this is a lookup over the catalog's own data
+    rather than a table hand-maintained beside this message."""
+    return next((q for q in CATALOG.values() if q.live_answers is capability), None)
+
+
 def _not_logged(context: DecisionContext, question_id: str,
                 capability: Capability) -> Resolution:
-    """The absence for a capability this game's profile does not declare -- with the
-    profile's own words, and with the tuner's own cause when the tuner could back it."""
+    """The absence for a capability this game's LOG cannot answer.
+
+    Three genuinely different situations, and collapsing any two of them produces
+    a false reason:
+
+    - tuner-backed and the tuner is AVAILABLE: the log truly has nothing, but a
+      live reading does -- named here, by question id, so the player is not left
+      to guess it. `tuner.reason` is None exactly when the tuner is working, so
+      it must NEVER be printed in this branch: a live probe against a real game
+      did exactly that -- `empire.net_gold` answered "the tuner supplied no
+      reading this poll" in the same second `empire.upkeep` (backed by the same
+      tuner) answered with a real figure. That sentence blamed a tuner that was
+      not silent at all.
+    - tuner-backed and the tuner is UNAVAILABLE: the tuner's own cause is the
+      real one and is passed through as before.
+    - not tuner-backed at all: the profile's own reason, as before.
+    """
     profile = get_profile(context_game(context))
     if capability in profile.tuner_backed:
         tuner = context.tuner
+        if tuner.available:
+            live_q = _live_question_for(capability)
+            detail = (f"{profile.display_name} writes no log for this; a live reading "
+                      f"covers it instead -- ask `{live_q.id}`." if live_q is not None else
+                      f"{profile.display_name} writes no log for this, and no catalog "
+                      "question reads it live either.")
+            return Resolution(absence=Absence(question_id, Unanswerable.NOT_LOGGED, detail))
         return Resolution(absence=Absence(
             question_id, Unanswerable.TUNER_ABSENT,
-            tuner.reason or "the tuner supplied no reading this poll",
+            tuner.reason or "the tuner has not been read this poll",
             cause=None if tuner.unavailable is None else tuner.unavailable.value))
     return Resolution(absence=Absence(
         question_id, Unanswerable.NOT_LOGGED,
@@ -354,9 +389,10 @@ CATALOG: dict[str, Question] = {
                  verified_on="2026-09-13"),
         Question("settlement.amenities", "One settlement's amenities and their sources, read "
                  "live from the game.", _amenities,
-                 params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),
+                 params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13",
+                 live_answers=Capability.HAPPINESS),
         Question("empire.upkeep", "Net gold after upkeep, read live from the game.", _upkeep,
-                 verified_on="2026-09-13"),
+                 verified_on="2026-09-13", live_answers=Capability.MAINTENANCE),
         Question("settlement.build_options", "What one settlement may build right now and how "
                  "many turns each would take, read live.", _live_options,
                  params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),

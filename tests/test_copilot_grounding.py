@@ -165,3 +165,37 @@ def test_the_cited_figure_stated_while_the_players_claim_is_silently_dropped_is_
 def test_every_ungrounded_numeral_is_reported_once_in_order():
     got = check("First 9, then 9 again, then 11.", cited("gold.net.59"), FACTS)
     assert got.ungrounded == ("9", "11")
+
+
+def test_a_claim_phrase_licenses_only_the_sentence_it_is_in():
+    """One phrase must not cover every typed numeral in the answer. The player named
+    two figures; attributing the first says nothing about the second."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("You mention 8 turns; the tuner read 4 for the Granary in Rome on turn 49. "
+                "The Library takes 12 turns.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="is the 8-turn Granary better than the 12-turn Library?")
+    assert not got.ok and got.ungrounded == ("12",)
+
+
+def test_an_attribution_phrase_licenses_only_the_sentence_it_is_in():
+    """The mirror for rule 6: attributing one reported figure does not attribute
+    a second one stated in a later sentence as though the game said it."""
+    facts = FACTS + [{"id": "report.turns", "kind": "player_report", "value": 8,
+                      "unit": "turns", "observed_turn": 59, "note": None},
+                     {"id": "report.cost", "kind": "player_report", "value": 240,
+                      "unit": "gold", "observed_turn": 59, "note": None}]
+    got = check("The 8 turns you reported on turn 59 make this the quicker option. "
+                "It costs 240 gold.", cited("report.turns", "report.cost"), facts)
+    assert not got.ok and got.unattributed == ("240",)
+
+
+def test_a_cited_id_written_bare_in_prose_is_still_scanned():
+    """Only the bracketed citation form is removed. Stripping a bare id would make the
+    digits inside it vanish from the check, silently and invisibly."""
+    facts = FACTS + [{"id": "guide.district.7", "value": 2, "unit": "count",
+                      "observed_turn": 60, "note": None}]
+    got = check("Follow guide.district.7 to the letter, in the order it gives.",
+                cited("guide.district.7"), facts)
+    assert not got.ok and got.ungrounded == ("7",)

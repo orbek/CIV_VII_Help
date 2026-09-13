@@ -7,9 +7,10 @@ message, not an earlier exchange, not arithmetic the model did itself. A figure 
 player might want derived is a resolver's job, as a DERIVED fact citing its inputs.
 
 Deliberately NOT here: any check that a number is attached to the right noun. "Rome has
-3 amenities" passes if a cited fact has value 3 even when that fact is Puteoli's. The
-evidence drawer under the answer shows each cited fact with its subject; that is where a
-player catches it, and why generated prose stays labelled interpretation.
+3 amenities" passes if a cited fact has value 3 even when that fact is Puteoli's, and
+nothing here can tell whether a player's figure and a grounded one describe the same
+thing. The evidence drawer under the answer shows each cited fact with its subject; that
+is where a player catches it, and why generated prose stays labelled interpretation.
 """
 from __future__ import annotations
 
@@ -43,11 +44,14 @@ class Numeral:
     value: Decimal
     places: int          # decimal places written; a number word has none
     percent: bool
+    start: int = 0       # offset into the text it was read from, for sentence scoping
 
 
 # How prose must own up to a figure the PLAYER supplied. A player report is citable --
 # it is dated, labelled and stored -- but the game did not say it, and the sentence
-# must not read as though it did. Lower-cased comparison; the phrases are fixed.
+# must not read as though it did. Lower-cased comparison; the phrases are fixed. Each
+# phrase licenses only the numerals in its OWN sentence: one phrase covering an answer
+# that names several figures is proximity, not attribution.
 ATTRIBUTION = ("you reported", "your report", "you told the advisor", "you entered", "you recorded")
 
 # How prose may repeat a number the player JUST TYPED. Kept apart from ATTRIBUTION on
@@ -83,12 +87,60 @@ class Grounding:
         return "; ".join(parts) + " -- a number the evidence does not state is not shown"
 
 
-def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, ...]:
-    """Every numeral in `text`, after the citations the answer is allowed to make are
-    removed -- an id like `comparison.culture.81` carries a turn number that is not a
-    claim about anything."""
+# A sentence ends at one of these followed by whitespace. Crude on purpose, and stated
+# so nobody relies on more: "Fig. 3" and "e.g. two" split early, and a terminator at the
+# very end of a clause without whitespace does not split at all. Splitting early can only
+# move a phrase out of a numeral's sentence, which rejects an answer; it never licenses
+# one. Decimals ("0.44") and dotted ids ("gold.net.59") are unaffected: no whitespace
+# follows the dot.
+_SENTENCE_END = re.compile(r"[.!?]\s+")
+
+
+def _mask_citations(text: str, strip_ids: Iterable[str]) -> str:
+    """Blank out the bracketed citations the answer is allowed to make.
+
+    ONLY the bracketed form `[gold.net.59]` is removed. A bare `gold.net.59` written into
+    the prose is left to be scanned like any other text: stripping it would make the
+    digits inside it vanish from the check with nothing on screen to show for it. The
+    blanks are the same length as what they replace, so every offset still indexes the
+    original text.
+    """
     for fact_id in strip_ids:
-        text = text.replace(f"[{fact_id}]", " ").replace(fact_id, " ")
+        marker = f"[{fact_id}]"
+        text = text.replace(marker, " " * len(marker))
+    return text
+
+
+def _sentences(text: str) -> tuple[tuple[int, int, str], ...]:
+    """`text` split into (start, end, lower-cased) spans covering it exactly."""
+    spans: list[tuple[int, int, str]] = []
+    start = 0
+    for m in _SENTENCE_END.finditer(text):
+        spans.append((start, m.end(), text[start:m.end()].lower()))
+        start = m.end()
+    spans.append((start, len(text), text[start:].lower()))
+    return tuple(spans)
+
+
+def _phrase_by(numeral: Numeral, spans: tuple[tuple[int, int, str], ...],
+               phrases: tuple[str, ...]) -> bool:
+    """Whether one of `phrases` appears in the sentence this numeral sits in.
+
+    Scoped to the sentence rather than the whole answer: one "you mention" must not
+    license every typed numeral on the page, or the rule is satisfied by proximity
+    instead of by attribution.
+    """
+    for start, end, lowered in spans:
+        if start <= numeral.start < end:
+            return any(phrase in lowered for phrase in phrases)
+    return False
+
+
+def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, ...]:
+    """Every numeral in `text`, after the bracketed citations the answer is allowed to
+    make are removed -- an id like `[comparison.culture.81]` carries a turn number that is
+    not a claim about anything. Each numeral carries its offset into `text`."""
+    text = _mask_citations(text, strip_ids)
     found: list[tuple[int, Numeral]] = []
     for m in _DIGITS.finditer(text):
         raw = m.group(0)
@@ -99,10 +151,11 @@ def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, .
         except InvalidOperation:
             continue
         places = len(body.split(".")[1]) if "." in body else 0
-        found.append((m.start(), Numeral(raw, value, places, percent)))
+        found.append((m.start(), Numeral(raw, value, places, percent, m.start())))
     for m in _WORDS.finditer(text):
         word = m.group(1).lower()
-        found.append((m.start(), Numeral(m.group(1), Decimal(NUMBER_WORDS[word]), 0, False)))
+        found.append((m.start(),
+                      Numeral(m.group(1), Decimal(NUMBER_WORDS[word]), 0, False, m.start())))
     return tuple(n for _, n in sorted(found, key=lambda pair: pair[0]))
 
 
@@ -157,13 +210,22 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
     `cited_ids` may ground a number. `player_text` is what the player typed: its numbers
     are never citations (rule 7), may be repeated only as the player's claim, and when
     the answer cites a numeric fact at all, at least one cited value must appear in the
-    prose beside the claim -- the disagreement is named, never resolved by omission."""
+    prose beside the claim -- the disagreement is named, never resolved by omission.
+
+    An attribution or claim phrase counts only for numerals in the same sentence as the
+    phrase (`_sentences` says how crudely a sentence is found).
+
+    A mechanical proxy, and only that: "at least one cited value appears in the prose"
+    does not establish that the cited value and the player's number describe the same
+    thing, and nothing here knows whether they do. The deterministic answer lists the
+    player's typed numbers beside every grounded figure so the comparison is on screen
+    either way."""
     cited = set(cited_ids)
     pool = admitted(f for f in facts if f.get("id") in cited)
     typed = {n.value for n in numerals_in(player_text)}
-    lowered = text.lower()
-    attributed = any(phrase in lowered for phrase in ATTRIBUTION)
-    claimed = any(phrase in lowered for phrase in CLAIM)
+    # Sentences are taken from the masked text so a dotted id cannot introduce a break,
+    # and the mask preserves length so a numeral's offset still indexes into it.
+    spans = _sentences(_mask_citations(text, cited))
     ungrounded: list[str] = []
     unattributed: list[str] = []
     unreconciled: list[str] = []
@@ -171,7 +233,7 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
     states_a_cited_value = any(
         _matches(n, c) for n in numerals for c in pool if not c.player)
     pool_has_values = any(not c.player for c in pool)
-    repeats_a_claim = claimed and any(n.value in typed for n in numerals)
+    repeats_a_claim = any(n.value in typed and _phrase_by(n, spans, CLAIM) for n in numerals)
     if typed and pool_has_values and states_a_cited_value and not repeats_a_claim:
         # The mirror of the case below: the game's figure stated, the player's number
         # never acknowledged. Quietly overriding them is the same defect as quietly
@@ -181,13 +243,13 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
     for numeral in numerals:
         matches = [c for c in pool if _matches(numeral, c)]
         if matches:
-            if all(c.player for c in matches) and not attributed:
+            if all(c.player for c in matches) and not _phrase_by(numeral, spans, ATTRIBUTION):
                 # Only the player's own report carries this number. Spec 4.3 rule 6: the
                 # prose must say so, or it is stating the player's figure as the game's.
                 if numeral.text not in unattributed:
                     unattributed.append(numeral.text)
             continue
-        if numeral.value in typed and claimed:
+        if numeral.value in typed and _phrase_by(numeral, spans, CLAIM):
             # The player's own typed figure, repeated as their claim. Allowed -- but
             # not while a cited figure it might disagree with goes unstated.
             if pool_has_values and not states_a_cited_value and numeral.text not in unreconciled:

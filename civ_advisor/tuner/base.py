@@ -213,9 +213,9 @@ TUNER_OFF = NullTuner(
 TUNER_NOT_ANSWERING_ENABLED = NullTuner(
     TunerUnavailable.NOT_ANSWERING,
     "The tuner is enabled (AppOptions.txt says `EnableTuner 1`) but the game is not "
-    "answering on its socket. It may be at the main menu, between screens, or not "
-    "running; the listener only answers reliably inside a loaded match. Nothing needs "
-    "changing in the file.",
+    "answering on its socket, after three attempts. It may be at the main menu, "
+    "between screens, or not running; the listener only answers reliably inside a "
+    "loaded match. Nothing needs changing in the file.",
 )
 
 

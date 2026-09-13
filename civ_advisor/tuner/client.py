@@ -24,6 +24,14 @@ HOST = "127.0.0.1"      # loopback only, always. Never configurable.
 PORT = 4318
 SENTINEL = "---CIV-ADVISOR-END---"
 
+# A refused connection is ONE observation. Measured 2026-09-13: 8/8 connections succeed
+# against a loaded match, and the listener cycles at the main menu and during loads, so
+# a refusal is retried -- bounded to well under the one-second poll -- before anything
+# is concluded from it. What IS concluded afterwards comes from AppOptions.txt (Task 2),
+# not from the refusals.
+CONNECT_ATTEMPTS = 3
+CONNECT_RETRY_SECONDS = 0.25
+
 _NOT_ANSWERING = (
     "The tuner socket is open but the game did not answer. This usually means no "
     "match is loaded yet."
@@ -193,19 +201,24 @@ class Civ6Tuner:
         return self._answer("build_options") or ()
 
 
-def open_tuner(port: int = PORT, timeout: float = 3.0,
-               app_options: Path | None = None) -> TunerProvider:
+def open_tuner(port: int = PORT, timeout: float = 3.0, app_options: Path | None = None, *,
+               attempts: int = CONNECT_ATTEMPTS,
+               retry_seconds: float = CONNECT_RETRY_SECONDS) -> TunerProvider:
     """Connect and handshake, or return a NullTuner saying why not.
 
     Never raises. A tuner failure must not cost a poll that read the logs fine.
     """
-    try:
-        sock = socket.create_connection((HOST, port), timeout=timeout)
-    except (OSError, OverflowError, TypeError, ValueError):
-        # Refused is ONE observation. Which of three things it means is read from the
-        # file that enables the tuner, never inferred -- with the flag on, the game
-        # refuses connections at the main menu, and telling that player to set a flag
-        # they have set is the false reason this branch used to give.
+    sock = None
+    for attempt in range(attempts):
+        try:
+            sock = socket.create_connection((HOST, port), timeout=timeout)
+            break
+        except (OSError, OverflowError, TypeError, ValueError):
+            if attempt + 1 < attempts:
+                time.sleep(retry_seconds)
+    if sock is None:
+        # Every attempt was refused. Which of three things that means is READ from the
+        # file that enables the tuner (Task 2); the refusals themselves decide nothing.
         if app_options is None:
             return tuner_unestablished("no AppOptions.txt path was supplied for this game")
         flag, detail = read_enable_tuner(app_options)
@@ -250,4 +263,5 @@ def open_tuner(port: int = PORT, timeout: float = 3.0,
     return Civ6Tuner(_sock=sock, _states=states, _timeout=timeout, _buf=buf)
 
 
-__all__ = ["Civ6Tuner", "HOST", "PORT", "SENTINEL", "open_tuner"]
+__all__ = ["CONNECT_ATTEMPTS", "CONNECT_RETRY_SECONDS", "Civ6Tuner", "HOST", "PORT",
+           "SENTINEL", "open_tuner"]

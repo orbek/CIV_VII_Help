@@ -299,3 +299,44 @@ def test_an_out_of_range_port_does_not_raise():
     t = open_tuner(port=99999, timeout=0.5)
     assert t.available is False
     assert t.unavailable is TunerUnavailable.UNESTABLISHED
+
+
+def test_a_refusal_is_retried_a_bounded_number_of_times_before_being_believed(monkeypatch):
+    import civ_advisor.tuner.client as client_mod
+    calls = []
+
+    def refusing(address, timeout):
+        calls.append(address)
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(client_mod.socket, "create_connection", refusing)
+    monkeypatch.setattr(client_mod.time, "sleep", lambda s: None)
+    client_mod.open_tuner(port=1, timeout=0.5)
+    assert len(calls) == client_mod.CONNECT_ATTEMPTS
+
+
+def test_a_listener_that_answers_on_the_second_try_is_a_live_tuner(monkeypatch):
+    """The menu-transition case: refused once, then up."""
+    game = FakeGame(replies())
+    try:
+        import civ_advisor.tuner.client as client_mod
+        real = client_mod.socket.create_connection
+        state = {"n": 0}
+
+        def flaky(address, timeout):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise ConnectionRefusedError
+            return real(address, timeout=timeout)
+
+        monkeypatch.setattr(client_mod.socket, "create_connection", flaky)
+        t = client_mod.open_tuner(port=game.port, timeout=3.0, retry_seconds=0)
+        assert t.available is True
+        t.close()
+    finally:
+        game.close()
+
+
+def test_the_retry_budget_stays_under_one_poll():
+    from civ_advisor.tuner.client import CONNECT_ATTEMPTS, CONNECT_RETRY_SECONDS
+    assert (CONNECT_ATTEMPTS - 1) * CONNECT_RETRY_SECONDS < 1.0

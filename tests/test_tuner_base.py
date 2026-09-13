@@ -203,7 +203,13 @@ def test_capturing_a_live_provider_reads_every_figure_once():
 
     snap = capture(Live())
     assert snap.available is True
-    assert snap.reading is not None and snap.reading.turn == 12
+    # A reading PER FIGURE, and no single reading for the capture: each query asks the
+    # live game its own turn, so collapsing them would date one figure by another
+    # query's reply.
+    assert not hasattr(snap, "reading")
+    for figure in ("amenities", "maintenance", "build_options"):
+        assert snap.reading_for(figure) is not None
+        assert snap.reading_for(figure).turn == 12
     assert len(snap.amenities) == 1
     assert snap.maintenance is not None and snap.maintenance.total == 9
     assert len(snap.build_options) == 1

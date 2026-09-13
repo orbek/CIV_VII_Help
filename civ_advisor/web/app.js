@@ -1165,7 +1165,14 @@
       // chose, not something the game logged on its own, so both belong beside each
       // other rather than one under "observed" and the other under "entered" (which
       // reads as something the player typed).
-      meta.push(`observed turn ${fact.observed_turn}, read ${fact.reported_at || "—"}`);
+      // Both turns, because this is the one place a player can see what "read live"
+      // actually bought them: a figure from turn 60 while the logs stop at 59. The
+      // logs lagging is normal and is simply stated; a reading BEHIND the logs cannot
+      // happen in one continuous match and gets its own line below rather than being
+      // reconciled away.
+      meta.push(`observed turn ${fact.observed_turn}, read ${fact.reported_at || "—"}`
+        + (fact.logs_complete_through === null || fact.logs_complete_through === undefined
+          ? "" : `, logs complete through ${fact.logs_complete_through}`));
     } else if (fact.observed_turn !== null && fact.observed_turn !== undefined) {
       meta.push(`observed turn ${fact.observed_turn}`
         + (fact.age ? ` (${fact.age} turn${fact.age === 1 ? "" : "s"} ago)` : ""));
@@ -1175,6 +1182,7 @@
     if (fact.source_file) meta.push(`from ${fact.source_file}`);
     if (!isLive && fact.reported_at) meta.push(`entered ${fact.reported_at}`);
     node.append(el("p", "fact-meta", meta.join(" · ")));
+    if (fact.turn_disagreement) node.append(el("p", "fact-disagree", fact.turn_disagreement));
     if (fact.note) node.append(el("p", "fact-note", fact.note));
     if ((fact.contributing || []).length) {
       const names = fact.contributing
@@ -1210,12 +1218,27 @@
     ["happiness_cost", "Local happiness cost", "happiness per turn"],
   ];
 
+  /* One live reading's badge, naming BOTH turns. "read turn 60, logs complete through
+     59" is the whole difference between a live reading and a log row, said in the one
+     way a player can check; being ahead of the logs is the normal case and is stated,
+     not flagged. */
+  function liveBadge(read) {
+    if (!read || read.turn === undefined) return "live_reading";
+    const logs = read.logs_complete_through;
+    return `live_reading — read turn ${read.turn} (${read.read_at})`
+      + (logs === null || logs === undefined ? "" : `, logs complete through ${logs}`);
+  }
+
   function refinePanel(card) {
     const family = card.id.split(".")[1];
     const city = card.id.split(".").slice(2).join(".");
     const context = (state.decisions && state.decisions.context) || {};
     const settlement = (context.settlements || []).find((s) => s.city === city);
     const liveOptions = tunerLiveOptions(state.tuner, city);
+    /* The BUILD OPTIONS query's own reading, never the tuner section's -- there is no
+       single turn for a capture. Each query asks the live game for its own turn, and
+       these pre-fills came out of this one's reply. */
+    const liveRead = () => (state.tuner && state.tuner.build_options_read) || {};
     const panel = el("details", "refine");
     panel.open = Boolean(state.refineStatus[city]);
     panel.append(el("summary", null, "Refine this recommendation"));
@@ -1224,8 +1247,8 @@
       + "They are recorded as your report, dated to the turn you read them, and are "
       + "discarded if this game is reloaded or this settlement's queue changes."
       + (liveOptions
-        ? ` A live tuner reading has pre-filled what it saw as of turn ${state.tuner.turn} `
-          + `(${state.tuner.read_at}); it is only a suggestion until you press Record.`
+        ? ` A live tuner reading has pre-filled what it saw as of turn ${liveRead().turn} `
+          + `(${liveRead().read_at}); it is only a suggestion until you press Record.`
         : "")));
 
     const form = el("form");
@@ -1239,8 +1262,7 @@
     optionsInput.placeholder = "BUILDING_MONUMENT, BUILDING_AMPHITHEATER";
     if (liveOptions) {
       optionsInput.value = liveOptions.options.map((o) => o.item).join(", ");
-      options.append(el("span", "refine-live",
-        `live_reading — read turn ${state.tuner.turn} (${state.tuner.read_at})`));
+      options.append(el("span", "refine-live", liveBadge(liveRead())));
     }
     options.append(optionsInput);
     form.append(options);
@@ -1270,8 +1292,7 @@
         field.append(el("span", null, metric === "yield_delta"
           ? `${itemName(item)} — ${family} ${label}` : `${itemName(item)} — ${label}`));
         if (metric === "completion_turns" && liveTurns !== null) {
-          field.append(el("span", "refine-live",
-            `live_reading — read turn ${state.tuner.turn} (${state.tuner.read_at})`));
+          field.append(el("span", "refine-live", liveBadge(liveRead())));
         }
         const input = el("input");
         input.type = "number";
@@ -1427,6 +1448,9 @@
           a.housing, a.food_surplus,
         ])));
       if (panel.amenities.note) amen.append(el("p", "live-note", panel.amenities.note));
+      if (panel.amenities.disagreement) {
+        amen.append(el("p", "fact-disagree", panel.amenities.disagreement));
+      }
     }
     parts.push(amen);
 
@@ -1438,6 +1462,9 @@
       upkeep.append(table([{ label: "Item" }, { label: "Gold per turn", num: true }],
         panel.upkeep.figures.map((r) => [r.label, r.value])));
       if (panel.upkeep.note) upkeep.append(el("p", "live-note", panel.upkeep.note));
+      if (panel.upkeep.disagreement) {
+        upkeep.append(el("p", "fact-disagree", panel.upkeep.disagreement));
+      }
     }
     parts.push(upkeep);
 

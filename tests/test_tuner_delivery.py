@@ -24,6 +24,15 @@ from civ_advisor.tuner.client import open_tuner
 from tests.test_tuner_client import FakeGame, replies
 
 
+# One turn AHEAD of `civ6_dir`'s logs, which are complete through 52. That is the
+# normal relationship and the whole point of a live reading: the socket reads the
+# running game while a log row is written only as a turn finishes. This fake used to
+# answer turn 12 against those same logs -- a reading 40 turns BEHIND the logs, which
+# cannot happen in one continuous match and which the payload now reports as the event
+# it would be.
+LIVE_TURN = 53
+
+
 class _LiveTuner:
     """A fake socket that always answers, so the payload path can be proven without a
     running game."""
@@ -33,7 +42,8 @@ class _LiveTuner:
     unavailable = None
 
     def reading(self):
-        return TunerReading(turn=12, read_at="2026-09-13T10:40:00Z", state="GameCore_Tuner")
+        return TunerReading(turn=LIVE_TURN, read_at="2026-09-13T10:40:00Z",
+                            state="GameCore_Tuner")
 
     def amenities(self):
         return (CityAmenities(city="Rome", total=3, from_luxuries=1, from_civics=1,
@@ -282,10 +292,17 @@ def test_the_prefill_only_becomes_the_players_word_when_they_say_so(
     assert fact["value"] == 4
 
 
-def test_the_reading_carries_when_it_was_taken(client_with_live_tuner):
-    body = client_with_live_tuner.get("/api/briefing").json()
-    assert body["tuner"]["read_at"] == "2026-09-13T10:40:00Z"
-    assert body["tuner"]["turn"] == 12
+def test_each_figure_carries_when_it_was_taken(client_with_live_tuner):
+    """Per figure, not per section: the payload used to publish one turn and one
+    read_at for the whole tuner block, which is a shared stamp over three separate
+    replies. Three queries, three answers, three dates."""
+    tuner = client_with_live_tuner.get("/api/briefing").json()["tuner"]
+    assert "turn" not in tuner and "read_at" not in tuner
+    for figure in ("amenities", "maintenance", "build_options"):
+        read = tuner[f"{figure}_read"]
+        assert read["read_at"] == "2026-09-13T10:40:00Z"
+        assert read["turn"] == LIVE_TURN
+        assert read["state"] == "GameCore_Tuner"
 
 
 # ---- the turn a live figure is filed under -------------------------------------
@@ -322,9 +339,8 @@ def test_a_live_figure_is_filed_under_the_turn_the_game_named(client_against_a_s
     body = client_against_a_socket.get("/api/briefing").json()
     tuner = body["tuner"]
     assert tuner["available"] is True
-    assert tuner["turn"] == 59
-    assert tuner["turn"] != 0
     assert tuner["maintenance_read"]["turn"] == 59
+    assert tuner["maintenance_read"]["turn"] != 0
     assert tuner["maintenance"]["net_gold"] == 7
 
 
@@ -334,8 +350,11 @@ def test_the_live_turn_is_not_borrowed_from_the_logs(client_against_a_socket):
     must carry its own answer rather than being quietly reconciled to the snapshot's."""
     body = client_against_a_socket.get("/api/briefing").json()
     logged_turn = body["status"]["analysis_turn"]
-    assert body["tuner"]["turn"] == 59
-    assert body["tuner"]["turn"] != logged_turn
+    read = body["tuner"]["maintenance_read"]
+    assert read["turn"] == 59
+    assert read["turn"] != logged_turn
+    # Both numbers travel, and neither is corrected to the other.
+    assert read["logs_complete_through"] == logged_turn
 
 
 # ---- what the Economy tab actually draws ----------------------------------------
@@ -392,7 +411,7 @@ def test_every_rendered_figure_names_the_turn_it_was_read_on(client_with_live_tu
     panel = economy_panel(body["tuner"])
     for part in ("amenities", "upkeep"):
         assert "read live" in panel[part]["note"]
-        assert "turn 12" in panel[part]["note"]
+        assert f"turn {LIVE_TURN}" in panel[part]["note"]
 
 
 @node
@@ -404,7 +423,7 @@ def test_a_figure_the_tuner_could_not_supply_shows_its_own_reason(civ6_dir):
         unavailable = None
 
         def reading(self):
-            return TunerReading(turn=12, read_at="2026-09-13T10:40:00Z",
+            return TunerReading(turn=LIVE_TURN, read_at="2026-09-13T10:40:00Z",
                                 state="GameCore_Tuner")
 
         def amenities(self):
@@ -452,5 +471,140 @@ def test_the_economy_tab_is_wired_to_the_live_readings():
     assert "renderLiveReadings()" in app
     assert "B.tunerEconomy(state.tuner)" in app
     assert "#live-readings" in app
+    # The pre-fill badges read the BUILD OPTIONS query's own reading. A single
+    # `state.tuner.turn` would be one stamp over three separate replies, which is the
+    # shape this round removed -- and the payload no longer publishes such a field, so
+    # any surviving use would render "undefined" at the player.
+    assert "state.tuner.turn" not in app and "state.tuner.read_at" not in app
+    assert "state.tuner.build_options_read" in app
+    # Both turns in the badge, and the disagreement rendered rather than swallowed.
+    assert "logs complete through" in app
+    assert "fact.turn_disagreement" in app
+    assert "panel.amenities.disagreement" in app
     index = (Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "index.html").read_text()
     assert 'id="live-readings"' in index
+
+
+# ---- two turns, and the gap between them ----------------------------------------
+#
+# A live reading's turn and the snapshot's log-derived analysis_turn are different
+# numbers about different things, and both are published. `logs_behind` is the NORMAL
+# case -- the socket reads the running game, a log row is written only as a turn ends --
+# and it is what makes "read live" mean something a player can check. `reading_behind`
+# cannot happen against one continuous match, so it is reported as the event it is
+# rather than reconciled, following store.py's epoch_reason precedent.
+
+
+class _TurnAdvancingTuner:
+    """The player presses Enter mid-capture: amenities answer on turn 59, the build
+    queue on 60. Both are true. A single shared stamp would make one of them false."""
+
+    available = True
+    reason = None
+    unavailable = None
+
+    def __init__(self):
+        self._read = None
+
+    def reading(self):
+        return self._read
+
+    def amenities(self):
+        self._read = TunerReading(turn=59, read_at="2026-09-13T10:40:00Z",
+                                  state="GameCore_Tuner")
+        return (CityAmenities(city="Rome", total=3, from_luxuries=1, from_civics=1,
+                              from_entertainment=1, housing=5, food_surplus=1),)
+
+    def maintenance(self):
+        self._read = TunerReading(turn=59, read_at="2026-09-13T10:40:01Z",
+                                  state="GameCore_Tuner")
+        return Maintenance(total=5, buildings=2, districts=2, units=1, gold=0,
+                           gold_yield=10)
+
+    def build_options(self):
+        self._read = TunerReading(turn=60, read_at="2026-09-13T10:40:02Z", state="InGame")
+        return (SettlementOptions(city="Rome",
+                                  options=(BuildOption(item="BUILDING_GRANARY", turns=4),)),)
+
+
+def test_a_turn_that_advances_mid_capture_dates_each_figure_separately(civ6_dir):
+    profile = _profile_with_tuner(_TurnAdvancingTuner)
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=profile,
+                               archiving=False)) as c:
+        tuner = c.get("/api/briefing").json()["tuner"]
+
+    assert tuner["amenities_read"]["turn"] == 59
+    assert tuner["maintenance_read"]["turn"] == 59
+    assert tuner["build_options_read"]["turn"] == 60
+    # Three replies, three instants. Nothing collapses them.
+    assert tuner["build_options_read"]["state"] == "InGame"
+    assert tuner["amenities_read"]["read_at"] != tuner["build_options_read"]["read_at"]
+
+
+def test_a_reading_ahead_of_the_logs_is_reported_as_normal_not_as_an_anomaly(
+        client_with_live_tuner):
+    """The logs lag by design, which is why analysis_turn and latest_turn are already
+    distinct in this codebase. Both numbers travel; neither is corrected."""
+    body = client_with_live_tuner.get("/api/briefing").json()
+    read = body["tuner"]["amenities_read"]
+    logs = body["status"]["analysis_turn"]
+    assert read["turn"] > logs
+    assert read["logs_complete_through"] == logs
+    assert read["relation"] == "logs_behind"
+    assert read["disagreement"] is None
+
+
+def test_a_reading_behind_the_logs_is_reported_rather_than_reconciled():
+    """Impossible against one continuous match, so it is evidence of a reload, another
+    game on the socket, or a connection outliving its session. Both numbers are kept."""
+    from civ_advisor.api.serialize import reading_to_dict
+
+    read = reading_to_dict(
+        TunerReading(turn=58, read_at="2026-09-13T10:40:00Z", state="GameCore_Tuner"),
+        analysis_turn=59)
+    assert read["turn"] == 58 and read["logs_complete_through"] == 59
+    assert read["relation"] == "reading_behind"
+    assert "58" in read["disagreement"] and "59" in read["disagreement"]
+    assert "reloaded" in read["disagreement"]
+
+
+def test_a_live_evidence_fact_can_state_both_turns_in_the_drawer(
+        client_tuner_cites_a_decision):
+    """`age` clamps at zero and cannot express a figure AHEAD of the logs, so the fact
+    carries the log turn itself -- otherwise "read live" is a word with no number
+    behind it. Uses the fixture whose card actually CITES a live reading, since the
+    drawer only ever shows evidence something cited."""
+    c = client_tuner_cites_a_decision
+    status = c.get("/api/status").json()
+    _submit(c, status["session"], status["epoch"], "available_options", "BUILDING_MONUMENT")
+
+    body = c.get("/api/briefing").json()
+    live = [f for f in body["decisions"]["evidence"] if f["kind"] == "live_reading"]
+    assert live, "no live_reading fact reached the evidence drawer"
+    logs = body["status"]["analysis_turn"]
+    for fact in live:
+        assert fact["logs_complete_through"] == logs
+        # This reading and the logs are on the same turn, so there is nothing to flag;
+        # calling the usual case an anomaly would teach a player to ignore the real one.
+        assert fact["turn_disagreement"] is None
+
+
+@node
+def test_the_economy_tab_states_both_turns_under_every_figure(client_with_live_tuner):
+    body = client_with_live_tuner.get("/api/briefing").json()
+    panel = economy_panel(body["tuner"])
+    logs = body["status"]["analysis_turn"]
+    for part in ("amenities", "upkeep"):
+        assert f"logs complete through {logs}" in panel[part]["note"]
+        assert panel[part]["disagreement"] is None
+
+
+@node
+def test_the_economy_tab_shows_a_reading_behind_the_logs(client_with_live_tuner):
+    """The page must say it, not just the payload."""
+    body = client_with_live_tuner.get("/api/briefing").json()
+    tuner = body["tuner"]
+    tuner["amenities_read"]["relation"] = "reading_behind"
+    tuner["amenities_read"]["disagreement"] = "the numbers disagree: 58 against 59"
+    panel = economy_panel(tuner)
+    assert panel["amenities"]["disagreement"] == "the numbers disagree: 58 against 59"

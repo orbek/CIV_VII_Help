@@ -215,11 +215,6 @@ class TunerSnapshot:
 
     available: bool
     reason: str | None = None
-    # The most recent reading of this capture, for a caller that wants to say when
-    # the tuner was last asked anything. To DATE a figure, use `reading_for`: the
-    # game can pass a turn between two queries of one capture, and blending them
-    # would file one figure's number under another figure's turn.
-    reading: TunerReading | None = None
     amenities: tuple[CityAmenities, ...] = ()
     maintenance: Maintenance | None = None
     build_options: tuple[SettlementOptions, ...] = ()
@@ -227,9 +222,12 @@ class TunerSnapshot:
     # this map was read successfully; one present here says which of the four
     # absences applied to IT, which is not always the same for every figure.
     absences: tuple[tuple[str, str], ...] = ()
-    # The reading that dates each figure, keyed by the same catalog id. Recorded per
-    # figure because each query asks the game its own turn and is answered by the
-    # live game, not by the logs.
+    # The reading that dates each figure, keyed by the same catalog id. One reading
+    # PER QUERY, deliberately, and no single reading for the capture: each query asks
+    # the live game for its own turn, so three replies mean three turns and three
+    # instants. A player who presses Enter mid-capture leaves amenities stamped turn
+    # 59 and build options stamped 60 -- which is true, and which a shared stamp would
+    # silently make false for one of them.
     readings: tuple[tuple[str, TunerReading], ...] = ()
     # WHICH absence this is, beside the prose reason. The provider computes this on
     # eight different paths and `capture` used to drop it, leaving every consumer with
@@ -313,8 +311,6 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
     return TunerSnapshot(
         available=True,
         reason=None,
-        # The last reading taken, not a blend: `reading_for` is what dates a figure.
-        reading=readings[-1][1] if readings else None,
         amenities=tuple(amenities),
         maintenance=maintenance,
         build_options=tuple(build_options),

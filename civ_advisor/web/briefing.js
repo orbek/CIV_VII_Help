@@ -199,15 +199,29 @@
 
     function label(read) {
       /* Every figure is labelled with the turn and instant THAT query produced, never
-         with the snapshot's log-derived turn: the socket reads the live game, which
-         can be ahead of the last complete log turn. */
-      return read ? "read live — turn " + read.turn + " (" + read.read_at + ")" : null;
+         with the snapshot's log-derived turn -- and with BOTH turns side by side,
+         because the socket reads the live game while the logs are complete only
+         through the last finished turn. The gap is the live_reading/log distinction
+         made concrete, so it is stated rather than hidden or reconciled. */
+      if (!read) return null;
+      var note = "read live — turn " + read.turn + " (" + read.read_at + ")";
+      if (read.logs_complete_through !== null && read.logs_complete_through !== undefined) {
+        note += ", logs complete through " + read.logs_complete_through;
+      }
+      return note;
     }
 
     function section(figures, reason, read) {
-      if (!live) return { figures: [], note: null, absent: (tuner && tuner.reason) || null };
-      if (!figures.length) return { figures: [], note: null, absent: reason || null };
-      return { figures: figures, note: label(read), absent: null };
+      if (!live) return { figures: [], note: null, absent: (tuner && tuner.reason) || null,
+                          disagreement: null };
+      if (!figures.length) return { figures: [], note: null, absent: reason || null,
+                                    disagreement: null };
+      /* A reading BEHIND the logs cannot happen in one continuous match, so it is
+         reported as the event it is -- a reload, another game on the socket, or a
+         connection held across a session change -- rather than papered over by
+         preferring one of the two numbers. */
+      return { figures: figures, note: label(read), absent: null,
+               disagreement: (read && read.disagreement) || null };
     }
 
     var m = live ? (tuner.maintenance || null) : null;

@@ -387,6 +387,10 @@ td.behind { color: var(--brass); }
 .live-figure { margin-bottom: 1.2rem; }
 .live-figure-head { font-size: .95rem; font-weight: 600; margin: 0 0 .35rem; }
 .live-note { margin: .3rem 0 0; font-size: .85rem; opacity: .75; }
+/* A live reading dated BEHIND the logs: not a stale number to quietly re-date, but
+   evidence that two different games are being described. Stated, never reconciled. */
+.fact-disagree { margin: .35rem 0 0; font-size: .85rem; border-left: 3px solid currentColor;
+  padding-left: .6rem; }
 
 /* Older generated prose, kept only as dated history. */
 .commentary-dated { margin-top: 1rem; padding: .75rem .9rem; border-left: 3px solid var(--muted, #8b8578);

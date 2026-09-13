@@ -278,7 +278,16 @@ def _rival_yields(context: DecisionContext, params: dict[str, str]) -> Resolutio
 
 def _defense(context: DecisionContext, params: dict[str, str]) -> Resolution:
     facts = context.defense_facts or evidence.defense_facts(context.ledger, context.state)
-    return Resolution(facts=tuple(f for f in facts if f.provenance is Provenance.ORACLE))
+    oracle = tuple(f for f in facts if f.provenance is Provenance.ORACLE)
+    if not oracle:
+        # The log was read and records nothing aimed at this player -- the ordinary case
+        # on most turns, and an ANSWER. Returning an empty resolution here made `fallback`
+        # reach CANNOT instead: "the advisor cannot see that", about a log it had just
+        # read and understood.
+        return Resolution(absence=Absence(
+            "defense.objectives", Unanswerable.ANSWERED_EMPTY,
+            "the AI's own logs record no attack objective against your tiles this turn"))
+    return Resolution(facts=oracle)
 
 
 def _brief(context: DecisionContext, params: dict[str, str]) -> Resolution:
@@ -296,7 +305,14 @@ def _brief(context: DecisionContext, params: dict[str, str]) -> Resolution:
 
 
 def _reports(context: DecisionContext, params: dict[str, str]) -> Resolution:
-    return Resolution(facts=tuple(r.fact() for r in context.player.reports))
+    facts = tuple(r.fact() for r in context.player.reports)
+    if not facts:
+        # Nothing to report is not an inability to see: the advisor holds the player's
+        # reports itself and knows there are none.
+        return Resolution(absence=Absence(
+            "player.reports", Unanswerable.ANSWERED_EMPTY,
+            "you have reported nothing to the advisor this sitting"))
+    return Resolution(facts=facts)
 
 
 # ---- live tuner resolvers (Task 7) -----------------------------------------------------

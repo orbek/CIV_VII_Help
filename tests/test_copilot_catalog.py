@@ -1,9 +1,12 @@
 """The catalog is the allowlist: a question not written here cannot be asked, a
 parameter outside its set never reaches a resolver, and every absence names its cause."""
 import re
+from dataclasses import replace
 
 import pytest
 
+from civ_advisor.copilot import conversation as conv
+from civ_advisor.decisions import evidence as catalog_evidence
 from civ_advisor.copilot.catalog import (
     CATALOG, TYPE_KEY, Absence, ParamKind, Unanswerable, _not_logged, ask, choices,
 )
@@ -142,3 +145,31 @@ def test_the_brief_resolves_to_the_facts_the_cards_cite(civ7_context):
 def test_player_reports_are_their_own_kind(civ7_context):
     got = ask(civ7_context, "player.reports", {})
     assert all(f.source_kind is SourceKind.PLAYER_REPORT for f in got.facts)
+
+
+# ---- an empty result is a fact, not an inability to see ---------------------------
+
+def _player_sentence(context, question_id: str, params: dict | None = None) -> str:
+    """The sentence the page shows for one question, exactly as a player reads it."""
+    request = conv.ChatRequest(
+        text="", session="s", epoch=1, snapshot_revision=1, context_revision=1,
+        evidence_mode=context.evidence_mode, turn=1, display_name="Civilization",
+        context=context)
+    resolved = conv.resolve(request, (conv.Selected(question_id, params or {}),))
+    return conv.fallback(request, resolved).text
+
+
+def test_having_reported_nothing_says_so_rather_than_cannot_see(civ7_context):
+    text = _player_sentence(civ7_context, "player.reports")
+    assert conv.CANNOT not in text
+    assert "reported nothing" in text
+
+
+def test_no_recorded_objective_says_so_rather_than_cannot_see(civ7_context, monkeypatch):
+    """A game whose tactical log records nothing against the player -- the ordinary case
+    for most turns. The advisor SAW the log and it holds nothing; that is an answer."""
+    monkeypatch.setattr(catalog_evidence, "defense_facts", lambda *a, **k: ())
+    context = replace(civ7_context, defense_facts=())
+    text = _player_sentence(context, "defense.objectives")
+    assert conv.CANNOT not in text
+    assert "record no attack objective" in text

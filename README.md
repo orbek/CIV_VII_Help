@@ -40,6 +40,67 @@ model you just pulled, name it on the command line:
 Open http://127.0.0.1:8765 on your second screen and play. The page updates
 by itself about a second after the game finishes writing a turn.
 
+### Which game, and where its logs are
+
+`auto` — the default — decides from the games' own gameplay logs. It `stat()`s
+only the files each game is known to write, ignoring the engine and diagnostic
+logs both games rewrite merely on launch, and picks whichever wrote inside the
+last ten minutes. It does not guess: if both games are quiet it says so rather
+than choosing the less stale one, and if you pin a game from the header it tells
+you when detection disagrees.
+
+| Game | Default log directory |
+| --- | --- |
+| Civilization VI | `~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid Meier's Civilization VI/Logs` |
+| Civilization VII | `~/Library/Application Support/Civilization VII/Logs` |
+
+`--logs-dir PATH` overrides one of them and requires `--game`, because a path
+does not say which game wrote it. Both directories are opened read-only and
+nothing is ever written under them.
+
+### Playing Civilization VI
+
+There is nothing to install, enable or configure in the game. Civ VI writes its
+gameplay CSVs on its own — no mod, no FireTuner, no `AppOptions.txt` change.
+Start the advisor and play:
+
+    uv run civ-advisor
+
+It picks Civ VI up the first time the game writes a turn. Until then the header
+names which game it is waiting on and how long ago each one last wrote. To skip
+the wait and pin the game from the start:
+
+    uv run civ-advisor --game civ6
+
+Two things work differently from Civ VII, both because **Civ VI never deletes
+its logs**:
+
+- **Every past game is still in the file.** The CSVs are appended to across
+  every match you have ever played, so each reader takes only the latest game's
+  segment and ignores the turns above it. A file whose boundary cannot be found
+  is reported as unreadable rather than quietly mixed into this game.
+- **Archiving is a convenience, not the only copy.** Civ VII empties `Logs/` on
+  every launch, which is why the advisor mirrors it (see [The game deletes its
+  logs](#the-game-deletes-its-logs)). Civ VI does not, so `--no-archive` costs
+  you nothing there.
+
+What Civ VI cannot report is stated on the page rather than left blank: it
+writes no amenities log, no maintenance breakdown, no record of a signed peace
+deal, no combat odds, and nothing saying which victory a rival is pursuing —
+`AI_Victories.csv` records era and posture strategies, which is a different
+thing. Those panels say the game writes no such log; they never show a zero. In
+exchange Civ VI exposes four things Civ VII does not — each AI's combat desire,
+its standing diplomatic grievances, and its scored research and civic
+preferences. All four are AI-internal, so all four are Oracle.
+
+If `Logs/` holds only engine logs after you have played a turn: check that the
+path above is the one your install actually uses (Steam, Epic and the Mac App
+Store put user data in different places), and that the turn was played rather
+than watched from the main menu. One caveat on "no configuration" — the machine
+this was verified on has `EnableDebugMenu 1` in `AppOptions.txt`, and no machine
+with it at `0` has been tested. That is the first line to compare if the CSVs
+never appear.
+
 ## Before you end this turn
 
 The top of the page answers four questions in order.
@@ -295,11 +356,13 @@ The current mechanics review and correction rationale are in
     uv run pytest
 
 The fixtures in `tests/fixtures/logs_82turns/` and `tests/fixtures/logs_v2/`
-are snapshots of real 82-turn and 100-turn sessions, so the whole pipeline is
-exercised against genuine Civ VII output. Try the dashboard against the newer
-fixture without the game running:
+are snapshots of real 82-turn and 100-turn sessions, and
+`tests/fixtures/logs_civ6/` is a real turn-53 Civ VI capture, so the whole
+pipeline is exercised against genuine output from both games. Try the dashboard
+against either without the game running:
 
     uv run civ-advisor --logs-dir tests/fixtures/logs_v2 --game civ7 --no-archive
+    uv run civ-advisor --logs-dir tests/fixtures/logs_civ6 --game civ6 --no-archive
 
 The dashboard's own rules — which response may paint, how coverage is worded,
 how decisions group, when generated prose may be shown — are executed under

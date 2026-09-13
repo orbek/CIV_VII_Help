@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **Task 1 runs first and its result gates Tasks 9–11.** Nothing about acting is implemented until `docs/research/2026-09-13-civ6-tuner-write-spike.md` exists and names an outcome A–F from spec §6. Tasks 9–11 each open by stating which outcome they assume; if the recorded outcome is B, C or F, Tasks 9–11 are **not performed** and Task 8's proposal card renders with no confirm button.
+- **Task 1 runs first and its result gates Tasks 10–12.** Nothing about acting is implemented until `docs/research/2026-09-13-civ6-tuner-write-spike.md` exists and names an outcome A–F from spec §6. Tasks 10–12 each open by stating which outcome they assume; if the recorded outcome is B, C or F, Tasks 10–12 are **not performed** and Task 9's proposal card renders with no confirm button.
 - **The program is read-only with respect to both games' directories.** It never writes `AppOptions.txt`, never leaves a file under a game folder, never touches a save. Acting sends a command into a running game over a socket the player opened; it writes no file of the game's. The journal lives under `~/.civ-advisor/<game>/`.
 - **The model never writes SQL and never writes Lua.** It names a catalog question or a catalog operation and supplies parameter values. Every parameter is validated against a set the program computed (`YIELD_STATS`, this snapshot's city names, `RULE_PARAMETERS`) or a regex for a bound SQL value. No player text is ever a parameter.
 - **Every number in generated prose must appear in a cited fact** — `value`, `observed_turn`, or a numeral in `note` — or the prose is rejected and the deterministic answer is shown. Spec §4.3 is the definition; `copilot/grounding.py:check` is the implementation; `questions.validate` and `conversation.validate_answer` both call it.
@@ -26,7 +26,7 @@
 - **Stage only your own files, by explicit path.** Never `git add -A`. `docs/` is gitignored but tracked: documentation commits use `git add -f`.
 - **The default test suite stays offline and fast.** Anything needing a running game goes in `tests/live/`. The acting live test additionally requires `CIV_ADVISOR_LIVE_ACT=1`.
 - Python 3.12. `filterwarnings = ["error", ...]` is in force.
-- **A live game on this machine breaks four existing tests.** `tests/test_api.py::test_the_watcher_keeps_working_after_pinning_via_post` and three in `tests/test_tuner_store.py` assume port 4318 is closed. On 2026-09-13 a Civ VI with the tuner on was running while the suite ran, and those four failed with `NOT_ANSWERING` where they expected `NOT_ENABLED`. That is the defect Task 2 fixes: those tests infer NOT_ENABLED from a refusal exactly as the client did. Until Task 2 lands, run the suite with the game closed when checking "all green".
+- **No default-suite test may depend on whether port 4318 is listening.** Two shipped tests do — `tests/test_api.py::test_a_capability_gap_coexists_with_the_real_data_it_does_not_gate` and `tests/test_tuner_store.py::test_a_game_that_has_a_socket_is_still_told_the_socket_is_off` — and fail with `NOT_ANSWERING` where they expect `NOT_ENABLED` whenever a Civ VI with the tuner on is open (measured 2026-09-13: exactly these two, on the current tree). Commit `1e78a2f` isolated both with `tests/conftest.py:unreachable_tuner`, which points the profile's tuner at port 1; Task 2 must keep that isolation honest by giving the helper an `AppOptions.txt` saying `EnableTuner 0`, or a refusal on port 1 becomes `UNESTABLISHED` and the store test fails again. Never fix such a test by skipping when a socket is found.
 
 ---
 
@@ -40,7 +40,7 @@
 
 **Interfaces:**
 - Consumes: `civ_advisor.tuner.protocol` (`frame`, `consume`, `output_text`, `parse_states`, `TAG_COMMAND`, `TAG_HANDSHAKE`).
-- Produces: a findings document naming one outcome A–F, and the raw captures Tasks 6 and 9 parse.
+- Produces: a findings document naming one outcome A–F, and the raw captures Tasks 7 and 10 parse.
 
 This script is the ONE place outside the package that sends Lua it composed itself, and it is never imported by `civ_advisor`. It exists to answer a question, not to become a feature: after it runs, the answer lives in the findings document and the captures, and the script is kept only so the experiment is repeatable when the game is patched.
 
@@ -90,7 +90,7 @@ SENTINEL = "---SPIKE-END---"
 FIXTURES = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "tuner"
 
 # Read this poll's cities, their ids, and every building each may build, with the
-# hash the operation needs. This is the query Task 6 promotes into the catalog as
+# hash the operation needs. This is the query Task 7 promotes into the catalog as
 # `build_options_ids`; its reply here becomes that task's fixture.
 LUA_OPTIONS_IDS = (
     'print("turn", Game.GetCurrentGameTurn()) '
@@ -336,7 +336,7 @@ git add -f docs/research/2026-09-13-civ6-tuner-write-spike.md
 git commit -m "Try one reversible write through the tuner, and record what the game did"
 ```
 
-**Decision gate.** Read the outcome. Outcomes A, D and E: Tasks 9–11 are performed, each adjusted as its opening paragraph says. Outcomes B, C and F: Tasks 9–11 are skipped, Task 8 renders the proposal card without a confirm button, and Task 11's README section is written in the past tense about what was tried.
+**Decision gate.** Read the outcome. Outcomes A, D and E: Tasks 10–12 are performed, each adjusted as its opening paragraph says. Outcomes B, C and F: Tasks 10–12 are skipped, Task 9 renders the proposal card without a confirm button, and Task 12's README section is written in the past tense about what was tried.
 
 ---
 
@@ -568,6 +568,8 @@ In `civ_advisor/tuner/client.py`, `open_tuner` gains `app_options: Path | None =
         return tuner_unestablished(detail)
 ```
 
+In `tests/conftest.py`, `unreachable_tuner` (landed in `1e78a2f`) must now also pass `app_options=` a temporary file saying `[Debug]\nEnableTuner 0\n` — write it once under `tempfile.mkdtemp()` at import — so a refusal on port 1 is ESTABLISHED as off and the two tests it isolates keep asserting `NOT_ENABLED` for the right reason. Add a sibling `unreachable_tuner_enabled(profile)` with a file saying `1`, for the `NOT_ANSWERING` case.
+
 In `civ_advisor/games/civ6/__init__.py`, the profile's factory becomes `tuner=lambda: open_tuner(app_options=DEFAULT_APP_OPTIONS)` (a named function `_open_civ6_tuner` rather than a lambda, with a docstring saying the path is the game's own default directory and is NOT derived from `--logs-dir`, which points at logs and says nothing about where the game is). `TUNER_OFF` keeps its text: it is now asserted only when the file says 0.
 
 In `civ_advisor/web/briefing.js`, wherever `unavailable` is mapped to a notice (the tuner-off cases in `tunerEconomy` and `capabilityNotices`), add the `unestablished` cause with the reason text passed through, and make sure `not_answering` no longer renders any "set EnableTuner" hint of its own — the server's reason is the sentence to show.
@@ -590,7 +592,124 @@ git commit -m "Read whether the tuner is enabled instead of inferring it from a 
 
 ---
 
-### Task 3: The number rule
+### Task 3: A single refused connection is not evidence — retry, bounded, before reading the file
+
+**Files:**
+- Modify: `civ_advisor/tuner/client.py`
+- Test: `tests/test_tuner_client.py` (extend)
+
+**Interfaces:**
+- Consumes: Task 2's `open_tuner(port, timeout, app_options)`.
+- Produces: `CONNECT_ATTEMPTS = 3`, `CONNECT_RETRY_SECONDS = 0.25`, `open_tuner(..., attempts=CONNECT_ATTEMPTS, retry_seconds=CONNECT_RETRY_SECONDS)`.
+
+Measured on 2026-09-13: 8 of 8 connections succeeded against a stable loaded match; during menu and load transitions the listener cycles and a connection is refused, and a reconnect 0.2 s later succeeded. So one refusal says nothing, and a bounded retry — under a second in total, because the poll runs every second — separates a cycling listener from a closed one before the file is consulted.
+
+- [ ] **Step 1: Write the failing tests**
+
+Extend `tests/test_tuner_client.py`:
+
+```python
+def test_a_refusal_is_retried_a_bounded_number_of_times_before_being_believed(monkeypatch):
+    import civ_advisor.tuner.client as client_mod
+    calls = []
+
+    def refusing(address, timeout):
+        calls.append(address)
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(client_mod.socket, "create_connection", refusing)
+    monkeypatch.setattr(client_mod.time, "sleep", lambda s: None)
+    client_mod.open_tuner(port=1, timeout=0.5)
+    assert len(calls) == client_mod.CONNECT_ATTEMPTS
+
+
+def test_a_listener_that_answers_on_the_second_try_is_a_live_tuner(monkeypatch):
+    """The menu-transition case: refused once, then up."""
+    game = FakeGame(replies())
+    try:
+        import civ_advisor.tuner.client as client_mod
+        real = client_mod.socket.create_connection
+        state = {"n": 0}
+
+        def flaky(address, timeout):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise ConnectionRefusedError
+            return real(address, timeout=timeout)
+
+        monkeypatch.setattr(client_mod.socket, "create_connection", flaky)
+        t = client_mod.open_tuner(port=game.port, timeout=3.0, retry_seconds=0)
+        assert t.available is True
+        t.close()
+    finally:
+        game.close()
+
+
+def test_the_retry_budget_stays_under_one_poll():
+    from civ_advisor.tuner.client import CONNECT_ATTEMPTS, CONNECT_RETRY_SECONDS
+    assert (CONNECT_ATTEMPTS - 1) * CONNECT_RETRY_SECONDS < 1.0
+```
+
+- [ ] **Step 2: Run to verify failure**
+
+Run: `uv run pytest tests/test_tuner_client.py -v -k "retried or second_try or budget"`
+Expected: FAIL — `CONNECT_ATTEMPTS` does not exist; the refusing fake is called once.
+
+- [ ] **Step 3: Implement**
+
+In `civ_advisor/tuner/client.py`:
+
+```python
+# A refused connection is ONE observation. Measured 2026-09-13: 8/8 connections succeed
+# against a loaded match, and the listener cycles at the main menu and during loads, so
+# a refusal is retried -- bounded to well under the one-second poll -- before anything
+# is concluded from it. What IS concluded afterwards comes from AppOptions.txt (Task 2),
+# not from the refusals.
+CONNECT_ATTEMPTS = 3
+CONNECT_RETRY_SECONDS = 0.25
+```
+
+and in `open_tuner`, replace the single `create_connection` with:
+
+```python
+    sock = None
+    for attempt in range(attempts):
+        try:
+            sock = socket.create_connection((HOST, port), timeout=timeout)
+            break
+        except (OSError, OverflowError, TypeError, ValueError):
+            if attempt + 1 < attempts:
+                time.sleep(retry_seconds)
+    if sock is None:
+        # Every attempt was refused. Which of three things that means is READ from the
+        # file that enables the tuner (Task 2); the refusals themselves decide nothing.
+        if app_options is None:
+            return tuner_unestablished("no AppOptions.txt path was supplied for this game")
+        flag, detail = read_enable_tuner(app_options)
+        if flag is TunerFlag.ON:
+            return TUNER_NOT_ANSWERING_ENABLED
+        if flag is TunerFlag.OFF:
+            return TUNER_OFF
+        return tuner_unestablished(detail)
+```
+
+with the signature `open_tuner(port: int = PORT, timeout: float = 3.0, app_options: Path | None = None, *, attempts: int = CONNECT_ATTEMPTS, retry_seconds: float = CONNECT_RETRY_SECONDS)`. `TUNER_NOT_ANSWERING_ENABLED`'s sentence (Task 2) already names the main menu; add *"after three attempts"* so the player knows it was not one unlucky moment.
+
+- [ ] **Step 4: Run to verify pass, then the whole suite**
+
+Run: `uv run pytest tests/test_tuner_client.py -v && uv run pytest -q`
+Expected: PASS, 3 new tests. `test_a_closed_port_is_reported_as_not_enabled` still completes quickly: three refusals to port 1 with 0.25 s between them is half a second.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add civ_advisor/tuner/client.py tests/test_tuner_client.py
+git commit -m "Retry a refused tuner connection briefly before concluding anything from it"
+```
+
+---
+
+### Task 4: The number rule
 
 **Files:**
 - Create: `civ_advisor/copilot/__init__.py`
@@ -711,6 +830,27 @@ def test_a_string_value_is_not_a_number_source():
     assert not got.ok and got.ungrounded == ("1",)
 
 
+def test_a_player_reported_figure_is_admitted_when_attributed():
+    facts = FACTS + [{"id": "report.turns", "kind": "player_report", "value": 8, "unit": "turns",
+                      "observed_turn": 59, "note": None}]
+    assert check("The 8 turns you reported on turn 59 make this the quicker option.",
+                 cited("report.turns"), facts).ok
+
+
+def test_a_player_reported_figure_stated_as_the_games_is_rejected():
+    facts = FACTS + [{"id": "report.turns", "kind": "player_report", "value": 8, "unit": "turns",
+                      "observed_turn": 59, "note": None}]
+    got = check("The Granary takes 8 turns here.", cited("report.turns"), facts)
+    assert not got.ok and got.unattributed == ("8",)
+
+
+def test_a_figure_the_game_also_states_needs_no_attribution():
+    # Grounded by a log fact as well as a report: the game did say it.
+    facts = FACTS + [{"id": "report.net", "kind": "player_report", "value": 7, "unit": "per turn",
+                      "observed_turn": 59, "note": None}]
+    assert check("Your net gold is 7 per turn.", cited("gold.net.59", "report.net"), facts).ok
+
+
 def test_every_ungrounded_numeral_is_reported_once_in_order():
     got = check("First 9, then 9 again, then 11.", cited("gold.net.59"), FACTS)
     assert got.ungrounded == ("9", "11")
@@ -801,17 +941,29 @@ class Numeral:
     percent: bool
 
 
+# How prose must own up to a figure the PLAYER supplied. A player report is citable --
+# it is dated, labelled and stored -- but the game did not say it, and the sentence
+# must not read as though it did. Lower-cased comparison; the phrases are fixed.
+ATTRIBUTION = ("you reported", "your report", "you told the advisor", "you entered", "you said")
+
+
 @dataclass(frozen=True)
 class Grounding:
     ok: bool
-    ungrounded: tuple[str, ...]   # each offending numeral's text, once, in order
+    ungrounded: tuple[str, ...] = ()     # numerals no cited fact carries, once, in order
+    unattributed: tuple[str, ...] = ()   # numerals grounded ONLY by a player report, unattributed
 
     def describe(self) -> str:
         if self.ok:
             return ""
-        listed = ", ".join(self.ungrounded)
-        return (f"the answer contains {listed}, which no cited fact carries; a number the "
-                "evidence does not state is not shown")
+        parts = []
+        if self.ungrounded:
+            parts.append(f"the answer contains {', '.join(self.ungrounded)}, which no cited "
+                         "fact carries")
+        if self.unattributed:
+            parts.append(f"the answer states {', '.join(self.unattributed)} as though the game "
+                         "said it, when only your own report does; it must say you reported it")
+        return "; ".join(parts) + " -- a number the evidence does not state is not shown"
 
 
 def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, ...]:
@@ -841,6 +993,7 @@ def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, .
 class Admitted:
     value: Decimal
     ratio: bool      # may also be written as a percentage
+    player: bool = False   # carried by a player_report fact
 
 
 def _decimal(value) -> Decimal | None:
@@ -856,14 +1009,15 @@ def admitted(facts: Iterable[Mapping]) -> tuple[Admitted, ...]:
     out: list[Admitted] = []
     for fact in facts:
         ratio = fact.get("unit") == "ratio"
+        player = fact.get("kind") == "player_report"
         value = _decimal(fact.get("value"))
         if value is not None:
-            out.append(Admitted(value, ratio))
+            out.append(Admitted(value, ratio, player))
         turn = _decimal(fact.get("observed_turn"))
         if turn is not None:
-            out.append(Admitted(turn, False))
+            out.append(Admitted(turn, False, player))
         for n in numerals_in(str(fact.get("note") or "")):
-            out.append(Admitted(n.value, False))
+            out.append(Admitted(n.value, False, player))
     return tuple(out)
 
 
@@ -884,16 +1038,25 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping]) -> Grou
     `cited_ids` may ground a number."""
     cited = set(cited_ids)
     pool = admitted(f for f in facts if f.get("id") in cited)
+    attributed = any(phrase in text.lower() for phrase in ATTRIBUTION)
     ungrounded: list[str] = []
+    unattributed: list[str] = []
     for numeral in numerals_in(text, strip_ids=cited):
-        if not any(_matches(numeral, c) for c in pool):
+        matches = [c for c in pool if _matches(numeral, c)]
+        if not matches:
             if numeral.text not in ungrounded:
                 ungrounded.append(numeral.text)
-    return Grounding(ok=not ungrounded, ungrounded=tuple(ungrounded))
+        elif all(c.player for c in matches) and not attributed:
+            # Only the player's own report carries this number. Spec 4.3 rule 6: the
+            # prose must say so, or it is stating the player's figure as the game's.
+            if numeral.text not in unattributed:
+                unattributed.append(numeral.text)
+    return Grounding(ok=not ungrounded and not unattributed, ungrounded=tuple(ungrounded),
+                     unattributed=tuple(unattributed))
 
 
-__all__ = ["Admitted", "Grounding", "NUMBER_WORDS", "Numeral", "admitted", "check",
-           "numerals_in"]
+__all__ = ["ATTRIBUTION", "Admitted", "Grounding", "NUMBER_WORDS", "Numeral", "admitted",
+           "check", "numerals_in"]
 ```
 
 In `civ_advisor/llm/questions.py`, add `from civ_advisor.copilot import grounding` and, in `validate`, after the URL check and before constructing `Answer`:
@@ -912,7 +1075,7 @@ Update the module docstring's list of three guarantees to four, adding: "**Every
 - [ ] **Step 4: Run to verify pass, then the whole suite**
 
 Run: `uv run pytest tests/test_copilot_grounding.py tests/test_questions.py -v && uv run pytest -q`
-Expected: PASS, 18 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
+Expected: PASS, 21 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
 
 - [ ] **Step 5: Commit**
 
@@ -924,7 +1087,7 @@ git commit -m "Reject generated prose whose numbers no cited fact carries"
 
 ---
 
-### Task 4: The question catalog, and absence with its cause
+### Task 5: The question catalog, and absence with its cause
 
 **Files:**
 - Create: `civ_advisor/copilot/catalog.py`
@@ -935,7 +1098,7 @@ git commit -m "Reject generated prose whose numbers no cited fact carries"
 - Consumes: `DecisionContext`, the `evidence.py` builders, `GameProfile.reason`, `TunerSnapshot`, `RulesetProvider`.
 - Produces: `Unanswerable` (StrEnum), `Absence`, `ParamKind`, `Param`, `Question`, `Resolution`, `CATALOG: dict[str, Question]`, `choices(context) -> dict[ParamKind, tuple[str, ...]]`, `ask(context, question_id, params) -> Resolution`, `TYPE_KEY`.
 
-This task holds the log-backed questions and the machinery. Ruleset questions arrive in Task 5 and tuner questions in Task 6, each by adding entries to `CATALOG` and nothing else.
+This task holds the log-backed questions and the machinery. Ruleset questions arrive in Task 6 and tuner questions in Task 7, each by adding entries to `CATALOG` and nothing else.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1140,7 +1303,7 @@ class ParamKind(StrEnum):
     STAT = "stat"                      # one of YIELD_STATS
     CITY = "city"                      # a settlement name in this snapshot or reading
     TYPE_KEY = "type_key"              # a game type key, bound as a SQL value
-    PARAMETER_NAME = "parameter_name"  # one of RULE_PARAMETERS (Task 5)
+    PARAMETER_NAME = "parameter_name"  # one of RULE_PARAMETERS (Task 6)
 
 
 @dataclass(frozen=True)
@@ -1188,7 +1351,7 @@ def _city_names(context: DecisionContext) -> tuple[str, ...]:
 
 def choices(context: DecisionContext) -> dict[ParamKind, tuple[str, ...]]:
     """The valid values for each enumerable parameter kind, from THIS snapshot."""
-    from civ_advisor.ruleset.civ6 import RULE_PARAMETERS  # Task 5; empty set until then
+    from civ_advisor.ruleset.civ6 import RULE_PARAMETERS  # Task 6; empty set until then
     return {
         ParamKind.STAT: evidence.YIELD_STATS,
         ParamKind.CITY: _city_names(context),
@@ -1374,7 +1537,7 @@ __all__ = ["Absence", "CATALOG", "Param", "ParamKind", "Question", "Resolution",
 
 `Catalog.game`: `load_catalog(..., game=...)` in `civ_advisor/knowledge/catalog.py` receives the game id. If `Catalog` does not already keep it as an attribute, add `game: str = "civ7"` to the `Catalog` dataclass and set it in `load_catalog`; the default keeps every existing construction working.
 
-Until Task 5 lands, add to `civ_advisor/ruleset/civ6.py`: `RULE_PARAMETERS: frozenset[str] = frozenset()` with the comment `# Filled by the copilot plan's Task 5; empty means no GlobalParameters row may be read.`
+Until Task 6 lands, add to `civ_advisor/ruleset/civ6.py`: `RULE_PARAMETERS: frozenset[str] = frozenset()` with the comment `# Filled by the copilot plan's Task 6; empty means no GlobalParameters row may be read.`
 
 - [ ] **Step 5: Run to verify pass, then the whole suite**
 
@@ -1391,7 +1554,7 @@ git commit -m "Fix the set of questions the copilot may ask, and name why one ca
 
 ---
 
-### Task 5: Grow the ruleset allowlist, table by table, and ask it
+### Task 6: Grow the ruleset allowlist, table by table, and ask it
 
 **Files:**
 - Modify: `civ_advisor/ruleset/base.py`
@@ -1914,7 +2077,7 @@ and entries, each `verified_on="2026-09-13"`:
                  params=(Param("name", ParamKind.PARAMETER_NAME, "one of the fixed names"),)),
 ```
 
-Remove the placeholder `RULE_PARAMETERS = frozenset()` Task 4 left, and the local import inside `choices` becomes a module-level `from civ_advisor.ruleset.civ6 import RULE_PARAMETERS`.
+Remove the placeholder `RULE_PARAMETERS = frozenset()` Task 5 left, and the local import inside `choices` becomes a module-level `from civ_advisor.ruleset.civ6 import RULE_PARAMETERS`.
 
 - [ ] **Step 7: Run to verify pass, then the whole suite**
 
@@ -1931,7 +2094,7 @@ git commit -m "Read rule constants, improvements, policies, governments and reso
 
 ---
 
-### Task 6: Ask the tuner through the catalog, and read city ids and item hashes
+### Task 7: Ask the tuner through the catalog, and read city ids and item hashes
 
 **Files:**
 - Modify: `civ_advisor/tuner/base.py`
@@ -1945,7 +2108,7 @@ git commit -m "Read rule constants, improvements, policies, governments and reso
 - Consumes: `tests/fixtures/tuner/query_buildoptions_ids.bin` from Task 1.
 - Produces: `BuildOptionId`, `SettlementOptionIds`, `TunerProvider.build_option_ids()`, `TunerSnapshot.build_option_ids`, catalog `build_options_ids`, questions `settlement.amenities`, `settlement.build_options`, `empire.upkeep`.
 
-`build_options` is left exactly as it is, with its fixture. `build_option_ids` is a second query that carries what acting needs — the city's id and each item's hash — and whether an item needs a plot. Kept separate so the existing parser and capture stay untouched, and so a run that never acts still reads it: the ids are what let a catalog `city` parameter be mapped to an integer the program read from the game.
+`build_options` is left exactly as it is, with its fixture. `build_option_ids` is a second query that carries what acting needs — the city's id and each item's hash — and whether an item needs a plot. Kept separate so the existing parser and capture stay untouched. It is asked **only on a run started with `--allow-actions`**: a normal advisory run has no use for a city id or a hash, and its poll costs one query fewer. The catalog `city` parameter is validated against names, which `amenities` and `build_options` already carry.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2081,7 +2244,7 @@ class SettlementOptionIds:
         return next((o for o in self.options if o.item == item), None)
 ```
 
-Add `def build_option_ids(self) -> tuple[SettlementOptionIds, ...]: ...` to `TunerProvider`, returning `()` on `NullTuner`; add `build_option_ids: tuple[SettlementOptionIds, ...] = ()` to `TunerSnapshot`; in `capture`, ask it as a fourth `_ask(provider, "build_options_ids", provider.build_option_ids, ())` and include it in `absences`, `readings` and the returned snapshot. Export the two names.
+Add `def build_option_ids(self) -> tuple[SettlementOptionIds, ...]: ...` to `TunerProvider`, returning `()` on `NullTuner`; add `build_option_ids: tuple[SettlementOptionIds, ...] = ()` to `TunerSnapshot`. `capture` gains a keyword `acting: bool = False` and asks a fourth `_ask(provider, "build_options_ids", provider.build_option_ids, ())` **only when `acting` is true**, including it in `absences`, `readings` and the returned snapshot; with `acting` false the field stays `()` and no absence is recorded for it, because nothing was asked. `Store.__init__` gains `allow_actions: bool = False` (set by `create_app` from its own `allow_actions` in Task 11) and passes `acting=self.allow_actions` to `capture`. A test in `tests/test_tuner_store.py` asserts a store built without the flag never sends `build_options_ids` — by counting the fake game's `asked` commands. Export the two names.
 
 In `civ_advisor/tuner/queries.py`:
 
@@ -2180,12 +2343,12 @@ Entries:
                  params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),
 ```
 
-`_city_names` in Task 4 already includes cities from `tuner.amenities` and `tuner.build_options`; add `tuner.build_option_ids` to it too.
+`_city_names` in Task 5 already includes cities from `tuner.amenities` and `tuner.build_options`; add `tuner.build_option_ids` to it too.
 
 - [ ] **Step 5: Run to verify pass, then the whole suite**
 
 Run: `uv run pytest tests/test_tuner_queries.py tests/test_copilot_tuner_questions.py tests/test_tuner_base.py tests/test_tuner_client.py -v && uv run pytest -q`
-Expected: PASS — 3 new query tests, 6 question tests. The `FakeGame` in `tests/test_tuner_client.py` replies to any `InGame` command with `query_buildoptions.bin`; `capture` now sends a fourth query, so tests asserting the exact list of `asked` commands must include `build_options_ids`, and the fake's `InGame` reply for it will parse to `()` (its rows have 3 fields, not 6) — which `capture` records as an absence with the parser's reason, not as a failure.
+Expected: PASS — 3 new query tests, 6 question tests, and the store test above. The `FakeGame` in `tests/test_tuner_client.py` replies to any `InGame` command with `query_buildoptions.bin`; a store built with `allow_actions=True` sends the fourth query and the fake's reply parses to `()` (3 fields, not 6), which `capture` records as an absence with the parser's reason, not as a failure. A store built without the flag sends exactly the three queries it sends today.
 
 - [ ] **Step 6: Commit**
 
@@ -2198,7 +2361,7 @@ git commit -m "Let the copilot ask the tuner by name, and read the ids an operat
 
 ---
 
-### Task 7: The conversation — select, resolve, compose, validate, or fall back
+### Task 8: The conversation — select, resolve, compose, validate, or fall back
 
 **Files:**
 - Create: `civ_advisor/copilot/conversation.py`
@@ -2435,7 +2598,7 @@ class ChatRequest:
     display_name: str
     context: DecisionContext = field(compare=False, repr=False)
     history: tuple[Exchange, ...] = ()
-    acting: object | None = None     # an ActingOffer (Task 10) or None: no proposals
+    acting: object | None = None     # an ActingOffer (Task 11) or None: no proposals
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "text", (self.text or "").strip()[:ASK_LIMIT])
@@ -2473,7 +2636,7 @@ class ChatAnswer:
     unknowns: tuple[str, ...]
     generated: bool
     model: str = ""
-    proposal: dict | None = None     # Task 10
+    proposal: dict | None = None     # Task 11
 
 
 # ---- select ---------------------------------------------------------------------------
@@ -2611,7 +2774,9 @@ def compose_prompt(request: ChatRequest, resolved: Resolved) -> str:
         "facts and nothing else. Write quantities as digits. Every number you write must "
         "appear in a fact you cite -- its value, its turn, or its note. Do not compute, "
         "estimate or recall a figure; if a figure is not in the facts, say the advisor "
-        "cannot see it. Where `cannot_answer` lists something, say so plainly rather than "
+        "cannot see it. A fact whose kind is player_report is the player's own figure: when "
+        "you use it, say so -- 'the 8 turns you reported on turn 59' -- never as though the "
+        "game said it. Where `cannot_answer` lists something, say so plainly rather than "
         "filling it. The `earlier` exchanges are context only, from earlier turns: do not "
         "repeat a number from them. Do not write a URL.\n"
         "Return JSON only, shaped: {\"text\":\"...\",\"evidence_ids\":[\"...\"],"
@@ -2633,7 +2798,7 @@ def compose_schema(request: ChatRequest, resolved: Resolved) -> dict:
         "required": ["text", "evidence_ids", "unknowns"], "additionalProperties": False,
     }
     if request.acting is not None:
-        # Task 10 adds the `proposal` property here; without an acting offer the grammar
+        # Task 11 adds the `proposal` property here; without an acting offer the grammar
         # has no such field, so a normal run's model cannot propose anything.
         schema["properties"]["proposal"] = request.acting.schema()
     return schema
@@ -2665,7 +2830,7 @@ def validate_answer(request: ChatRequest, resolved: Resolved, data: dict) -> Cha
     unknowns = tuple(u for u in data.get("unknowns", []) if isinstance(u, str) and u.strip())
     proposal = None
     if request.acting is not None and isinstance(data.get("proposal"), dict):
-        proposal = request.acting.validate(data["proposal"], cited)     # Task 10
+        proposal = request.acting.validate(data["proposal"], cited)     # Task 11
     return ChatAnswer(text=text, evidence_ids=cited, unknowns=unknowns, generated=True,
                       proposal=proposal)
 
@@ -2729,7 +2894,7 @@ git commit -m "Answer the player in two grounded steps, or with the facts themse
 
 ---
 
-### Task 8: The worker, the endpoints, and the box on the page
+### Task 9: The worker, the endpoints, and the box on the page
 
 **Files:**
 - Create: `civ_advisor/copilot/worker.py`
@@ -2996,7 +3161,7 @@ class CopilotWorker:
 
 In `civ_advisor/api/app.py`:
 
-- `create_app` gains `copilot_worker: CopilotWorker | None = None` and `allow_actions: bool = False` (the flag is wired in Task 10; here it only gates the 403). Set `app.state.copilot_worker = copilot_worker`. Close it in `lifespan`'s `finally`.
+- `create_app` gains `copilot_worker: CopilotWorker | None = None` and `allow_actions: bool = False` (the flag is wired in Task 11; here it only gates the 403). Set `app.state.copilot_worker = copilot_worker`. Close it in `lifespan`'s `finally`.
 - Module-level `transcript = conv.Transcript()` inside `create_app` (one per app), and a helper:
 
 ```python
@@ -3089,7 +3254,7 @@ Endpoints:
                 status_code=403,
                 detail="this run was started without --allow-actions, so the advisor will not "
                        "send a command into the game; restart with the flag to enable acting")
-        raise HTTPException(status_code=501, detail="acting is not implemented in this run")  # Task 10 replaces
+        raise HTTPException(status_code=501, detail="acting is not implemented in this run")  # Task 11 replaces
 ```
 
 Imports: `import secrets`, `from datetime import UTC, datetime`, `from civ_advisor.copilot import catalog, conversation as conv`.
@@ -3154,9 +3319,9 @@ git commit -m "Put a grounded conversation beside the briefing"
 
 ---
 
-### Task 9: The operation catalog and the one object that can perform one — contingent on Task 1
+### Task 10: The operation catalog and the one object that can perform one — contingent on Task 1
 
-**Assumes Task 1 recorded outcome A, D or E.** If it recorded B, C or F, this task is not performed. Under D, `Outcome.APPLIED` is unreachable on the turn of sending and the docstring on `classify` says so. Under E, the `CanStartOperation` guard may be absent and `set_production` is limited to hashes present in this poll's `build_option_ids` reading — which Task 10 enforces regardless.
+**Assumes Task 1 recorded outcome A, D or E.** If it recorded B, C or F, this task is not performed. Under D, `Outcome.APPLIED` is unreachable on the turn of sending and the docstring on `classify` says so. Under E, the `CanStartOperation` guard may be absent and `set_production` is limited to hashes present in this poll's `build_option_ids` reading — which Task 11 enforces regardless.
 
 **Files:**
 - Create: `civ_advisor/tuner/commands.py`
@@ -3167,7 +3332,7 @@ git commit -m "Put a grounded conversation beside the briefing"
 - Consumes: `tests/fixtures/tuner/write_set_production.bin`, `write_readback.bin`, `write_revert.bin` from Task 1; `protocol`, `queries.looks_unreachable`.
 - Produces: `Command`, `COMMANDS`, `render(command_id, **ints) -> str`, `OutcomeKind`, `Outcome`, `classify(lines, requested_hash) -> Outcome`, `ActingTuner` with `perform(command_id, **ints) -> Outcome`, `open_acting_tuner(port, timeout) -> ActingTuner | NullTuner`.
 
-`Civ6Tuner` is untouched and still has no method that sends anything but a catalog query. `ActingTuner` is a separate class, constructed only by `open_acting_tuner`, which only Task 10's confirm path calls, which only runs under `--allow-actions`.
+`Civ6Tuner` is untouched and still has no method that sends anything but a catalog query. `ActingTuner` is a separate class, constructed only by `open_acting_tuner`, which only Task 11's confirm path calls, which only runs under `--allow-actions`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -3536,9 +3701,9 @@ git commit -m "Fix the one operation the advisor may perform, and read the game 
 
 ---
 
-### Task 10: Proposals, confirmation, the flag and the journal — contingent on Task 1
+### Task 11: Proposals, confirmation, the flag and the journal — contingent on Task 1
 
-**Assumes Task 1 recorded outcome A, D or E** and Task 9 is merged. Under E, `ActingOffer.validate` is the only guard against an illegal item and must not be weakened.
+**Assumes Task 1 recorded outcome A, D or E** and Task 10 is merged. Under E, `ActingOffer.validate` is the only guard against an illegal item and must not be weakened.
 
 **Files:**
 - Create: `civ_advisor/copilot/journal.py`
@@ -4006,7 +4171,7 @@ In `app.js`: render a proposal card under an answer that carries one (words, the
 - [ ] **Step 6: Run to verify pass, then everything**
 
 Run: `uv run pytest tests/test_copilot_actions.py tests/test_cli.py tests/test_web_briefing.py -v && uv run pytest -q`
-Expected: PASS, 11 action tests plus the CLI and briefing additions. Note the fixture the acting tests replay: `FakeGame` replies to every `InGame` command with the same bytes, so `write_set_production.bin`'s `after` hash is what `classify` sees regardless of the item asked for — the test therefore asserts the outcome is one of the three sent outcomes, and the unit tests in Task 9 pin which.
+Expected: PASS, 11 action tests plus the CLI and briefing additions. Note the fixture the acting tests replay: `FakeGame` replies to every `InGame` command with the same bytes, so `write_set_production.bin`'s `after` hash is what `classify` sees regardless of the item asked for — the test therefore asserts the outcome is one of the three sent outcomes, and the unit tests in Task 10 pin which.
 
 - [ ] **Step 7: Commit**
 
@@ -4019,7 +4184,7 @@ git commit -m "Let the player confirm one proposed operation at a time, off by d
 
 ---
 
-### Task 11: The acting live check, the README, and the ADR
+### Task 12: The acting live check, the README, and the ADR
 
 **Files:**
 - Create: `tests/live/test_acting_against_a_throwaway_save.py`
@@ -4084,7 +4249,7 @@ Under **Playing Civilization VI**, after the tuner subsection, add **Ask the adv
 - *Ask the advisor anything*: the box on the This turn tab; that the model chooses from a fixed list of questions and never writes a query; that every number in its prose must appear in a fact it cites or the prose is not shown and the evidence itself is; that every answer lists what it could not find and why (no such log, tuner off with the exact cause, no ruleset, no such row); that with `--no-llm` the box becomes buttons; and that Civ VI's ruleset questions now cover rule constants, improvements, policies (slot and unlock only — never the effect), governments and their slot counts, and resources.
 - *Letting the advisor act*: `--allow-actions`; that it is off by default and per run; that it needs the tuner on and a loopback `--host`; that the only operation is setting a city's production to something the game itself offered that city this turn; that each proposal shows the exact command, the evidence, and what the city is building now, and that you confirm each one individually; that the advisor cannot undo an action and can only propose the reverse; that the first action of a sitting asks you to confirm you have a save; where the journal is and what it records; the four outcomes and what `requested_unconfirmed` means; **and, plainly, that this sends commands into your running game over the same unauthenticated socket the tuner section already describes, and changes nothing about what that open port exposes to every local process.** Say that this program still never writes a file under either game's directories.
 
-Also update the *Asking about a decision* paragraph: the validation list now includes *every number in the prose must appear in a fact it cited*.
+Also update the *Asking about a decision* paragraph: the validation list now includes *every number in the prose must appear in a fact it cited, and a figure only you reported is attributed to you*. Retire the tuner subsection's **One thing is unverified** paragraph: reading the game's turn in the UI VM was verified against a loaded match on 2026-09-13 (`Game.GetCurrentGameTurn()` answered 49 in `InGame`, build options for two cities), so build options are dated by the game's own turn; replace it with one sentence saying so. Leave every statement that WRITING is unverified exactly as it stands unless Task 1 has run.
 
 - [ ] **Step 3: The ADR**
 
@@ -4104,7 +4269,7 @@ git commit -m "Say what the copilot can answer, what acting does, and what it ca
 
 ## Self-review notes
 
-- **Spec coverage:** §4.6 establishing absence → Task 2; §3 interaction → Tasks 7, 8; §4.1 catalog → Tasks 4, 5, 6; §4.2 allowlist growth → Task 5 (every table verified against the installed file on 2026-09-13, and re-verified by the real-file test); §4.3 number rule → Task 3, applied in Tasks 3 and 7; §4.4 sources distinct → `source_phrase` in Task 7 and the badges in Task 8; §4.5 absence kinds → Task 4's `Unanswerable`, exercised in Tasks 4, 5, 6; §5.1–5.8 acting → Tasks 9, 10; §5.7 saving → Task 10's `save_acknowledged`; §6 the spike → Task 1 and the decision gate; §8 honesty when off → Tasks 6, 8, 10; §9 security → the global constraints and Task 10's loopback refusal; §10 testing → each task; §11 scope → one operation, in `COMMANDS`.
-- **Type consistency:** `EvidenceFact` is the only fact type; `Absence` is the only absence type; `Resolution`/`Resolved` carry both; `ChatRequest.acting` is `ActingOffer | None` and is the single seam between conversation and acting, so Tasks 7 and 8 compile and pass with acting never built.
-- **Contingency:** Tasks 9–11 open by naming the outcome they assume. If Task 1 rules acting out, the deliverable is Tasks 3–8 plus Task 11's README in the past tense, and nothing in those tasks references a module that was not written.
-- **Known risks:** Task 9's Lua names `VALUE_EXCLUSIVE`, `CanStartOperation`, `FindID` and `GetCurrentProductionTypeHash`, none verified over the socket before Task 1 runs. Task 1's probe records which of them exist; if the game accepted a different insert mode, the constant in Task 9 is the one the findings document recorded, and the fixture `write_set_production.bin` is its reply. Task 6's parser expects six tab-separated fields from `build_options_ids`; if the spike found `RequiresPlacement` prints differently than `true`/`false`, the parser's comparison follows the capture. Four existing tests fail while a live game holds port 4318; Task 2 is the fix, and until it lands they are named in the global constraints.
+- **Spec coverage:** §4.6 establishing absence → Task 2 (the file) and Task 3 (the bounded retry); §10 isolation → landed as `1e78a2f`, kept honest by Task 2; §4.3 rule 6 (player figures attributed) → Task 4; §3 interaction → Tasks 8, 9; §4.1 catalog → Tasks 5, 6, 7; §4.2 allowlist growth → Task 6 (every table verified against the installed file on 2026-09-13, and re-verified by the real-file test); §4.3 number rule → Task 4, applied in Tasks 4 and 8; §4.4 sources distinct → `source_phrase` in Task 8 and the badges in Task 9; §4.5 absence kinds → Task 5's `Unanswerable`, exercised in Tasks 5, 6, 7; §5.1–5.8 acting → Tasks 10, 11; §5.7 saving → Task 11's `save_acknowledged`; §6 the spike → Task 1 and the decision gate; §8 honesty when off → Tasks 7, 9, 11; §9 security → the global constraints and Task 11's loopback refusal; §10 testing → each task; §11 scope → one operation, in `COMMANDS`.
+- **Type consistency:** `EvidenceFact` is the only fact type; `Absence` is the only absence type; `Resolution`/`Resolved` carry both; `ChatRequest.acting` is `ActingOffer | None` and is the single seam between conversation and acting, so Tasks 8 and 9 compile and pass with acting never built.
+- **Contingency:** Tasks 10–12 open by naming the outcome they assume. If Task 1 rules acting out, the deliverable is Tasks 4–9 plus Task 12's README in the past tense, and nothing in those tasks references a module that was not written.
+- **Known risks:** Task 10's Lua names `VALUE_EXCLUSIVE`, `CanStartOperation`, `FindID` and `GetCurrentProductionTypeHash`, none verified over the socket before Task 1 runs. Task 1's probe records which of them exist; if the game accepted a different insert mode, the constant in Task 10 is the one the findings document recorded, and the fixture `write_set_production.bin` is its reply. Task 7's parser expects six tab-separated fields from `build_options_ids`; if the spike found `RequiresPlacement` prints differently than `true`/`false`, the parser's comparison follows the capture. Two shipped tests failed while a live game held port 4318; `1e78a2f` isolated them and Task 2 removes the inference they shared with the client.

@@ -1,11 +1,14 @@
 """Does a grounded answer reach the page? Only the HTTP payload is proof."""
 import json
+import threading
 
 import pytest
 from fastapi.testclient import TestClient
 
 from civ_advisor.api.app import create_app
+from civ_advisor.copilot import conversation as conv
 from civ_advisor.copilot.worker import CopilotWorker
+from civ_advisor.llm.client import OllamaError
 from civ_advisor.games.civ7 import CIV7
 
 
@@ -114,3 +117,50 @@ def test_the_act_endpoint_is_refused_by_default(fixture_dir):
         r = c.post("/api/copilot/act", json={"proposal_id": "x"})
         assert r.status_code == 403
         assert "--allow-actions" in r.json()["detail"]
+
+
+# ---- the window while a generation runs ------------------------------------------
+#
+# Tested through the WORKER, because the defect lived only there: with --no-llm the
+# endpoint never builds one, which is why live testing never saw it.
+
+def test_the_deterministic_answer_is_on_screen_while_the_model_is_still_writing(fixture_dir):
+    """"generating" is shown under a label saying a model is writing an interpretation.
+    Underneath it the player must already be reading the resolved facts -- not "the
+    advisor cannot see that", which is a false statement about a question that has
+    been answered."""
+    release = threading.Event()
+
+    def compose(prompt):
+        assert release.wait(5), "the test never released the compose call"
+        facts = json.loads(prompt.split("\n", 2)[-1])["facts"]
+        turn = next(f for f in facts if f["id"].startswith("turn.analysis"))
+        return {"text": f"The logs are complete through turn {turn['value']}, and that is "
+                        "the turn this answer is about.", "evidence_ids": [turn["id"]],
+                "unknowns": []}
+
+    client = ScriptedClient({"questions": [{"id": "turn.analysis", "params": {}}],
+                             "cannot": ""}, compose)
+    with TestClient(app_with(fixture_dir, client)) as c:
+        body = c.post("/api/copilot/ask", json={"text": "what turn is it?"}).json()
+        try:
+            assert body["status"] == "generating"
+            assert conv.CANNOT not in body["answer"]["text"]
+            assert body["evidence"], "the resolved facts must already be on screen"
+            assert body["questions_asked"] == [{"id": "turn.analysis", "params": {}}]
+        finally:
+            release.set()
+        c.app.state.copilot_worker.wait_all(timeout=5)
+
+
+def test_a_selection_that_fails_says_so_rather_than_looking_unanswerable(fixture_dir):
+    class Failing:
+        model = "scripted"
+
+        def generate(self, prompt: str, *, schema: dict | None = None) -> str:
+            raise OllamaError("the model did not answer")
+
+    with TestClient(app_with(fixture_dir, Failing())) as c:
+        body = c.post("/api/copilot/ask", json={"text": "what turn is it?"}).json()
+        assert body["status"] == "rejected"
+        assert "the model did not answer" in body["rejection"]

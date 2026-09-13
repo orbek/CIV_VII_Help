@@ -222,6 +222,12 @@ class TunerSnapshot:
     # figure because each query asks the game its own turn and is answered by the
     # live game, not by the logs.
     readings: tuple[tuple[str, TunerReading], ...] = ()
+    # WHICH absence this is, beside the prose reason. The provider computes this on
+    # eight different paths and `capture` used to drop it, leaving every consumer with
+    # nothing but a sentence to guess from -- so a game with no socket at all read
+    # identically to a game whose socket is switched off, and only the second is
+    # something a player can act on.
+    unavailable: TunerUnavailable | None = None
 
     def absence(self, query_id: str) -> str | None:
         return next((why for q, why in self.absences if q == query_id), None)
@@ -231,7 +237,8 @@ class TunerSnapshot:
         return next((r for q, r in self.readings if q == query_id), None)
 
 
-TUNER_SNAPSHOT_OFF = TunerSnapshot(available=False, reason=TUNER_OFF.reason)
+TUNER_SNAPSHOT_OFF = TunerSnapshot(available=False, reason=TUNER_OFF.reason,
+                                   unavailable=TUNER_OFF.unavailable)
 
 
 def _ask(provider: TunerProvider, query_id: str, fn: Callable[[], object], empty: object):
@@ -266,7 +273,8 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
     must not cost the rebuild that is capturing it.
     """
     if not getattr(provider, "available", False):
-        return TunerSnapshot(available=False, reason=getattr(provider, "reason", None))
+        return TunerSnapshot(available=False, reason=getattr(provider, "reason", None),
+                             unavailable=getattr(provider, "unavailable", None))
 
     amenities, amenities_why, amenities_read = _ask(
         provider, "amenities", provider.amenities, ())

@@ -355,7 +355,9 @@ def tuner_to_dict(tuner: object | None) -> dict:
     Every reported figure carries the turn and instant it was read, and a figure the
     tuner could not supply says why -- "not enabled", "not answering" and "unreachable"
     are three different statements and only the browser needs to tell them apart, so
-    the reason travels rather than a bare `False`. `source` is always the literal
+    the reason travels rather than a bare `False`, and `unavailable` travels beside it:
+    the same distinction as a value a consumer can branch on, rather than one it would
+    have to infer by matching on prose. `source` is always the literal
     `"live_reading"`: this is the one channel that carries values the game never wrote
     to a log, and the browser must never mistake one for a player's own report.
 
@@ -365,6 +367,7 @@ def tuner_to_dict(tuner: object | None) -> dict:
     """
     available = bool(tuner is not None and getattr(tuner, "available", False))
     reason = getattr(tuner, "reason", None) if tuner is not None else None
+    unavailable = getattr(tuner, "unavailable", None) if tuner is not None else None
     reading = getattr(tuner, "reading", None) if available else None
     maintenance = getattr(tuner, "maintenance", None) if available else None
 
@@ -384,6 +387,7 @@ def tuner_to_dict(tuner: object | None) -> dict:
     return {
         "available": available,
         "reason": None if available else reason,
+        "unavailable": None if available or unavailable is None else str(unavailable.value),
         "source": "live_reading",
         "turn": reading.turn if reading is not None else None,
         "read_at": reading.read_at if reading is not None else None,

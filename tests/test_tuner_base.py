@@ -132,11 +132,24 @@ def test_capturing_an_unavailable_provider_carries_its_own_reason():
     assert snap.absences == ()
 
 
+def test_a_capture_keeps_which_absence_it_was_not_just_the_prose():
+    """The provider sets TunerUnavailable on eight paths; `capture` used to discard
+    every one of them, so no consumer could tell a socket that is off from a game that
+    has no socket at all. Only the first is something a player can act on."""
+    from civ_advisor.tuner.base import capture
+
+    for cause in TunerUnavailable:
+        snap = capture(NullTuner(cause, "some reason"))
+        assert snap.available is False
+        assert snap.unavailable is cause
+
+
 def test_the_off_singleton_snapshot_carries_the_off_reason():
     from civ_advisor.tuner.base import TUNER_SNAPSHOT_OFF
 
     assert TUNER_SNAPSHOT_OFF.available is False
     assert TUNER_SNAPSHOT_OFF.reason == TUNER_OFF.reason
+    assert TUNER_SNAPSHOT_OFF.unavailable is TUNER_OFF.unavailable
 
 
 def test_capturing_a_live_provider_reads_every_figure_once():

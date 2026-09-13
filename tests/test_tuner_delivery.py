@@ -172,6 +172,9 @@ def test_with_the_tuner_off_the_payload_carries_the_reason_not_a_zero(client_no_
     assert briefing["tuner"]["available"] is False
     assert "EnableTuner" in briefing["tuner"]["reason"]
     assert briefing["tuner"]["amenities"] == []
+    # Beside the prose, the distinction itself: a consumer must not have to match on
+    # wording to learn which absence this is.
+    assert briefing["tuner"]["unavailable"] == "not_enabled"
 
 
 def test_build_options_reach_the_refine_prefill(client_with_live_tuner):

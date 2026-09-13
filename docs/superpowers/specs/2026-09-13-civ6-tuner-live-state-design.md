@@ -140,14 +140,28 @@ without being mislabelled as an intercept.
 ## 7. Honesty when the tuner is off
 
 This is the common case, and it is not an error. The header and any affected
-panel say which of the three it is:
+panel say which of the five it is. This section said *three* when it was
+written; implementation found two more, and each is a genuinely different
+statement to a player. Only the first is something they can act on:
 
-- **Not enabled** — `AppOptions.txt` has `EnableTuner 0`. Say so, and quote the
-  line to change. Do not imply the game lacks the data.
-- **Enabled but not answering** — the game is not running, or is at the menu.
-- **Answered, but this figure is not reachable** — the binding is absent or
-  stubbed in every VM. This is a permanent property of the game, and reads like
-  the existing `unsupported` reasons.
+- **Not enabled** (`not_enabled`) — `AppOptions.txt` has `EnableTuner 0`. Say
+  so, and quote the line to change. Do not imply the game lacks the data.
+- **Not asked** (`not_asked`) — this run was started with `--no-tuner`. Nothing
+  is wrong and nothing needs changing; the advisor simply never contacted the
+  socket. Reporting this as "not enabled" would send a player to fix a setting
+  that is already correct.
+- **No socket** (`no_socket`) — this game has none at all. Civilization VII
+  reaches this. There is nothing the player could enable that would add one, so
+  quoting Civilization VI's `AppOptions.txt` line here is a false reason.
+- **Enabled but not answering** (`not_answering`) — the game is not running, or
+  is at the menu.
+- **Answered, but this figure is not reachable** (`unreachable`) — the binding
+  is absent or stubbed in every VM, or the query aborted. This is a permanent
+  property of the game, and reads like the existing `unsupported` reasons.
+
+The cause travels as an enum beside the prose, not as prose alone. An early
+implementation carried only the words, and the `no_socket` defect above was the
+direct result: no consumer could tell the causes apart to act differently.
 
 A zero is never shown for an unreachable figure, and no panel silently falls
 back to a stale reading from an earlier poll.

@@ -608,3 +608,53 @@ def test_the_economy_tab_shows_a_reading_behind_the_logs(client_with_live_tuner)
     tuner["amenities_read"]["disagreement"] = "the numbers disagree: 58 against 59"
     panel = economy_panel(tuner)
     assert panel["amenities"]["disagreement"] == "the numbers disagree: 58 against 59"
+
+
+class _UndatedTuner:
+    """Answers with figures but never a reading. Not reachable through `Civ6Tuner`
+    today -- `_answer` stamps `_reading` before it parses, so every figure it returns
+    is dated -- but `capture()` records a reading only when the provider hands one
+    back, so the shape is constructible and a second provider would reach it."""
+
+    available = True
+    reason = None
+    unavailable = None
+
+    def reading(self):
+        return None
+
+    def amenities(self):
+        return (CityAmenities(city="Rome", total=3, from_luxuries=1, from_civics=1,
+                              from_entertainment=1, housing=5, food_surplus=1),)
+
+    def maintenance(self):
+        return None
+
+    def build_options(self):
+        return ()
+
+
+def test_a_figure_with_no_reading_reaches_the_snapshot_undated(civ6_dir):
+    """The precondition, stated so the guard below is not testing an impossible state."""
+    profile = _profile_with_tuner(_UndatedTuner)
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=profile,
+                               archiving=False)) as c:
+        tuner = c.get("/api/briefing").json()["tuner"]
+    assert len(tuner["amenities"]) == 1
+    assert tuner["amenities_read"] is None
+
+
+@node
+def test_an_undated_figure_is_declared_absent_rather_than_rendered_bare(civ6_dir):
+    """Defect 1 through a second door: a live figure on screen with no turn under it.
+    The number is withheld and the reason names the real cause -- it is not dated --
+    rather than being shown beside whatever turn happens to be nearest on the page."""
+    profile = _profile_with_tuner(_UndatedTuner)
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=profile,
+                               archiving=False)) as c:
+        panel = economy_panel(c.get("/api/briefing").json()["tuner"])
+
+    assert panel["amenities"]["figures"] == []
+    assert panel["amenities"]["note"] is None
+    assert "not known" in panel["amenities"]["absent"]
+    assert "turn" in panel["amenities"]["absent"]

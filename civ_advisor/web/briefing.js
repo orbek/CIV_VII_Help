@@ -216,6 +216,22 @@
                           disagreement: null };
       if (!figures.length) return { figures: [], note: null, absent: reason || null,
                                     disagreement: null };
+      /* Figures with no reading are treated as ABSENT, not rendered bare. A live
+         figure whose turn is unknown is defect 1 arriving through another door: the
+         number would go on screen with nothing dating it, and a reader would take the
+         turn from whatever is nearest. The guard lives here rather than in the
+         renderer so it stays executable in a test, and it closes the class rather
+         than today's one path -- `Civ6Tuner` dates every figure it returns, so this
+         is latent, and it stops being latent the moment a second provider exists or
+         `_answer` stops stamping before it parses. */
+      if (!read) {
+        return {
+          figures: [], note: null, disagreement: null,
+          absent: "These figures arrived without a reading, so the turn that produced "
+            + "them is not known. A live figure is never shown without the turn it "
+            + "came from.",
+        };
+      }
       /* A reading BEHIND the logs cannot happen in one continuous match, so it is
          reported as the event it is -- a reload, another game on the socket, or a
          connection held across a session change -- rather than papered over by

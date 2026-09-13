@@ -8,7 +8,9 @@ into "set EnableTuner 1", and told a player with it already set to set it.
 
 Read-only, and permitted: the rule this program lives by forbids WRITING under either
 game's directories. It reads the logs and the ruleset database from inside them already.
-Only the [Debug] section is consulted; a line elsewhere does not govern the tuner.
+Only the [Debug] section is consulted; a line elsewhere does not govern the tuner, and a
+`;` comment is stripped wherever it starts, so a comment beside a line never changes what
+that line says.
 """
 from __future__ import annotations
 
@@ -36,8 +38,14 @@ def read_enable_tuner(path: Path) -> tuple[TunerFlag, str]:
         return TunerFlag.UNREADABLE, f"{path} could not be read ({exc.strerror or exc})"
     section = None
     for raw in text.splitlines():
-        line = raw.strip()
-        if not line or line.startswith(";"):
+        # `;` starts a comment wherever it appears, not only in column one: the game's
+        # own file writes `;Enable FireTuner.` on its own line, and a player who moves
+        # that onto the flag's line -- `EnableTuner 1 ;Enable FireTuner.` -- has the flag
+        # SET. Reading the comment as part of the value made that line parse as off, and
+        # the advisor then told them to set what they had already set: the very defect
+        # this module exists to end, one split away.
+        line = raw.split(";", 1)[0].strip()
+        if not line:
             continue
         if line.startswith("[") and line.endswith("]"):
             section = line[1:-1]

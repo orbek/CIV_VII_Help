@@ -20,10 +20,11 @@ def test_a_reading_must_name_the_vm_it_came_from():
         TunerReading(turn=59, read_at="2026-09-13T10:40:00Z", state="")
 
 
-def test_amenities_sources_must_not_exceed_the_total_they_explain():
-    with pytest.raises(ValueError, match="sources"):
-        CityAmenities(city="Rome", total=1, from_luxuries=5, from_civics=0,
-                      from_entertainment=0, housing=9, food_surplus=1)
+def test_war_weariness_is_accepted_and_reported_not_rejected():
+    """A city at war names more positive sources than its total. That is real."""
+    c = CityAmenities(city="Rome", total=4, from_luxuries=3, from_civics=0,
+                      from_entertainment=2, housing=9, food_surplus=1)
+    assert c.unexplained == -1
 
 
 def test_net_gold_is_yield_minus_maintenance():
@@ -31,10 +32,10 @@ def test_net_gold_is_yield_minus_maintenance():
     assert m.net_gold == 7
 
 
-def test_maintenance_parts_must_sum_to_the_total():
-    """A breakdown that does not add up is a parsing bug, not a game fact."""
-    with pytest.raises(ValueError, match="breakdown"):
-        Maintenance(total=9, buildings=0, districts=1, units=0, gold=152, gold_yield=8)
+def test_upkeep_the_breakdown_does_not_explain_is_reported_not_rejected():
+    """The three queried categories are not known to be exhaustive."""
+    m = Maintenance(total=9, buildings=0, districts=1, units=0, gold=152, gold_yield=8)
+    assert m.unattributed == 8
 
 
 def test_a_build_option_carries_its_own_completion_estimate():

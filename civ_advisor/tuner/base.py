@@ -61,18 +61,16 @@ class CityAmenities:
     housing: int
     food_surplus: int
 
-    def __post_init__(self) -> None:
-        named = self.from_luxuries + self.from_civics + self.from_entertainment
-        if named > self.total:
-            raise ValueError(
-                f"sources ({named}) exceed the total they explain ({self.total})")
-
     @property
     def unexplained(self) -> int:
-        """Amenities the game reports that these sources do not account for.
+        """Total minus the three sources this VM exposes. May be negative.
 
-        Civ VI exposes only three of its amenity sources to this VM, so a
-        positive remainder is expected and is reported rather than hidden.
+        Deliberately NOT validated. Civ VI exposes three amenity sources here and
+        has more, in both directions: unexposed positives (great people, religion)
+        push this above zero, and war weariness pushes it below -- a city at war
+        can report luxuries 3 and entertainment 2 against a total of 4. Raising on
+        that would turn a real game state into a crashed poll. The remainder is
+        reported instead, so a reader can see the sources do not add up.
         """
         return self.total - (self.from_luxuries + self.from_civics + self.from_entertainment)
 
@@ -88,11 +86,17 @@ class Maintenance:
     gold: int
     gold_yield: int
 
-    def __post_init__(self) -> None:
-        if self.buildings + self.districts + self.units != self.total:
-            raise ValueError(
-                "breakdown does not sum to the total; this is a parsing bug, "
-                "not a fact about the game")
+    @property
+    def unattributed(self) -> int:
+        """Total upkeep the three queried categories do not account for.
+
+        Not validated, for the same reason as CityAmenities.unexplained: the
+        claim that buildings + districts + units is exhaustive rests on ONE
+        observation where all three happened to be 0, 1 and 0. The same probe
+        found GetRouteMaintenance absent from this VM, which is a hint that the
+        game's own total counts things it will not itemise here.
+        """
+        return self.total - (self.buildings + self.districts + self.units)
 
     @property
     def net_gold(self) -> int:

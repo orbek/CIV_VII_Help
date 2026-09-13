@@ -177,7 +177,7 @@ answer is shown, with the rejection reason naming the ungrounded number.**
 Precisely:
 
 1. **What counts as a number.** Every maximal match of
-   `-?\d[\d,]*(?:\.\d+)?%?` in the text, after every bracketed citation the
+   `-?\d+(?:,\d{3})*(?:\.\d+)?%?` in the text, after every bracketed citation the
    answer is allowed to make (`[comparison.culture.81]`) has been removed, and
    every number word from two to twenty, the tens to ninety, *hundred* and
    *thousand*. The word *one* is not a number: it is a pronoun in most English
@@ -237,6 +237,12 @@ Precisely:
    disagree are both reported as read. A player misremembering a figure and
    the advisor quietly adopting it is exactly how a grounded system starts
    giving ungrounded advice.
+
+   Corrected after implementation: the first draft wrote `[\d,]*`, which swallows a
+   trailing separator — "First 9, then 11." yielded `9,` and failed to match the
+   fact holding 9. The form above still admits a thousands separator (`1,250`)
+   without absorbing the comma that ends a clause.
+
 
    What the check enforces, stated so nobody relies on more: a repeated typed
    numeral must be accompanied by a claim phrase, and — when the answer cites

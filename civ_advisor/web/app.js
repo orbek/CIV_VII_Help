@@ -508,11 +508,11 @@
       })])));
     $("#victory-cards").replaceChildren(stream(byAdvisor("victory"), "victory"));
 
-    // Maintenance and happiness back no rendered element on this tab today -- the yield
-    // comparison, production queues and rival-production share are all independent of
-    // them. A capability gap here is therefore a notice ALONGSIDE real data, never a
-    // reason to hide the data: Civ VI's own gold/production/food numbers and its build
-    // queue are real and must render regardless of what this tab cannot also show.
+    // Maintenance and happiness are rendered below, from the live tuner reading, when
+    // the socket answered; with it off the capability notice explains their absence
+    // instead. Either way a capability gap here is a notice ALONGSIDE real data, never
+    // a reason to hide the data: Civ VI's own gold/production/food numbers and its
+    // build queue are real and must render regardless of what this tab cannot show.
     const economyAbsent = capabilityBlock("economy");
     $("#economy-table").replaceChildren(table([
       { label: "Yield" }, { label: "You", num: true }, { label: "Rival median", num: true },
@@ -522,6 +522,8 @@
       { text: `${Math.round(c.ratio * 100)}%`, cls: c.ratio < 0.75 ? "behind" : "" },
       fmt(c.leader_value), c.leader_name,
     ])), ...(economyAbsent ? [economyAbsent] : []));
+
+    renderLiveReadings();
 
     const turnsCell = (c) => c.item === "" ? dim("idle")
       : c.turns_to_complete === null ? dim("stalled") : c.turns_to_complete;
@@ -1388,6 +1390,59 @@
   /* ================= the tactical view ================= */
 
   const T = window.Civ7Tactical;
+
+  /* Amenities and the upkeep breakdown, as the tuner read them.
+
+     These figures exist in no log Civ VI writes -- they are values the advisor asked
+     the running game for. Each is labelled with the turn and instant of the query that
+     produced it, and a figure the tuner could not supply shows ITS OWN reason rather
+     than a blank or a zero. With the tuner off nothing is drawn here at all: the
+     capability notice above already says why, and repeating it would state the same
+     absence twice. */
+  function renderLiveReadings() {
+    const panel = B.tunerEconomy(state.tuner);
+    const head = $("#live-readings-head");
+    const box = $("#live-readings");
+    head.hidden = !panel.live;
+    if (!panel.live) { box.replaceChildren(); return; }
+
+    const parts = [];
+
+    const amen = el("div", "live-figure");
+    amen.append(el("h3", "live-figure-head", "Amenities"));
+    if (panel.amenities.absent) {
+      amen.append(el("p", "cap-absent-why", panel.amenities.absent));
+    } else {
+      amen.append(table(
+        [{ label: "Settlement" }, { label: "Amenities", num: true },
+         { label: "Luxuries", num: true }, { label: "Civics", num: true },
+         { label: "Entertainment", num: true }, { label: "Other sources", num: true },
+         { label: "Housing", num: true }, { label: "Food surplus", num: true }],
+        panel.amenities.figures.map((a) => [
+          a.city, a.total, a.from_luxuries, a.from_civics, a.from_entertainment,
+          // Reported, never hidden and never forced to zero: the VM exposes three
+          // sources and the game has more in both directions (war weariness pushes
+          // this negative), so a remainder is a real reading, not an error.
+          a.unexplained === 0 ? dim("—") : a.unexplained,
+          a.housing, a.food_surplus,
+        ])));
+      if (panel.amenities.note) amen.append(el("p", "live-note", panel.amenities.note));
+    }
+    parts.push(amen);
+
+    const upkeep = el("div", "live-figure");
+    upkeep.append(el("h3", "live-figure-head", "Gold upkeep"));
+    if (panel.upkeep.absent) {
+      upkeep.append(el("p", "cap-absent-why", panel.upkeep.absent));
+    } else {
+      upkeep.append(table([{ label: "Item" }, { label: "Gold per turn", num: true }],
+        panel.upkeep.figures.map((r) => [r.label, r.value])));
+      if (panel.upkeep.note) upkeep.append(el("p", "live-note", panel.upkeep.note));
+    }
+    parts.push(upkeep);
+
+    box.replaceChildren(...parts);
+  }
 
   function renderTactical() {
     const host = $("#tactical-map");

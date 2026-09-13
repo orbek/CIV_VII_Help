@@ -5,7 +5,9 @@ every check called the provider directly. These tests go through the HTTP payloa
 real dashboard request gets, not through `capture()` or a builder function's return
 value.
 """
+import json
 import shutil
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -334,3 +336,121 @@ def test_the_live_turn_is_not_borrowed_from_the_logs(client_against_a_socket):
     logged_turn = body["status"]["analysis_turn"]
     assert body["tuner"]["turn"] == 59
     assert body["tuner"]["turn"] != logged_turn
+
+
+# ---- what the Economy tab actually draws ----------------------------------------
+#
+# The payload carrying a figure is not the same as a player seeing it. Turning the
+# tuner ON flipped happiness and maintenance to `supported`, which SUPPRESSED the
+# capability notice -- and nothing rendered an amenities figure or an upkeep breakdown
+# in its place, so doing what the notice asked left the player with a silent blank.
+# These tests take the real HTTP payload and run the Economy tab's own rendering rules
+# over it under node, the same way tests/test_web_briefing.py executes response rules
+# rather than grepping app.js.
+
+BRIEFING_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "briefing.js"
+APP_JS = Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "app.js"
+
+node = pytest.mark.skipif(shutil.which("node") is None, reason="node is not installed")
+
+
+def economy_panel(tuner: dict) -> dict:
+    """What the Economy tab renders for this tuner section, computed by the page."""
+    script = (
+        f"const B = require({str(BRIEFING_JS)!r});\n"
+        f"const tuner = {json.dumps(tuner)};\n"
+        "process.stdout.write(JSON.stringify(B.tunerEconomy(tuner)));\n"
+    )
+    done = subprocess.run(["node", "-e", script], capture_output=True, text=True, timeout=30)
+    assert done.returncode == 0, done.stderr
+    return json.loads(done.stdout)
+
+
+@node
+def test_the_economy_tab_renders_an_amenities_figure_and_net_gold(client_with_live_tuner):
+    body = client_with_live_tuner.get("/api/briefing").json()
+    panel = economy_panel(body["tuner"])
+
+    assert panel["live"] is True
+    rome = panel["amenities"]["figures"][0]
+    assert rome["city"] == "Rome"
+    assert rome["total"] == 3
+    assert panel["amenities"]["absent"] is None
+
+    upkeep = {row["label"]: row["value"] for row in panel["upkeep"]["figures"]}
+    # net gold = yield 10 - total upkeep 5, and the breakdown beside it.
+    assert upkeep["Net gold per turn"] == 5
+    assert upkeep["Total upkeep"] == 5
+    assert (upkeep["Buildings"], upkeep["Districts"], upkeep["Units"]) == (2, 2, 1)
+    assert panel["upkeep"]["absent"] is None
+
+
+@node
+def test_every_rendered_figure_names_the_turn_it_was_read_on(client_with_live_tuner):
+    """Provenance stays attached to the numbers on screen, not only in the payload."""
+    body = client_with_live_tuner.get("/api/briefing").json()
+    panel = economy_panel(body["tuner"])
+    for part in ("amenities", "upkeep"):
+        assert "read live" in panel[part]["note"]
+        assert "turn 12" in panel[part]["note"]
+
+
+@node
+def test_a_figure_the_tuner_could_not_supply_shows_its_own_reason(civ6_dir):
+    """Its own reason, not the other figure's and not a zero."""
+    class _AmenitiesOnly:
+        available = True
+        reason = "the game's GameCore_Tuner state does not implement maintenance"
+        unavailable = None
+
+        def reading(self):
+            return TunerReading(turn=12, read_at="2026-09-13T10:40:00Z",
+                                state="GameCore_Tuner")
+
+        def amenities(self):
+            return (CityAmenities(city="Rome", total=3, from_luxuries=1, from_civics=1,
+                                  from_entertainment=1, housing=5, food_surplus=1),)
+
+        def maintenance(self):
+            return None
+
+        def build_options(self):
+            return ()
+
+    profile = _profile_with_tuner(_AmenitiesOnly)
+    with TestClient(create_app(civ6_dir, poll_interval=60, profile=profile,
+                               archiving=False)) as c:
+        panel = economy_panel(c.get("/api/briefing").json()["tuner"])
+
+    assert panel["amenities"]["figures"][0]["total"] == 3
+    assert panel["upkeep"]["figures"] == []
+    assert "does not implement maintenance" in panel["upkeep"]["absent"]
+
+
+@node
+def test_with_the_tuner_off_the_capability_notice_is_still_what_explains_the_absence(
+        client_no_tuner):
+    """The notice must not be replaced by a silent blank -- nor by a second copy of
+    itself. Nothing is drawn in the live section, and the capability report still
+    carries the explanation the player acts on."""
+    body = client_no_tuner.get("/api/briefing").json()
+    panel = economy_panel(body["tuner"])
+    assert panel["live"] is False
+    assert panel["amenities"]["figures"] == [] and panel["upkeep"]["figures"] == []
+
+    caps = client_no_tuner.get("/api/game").json()["active"]["capabilities"]
+    for cap in ("happiness", "maintenance"):
+        assert caps[cap]["supported"] is False
+        assert "EnableTuner" in caps[cap]["reason"]
+
+
+def test_the_economy_tab_is_wired_to_the_live_readings():
+    """The pure rules above are only worth testing if the tab calls them. Guards the
+    seam between the rule and the DOM, which is where "component works, nothing reaches
+    the player" has bitten this project before."""
+    app = APP_JS.read_text()
+    assert "renderLiveReadings()" in app
+    assert "B.tunerEconomy(state.tuner)" in app
+    assert "#live-readings" in app
+    index = (Path(__file__).resolve().parents[1] / "civ_advisor" / "web" / "index.html").read_text()
+    assert 'id="live-readings"' in index

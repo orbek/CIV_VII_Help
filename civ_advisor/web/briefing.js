@@ -181,6 +181,61 @@
     return match ? match.turns : null;
   }
 
+  /* What the Economy tab shows from a live tuner reading, and what it says where the
+     tuner could not supply a figure.
+
+     Turning the tuner ON used to REPLACE an honest notice with a blank: the capability
+     report flips happiness and maintenance to supported the moment the socket answers,
+     which removes the "Civ VI writes no amenities log" notice -- and nothing rendered
+     an amenities figure or an upkeep breakdown in its place. A player who did exactly
+     what the notice asked was left with less on screen than before.
+
+     Pure, so what the tab shows can be executed in a test rather than grepped for.
+     Each section carries its OWN absence reason: one figure the game will not itemise
+     must not be reported as the reason the others are missing, and must never be
+     reported as a zero. */
+  function tunerEconomy(tuner) {
+    var live = !!(tuner && tuner.available);
+
+    function label(read) {
+      /* Every figure is labelled with the turn and instant THAT query produced, never
+         with the snapshot's log-derived turn: the socket reads the live game, which
+         can be ahead of the last complete log turn. */
+      return read ? "read live — turn " + read.turn + " (" + read.read_at + ")" : null;
+    }
+
+    function section(figures, reason, read) {
+      if (!live) return { figures: [], note: null, absent: (tuner && tuner.reason) || null };
+      if (!figures.length) return { figures: [], note: null, absent: reason || null };
+      return { figures: figures, note: label(read), absent: null };
+    }
+
+    var m = live ? (tuner.maintenance || null) : null;
+    var upkeep = [];
+    if (m) {
+      upkeep.push({ label: "Buildings", value: m.buildings });
+      upkeep.push({ label: "Districts", value: m.districts });
+      upkeep.push({ label: "Units", value: m.units });
+      /* Only when it is non-zero, and named for what it is: the three categories the
+         game itemises are not known to be exhaustive, so the remainder is reported
+         rather than silently folded into one of them. */
+      if (m.unattributed !== 0) {
+        upkeep.push({ label: "Not itemised by the game", value: m.unattributed });
+      }
+      upkeep.push({ label: "Total upkeep", value: m.total });
+      upkeep.push({ label: "Net gold per turn", value: m.net_gold });
+    }
+
+    return {
+      live: live,
+      amenities: section(live ? (tuner.amenities || []) : [],
+                         tuner && tuner.amenities_reason,
+                         tuner && tuner.amenities_read),
+      upkeep: section(upkeep, tuner && tuner.maintenance_reason,
+                      tuner && tuner.maintenance_read),
+    };
+  }
+
   /* The badge text for one evidence fact's source kind. Its own case for a live
      reading, distinct from both "you told us" (typed) and a bare log row (the game's
      own write) -- the confusion this label exists to prevent from reaching the page. */
@@ -318,6 +373,7 @@
     isAcknowledged: isAcknowledged, commentaryExplains: commentaryExplains,
     SEVERITY_ORDER: SEVERITY_ORDER,
     tunerLiveOptions: tunerLiveOptions, tunerLiveTurns: tunerLiveTurns,
+    tunerEconomy: tunerEconomy,
     factKindLabel: factKindLabel,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

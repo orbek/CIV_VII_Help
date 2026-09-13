@@ -15,6 +15,7 @@ from civ_advisor.archive import DEFAULT_ROOT, LEGACY_ARCHIVE_ROOT, MANIFEST, arc
 from civ_advisor.context_store import (
     DEFAULT_STORE_PATH, LEGACY_STORE_PATH, PersistentContextStore, store_path_for,
 )
+from civ_advisor.copilot import CopilotWorker
 from civ_advisor.games.civ7 import CIV7
 from civ_advisor.games.registry import UnknownGame, get_profile, profile_ids
 from civ_advisor.games.selection import AUTO, GameSelector
@@ -115,6 +116,13 @@ def main(argv: list[str] | None = None) -> int:
         worker = None if args.no_llm else CommentaryWorker(
             OllamaClient(args.llm_model, timeout=args.llm_timeout)
         )
+        # The copilot uses the same gate and the same client settings as the commentary:
+        # one --no-llm turns both off, and there is never a run where one has a model and
+        # the other does not. Its own client, because the two pools must not queue behind
+        # each other -- a turn's commentary can take a large model minutes.
+        copilot = None if args.no_llm else CopilotWorker(
+            OllamaClient(args.llm_model, timeout=args.llm_timeout)
+        )
     except ValueError as exc:
         parser.error(str(exc))
     # With --no-context-file the store is pointed at a throwaway path, so nothing is
@@ -131,7 +139,8 @@ def main(argv: list[str] | None = None) -> int:
                      commentary_worker=worker,
                      player_store=PersistentContextStore(path=store_path) if fixed_notes else None,
                      profile=profile, selector=selector,
-                     storage_base=DEFAULT_ROOT, use_tuner=not args.no_tuner)
+                     storage_base=DEFAULT_ROOT, use_tuner=not args.no_tuner,
+                     copilot_worker=copilot)
     # Task 5's notice, now against whichever game is pinned; with --game auto there is
     # no game yet and nothing is claimed about where a user's old data belongs.
     if profile is not None:

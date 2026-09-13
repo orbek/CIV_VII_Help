@@ -23,6 +23,7 @@
         </select>
       </label>
       <span class="game-mode" id="game-mode"></span>
+      <span class="acting-note" id="acting-note" hidden>Acting enabled for this run</span>
     </p>
     <p class="status-line">
       <span class="conn conn-down" id="connection">connecting&hellip;</span>
@@ -81,6 +82,9 @@
   <section class="tab active" id="checklist" role="tabpanel" aria-labelledby="tab-checklist" tabindex="0">
     <p class="turn-summary" id="insight-summary"></p>
     <div id="checklist-stream"></div>
+    <!-- The copilot sits above the local second opinion: a question the player asked
+         answers first, and the generated commentary about the turn follows it. -->
+    <section class="copilot" id="copilot"></section>
     <section class="commentary" id="commentary-panel" aria-live="polite">
       <h2 class="section-head">Local second opinion</h2>
       <div id="commentary-status"></div>

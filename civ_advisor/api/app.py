@@ -5,8 +5,10 @@ import asyncio
 import hashlib
 import json
 import logging
+import secrets
 from contextlib import asynccontextmanager
 from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import Body, FastAPI, HTTPException
@@ -17,6 +19,9 @@ from civ_advisor.advisors import tactical
 from civ_advisor.advisors.base import visible
 from civ_advisor.archive import DEFAULT_ROOT, archive_root_for
 from civ_advisor.context_store import KINDS, PersistentContextStore, StoreError, store_path_for
+from civ_advisor.copilot import catalog
+from civ_advisor.copilot import conversation as conv
+from civ_advisor.copilot.worker import CopilotWorker
 from civ_advisor.decisions import changes as change_tracking
 from civ_advisor.decisions import decide_all
 from civ_advisor.decisions.context import (
@@ -56,6 +61,9 @@ log = logging.getLogger(__name__)
 WEB_DIR = Path(__file__).resolve().parent.parent / "web"
 KEEPALIVE_SECONDS = 15
 
+NO_MODEL_ANSWER = ("There is no local model in this run, so free text cannot be read. "
+                   "Pick one of the fixed questions instead; each answers from the evidence.")
+
 DISABLED_MESSAGE = "Local commentary is off; start with an Ollama model to enable it."
 HIDDEN_MESSAGE = "Oracle off — this local commentary saw intercepted evidence."
 
@@ -68,8 +76,13 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                selector: GameSelector | None = None,
                storage_base: Path | None = None,
                archiving: bool = True,
-               use_tuner: bool = True) -> FastAPI:
+               use_tuner: bool = True,
+               copilot_worker: CopilotWorker | None = None,
+               allow_actions: bool = False) -> FastAPI:
     context_store = ContextStore()
+    # One transcript per app: a sitting is a (session, epoch) pair inside it, so a
+    # reloaded game starts a fresh conversation without the process forgetting the old.
+    transcript = conv.Transcript()
     history = change_tracking.History()
 
     # A selector of None means "one fixed game, no detection" -- what every existing
@@ -265,10 +278,13 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                 supervisor.cancel()
             if store.commentary_worker is not None:
                 store.commentary_worker.close()
+            if copilot_worker is not None:
+                copilot_worker.close()
 
     app = FastAPI(title="Civ VII Advisor", lifespan=lifespan)
     app.state.store = store
     app.state.context_store = context_store
+    app.state.copilot_worker = copilot_worker
 
     def current() -> Snapshot:
         """The published snapshot, or 503. Read once per request so no two sections of a
@@ -485,6 +501,109 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                 "model": answer.model,
             },
         }
+
+    # ---- the copilot ------------------------------------------------------------
+    #
+    # The deterministic answer is built on every request and returned immediately; a
+    # generation only ever REPLACES it, and only once it has been validated against the
+    # facts resolved for this same request. So a slow model, an absent model and a model
+    # that fabricates a figure all leave the player with the evidence itself rather than
+    # with a spinner or a blank.
+
+    def chat_request(captured: Snapshot, oracle: bool, text: str) -> conv.ChatRequest:
+        context, _ = brief_for(captured, oracle)
+        return conv.ChatRequest(
+            text=text, session=captured.session, epoch=captured.epoch,
+            snapshot_revision=captured.revision, context_revision=context.context_revision,
+            evidence_mode="oracle" if oracle else "fair", turn=captured.analysis_turn,
+            display_name=get_profile(captured.game_id).display_name, context=context,
+            history=transcript.history(captured.session, captured.epoch))
+
+    def chat_response(captured: Snapshot, request: conv.ChatRequest, status: str,
+                      answer: conv.ChatAnswer, resolved: conv.Resolved, rejection: str,
+                      asked) -> dict:
+        exchange = conv.Exchange(
+            id=secrets.token_hex(4), asked_at=datetime.now(UTC).isoformat(timespec="seconds"),
+            turn=captured.analysis_turn, text=request.text, answer_text=answer.text,
+            status=status, question_ids=tuple(a.question_id for a in asked),
+            evidence_ids=answer.evidence_ids)
+        # "generating" is not an exchange yet: nothing has been answered, and recording it
+        # would both lengthen the history the next request is keyed on and put a
+        # placeholder in the player's transcript.
+        if status in ("ready", "rejected", "fallback", "unsupported"):
+            transcript.record(captured.session, captured.epoch, exchange)
+        return {
+            "status": status, "exchange_id": exchange.id, "turn": captured.analysis_turn,
+            "evidence_mode": request.evidence_mode,
+            "questions_asked": [{"id": a.question_id, "params": a.params} for a in asked],
+            "answer": {"text": answer.text, "evidence_ids": list(answer.evidence_ids),
+                       "unknowns": list(answer.unknowns), "generated": answer.generated,
+                       "model": answer.model, "proposal": answer.proposal},
+            "evidence": [conv.fact_payload(f) for f in resolved.facts],
+            "absences": [conv.absence_payload(a) for a in resolved.absences],
+            "notes": list(resolved.notes),
+            "rejection": rejection,
+        }
+
+    @app.get("/api/copilot/catalog")
+    def api_copilot_catalog(oracle: int = 1) -> dict:
+        """The fixed questions, and the values each enumerable parameter may take THIS turn."""
+        captured = current()
+        context, _ = brief_for(captured, bool(oracle))
+        return {
+            "questions": [{"id": q.id, "description": q.description, "oracle": q.oracle,
+                           "params": [{"name": p.name, "kind": p.kind.value,
+                                       "description": p.description} for p in q.params]}
+                          for q in catalog.CATALOG.values()],
+            "choices": {k.value: list(v) for k, v in catalog.choices(context).items()},
+            "model": None if copilot_worker is None else copilot_worker.client.model,
+            "acting": allow_actions,
+            "turn": captured.analysis_turn,
+            # The page hides the free-text box when there is no model; it says so in the
+            # same words the endpoint would have answered with, from this one constant.
+            "unsupported": NO_MODEL_ANSWER,
+        }
+
+    @app.post("/api/copilot/question", response_model=None)
+    def api_copilot_question(body: dict = Body(...)):
+        """One catalog question, resolved deterministically. Works with no model at all."""
+        captured = current()
+        request = chat_request(captured, bool(int(body.get("oracle", 1))), "")
+        asked = (conv.Selected(str(body.get("id", "")),
+                               {str(k): str(v) for k, v in (body.get("params") or {}).items()}),)
+        resolved = conv.resolve(request, asked)
+        return chat_response(captured, request, "fallback", conv.fallback(request, resolved),
+                             resolved, "", asked)
+
+    @app.post("/api/copilot/ask", response_model=None)
+    def api_copilot_ask(body: dict = Body(...)):
+        captured = current()
+        request = chat_request(captured, bool(int(body.get("oracle", 1))), str(body.get("text") or ""))
+        if not request.text:
+            raise HTTPException(status_code=422, detail="nothing was asked")
+        if copilot_worker is None:
+            answer = conv.ChatAnswer(text=NO_MODEL_ANSWER, evidence_ids=(), unknowns=(),
+                                     generated=False)
+            return chat_response(captured, request, "unsupported", answer, conv.Resolved(), "", ())
+        status, answer, resolved, rejection = copilot_worker.ask(request)
+        return chat_response(captured, request, status, answer, resolved, rejection, resolved.asked)
+
+    @app.get("/api/copilot/transcript")
+    def api_copilot_transcript() -> dict:
+        captured = current()
+        return {"session": captured.session, "epoch": captured.epoch,
+                "exchanges": [e.__dict__ | {"question_ids": list(e.question_ids),
+                                            "evidence_ids": list(e.evidence_ids)}
+                              for e in transcript.history(captured.session, captured.epoch)]}
+
+    @app.post("/api/copilot/act", response_model=None)
+    def api_copilot_act(body: dict = Body(...)):
+        if not allow_actions:
+            raise HTTPException(
+                status_code=403,
+                detail="this run was started without --allow-actions, so the advisor will not "
+                       "send a command into the game; restart with the flag to enable acting")
+        raise HTTPException(status_code=501, detail="acting is not implemented in this run")
 
     @app.get("/api/context")
     def api_context() -> dict:

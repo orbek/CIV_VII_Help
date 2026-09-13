@@ -402,6 +402,43 @@
     return insightIds.every(function (id) { return written.indexOf(id) !== -1; });
   }
 
+  /* ---- the copilot panel -------------------------------------------------------- */
+
+  /* What the copilot panel calls an answer. "fallback" is NOT a degraded state: it is
+     the facts themselves, and it must never read as though a model wrote it. */
+  function copilotLabel(status, generated) {
+    if (status === "ready" && generated) return "Generated interpretation";
+    if (status === "rejected") return "The model's answer was not shown; this is the evidence itself";
+    if (status === "unsupported") return "This cannot be answered";
+    if (status === "generating") return "From the evidence — the local model is writing an interpretation";
+    return "From the evidence, not written by a model";
+  }
+
+  /* One badge per source kind. Six kinds, six badges: a live tuner reading, a log row,
+     a ruleset figure, the player's own report, an advisor threshold and a computed
+     figure are distinct claims, and the badge is where the page keeps them distinct. */
+  var KIND_BADGES = {
+    log: "log row", derived: "computed", rule: "advisor rule", player_report: "your report",
+    installed_ruleset: "installed ruleset", live_reading: "read live",
+  };
+
+  /* One line per CITED fact, in citation order, each with its kind badge and its source
+     phrase. Uncited facts the resolver also returned are not lines: the answer did not
+     rest on them. */
+  function copilotEvidenceLines(answer, evidence) {
+    var byId = {};
+    (evidence || []).forEach(function (f) { byId[f.id] = f; });
+    return (answer.evidence_ids || []).map(function (id) {
+      var f = byId[id];
+      if (!f) return { id: id, badge: "unresolved", text: id };
+      var value = f.value === null || f.value === undefined ? "" : String(f.value);
+      var unit = f.unit ? " " + f.unit : "";
+      var turn = f.observed_turn === null || f.observed_turn === undefined ? "" : " (turn " + f.observed_turn + ")";
+      return { id: id, badge: KIND_BADGES[f.kind] || f.kind,
+               text: f.label + ": " + value + unit + turn + " — " + (f.source || "") };
+    });
+  }
+
   const api = {
     acceptResponse: acceptResponse, seen: seen, ago: ago, coverageLines: coverageLines,
     pinnedGameGap: pinnedGameGap, capabilityNotices: capabilityNotices,
@@ -413,6 +450,8 @@
     tunerLiveOptions: tunerLiveOptions, tunerLiveTurns: tunerLiveTurns,
     tunerEconomy: tunerEconomy,
     factKindLabel: factKindLabel,
+    copilotLabel: copilotLabel, copilotEvidenceLines: copilotEvidenceLines,
+    KIND_BADGES: KIND_BADGES,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Civ7Briefing = api;

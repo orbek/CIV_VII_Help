@@ -408,3 +408,25 @@ def test_a_live_reading_gets_its_own_badge_text():
     assert run_js('return B.factKindLabel("player_report");') == "you told us"
     assert run_js('return B.factKindLabel("log");') == "log"
     assert run_js('return B.factKindLabel("something_else");') == "log"
+
+
+def test_copilot_labels_never_call_a_fallback_generated():
+    assert run_js('return B.copilotLabel("fallback", false);') == "From the evidence, not written by a model"
+    assert run_js('return B.copilotLabel("ready", true);') == "Generated interpretation"
+    assert run_js('return B.copilotLabel("rejected", false);').startswith("The model's answer was not shown")
+    assert run_js('return B.copilotLabel("unsupported", false);') == "This cannot be answered"
+
+
+def test_copilot_evidence_lines_carry_kind_turn_and_source_for_every_cited_fact():
+    out = run_js("""
+      return B.copilotEvidenceLines(
+        {evidence_ids: ["a", "b"]},
+        [{id: "a", label: "Your culture", kind: "log", value: 4, unit: "per turn",
+          observed_turn: 81, source: "from Player_Stats.csv, turn 81"},
+         {id: "b", label: "Rome's amenities", kind: "live_reading", value: 3, unit: "amenities",
+          observed_turn: 82, source: "read live from the game, turn 82"},
+         {id: "c", label: "not cited", kind: "log", value: 9}]);
+    """)
+    assert [l["id"] for l in out] == ["a", "b"]
+    assert out[1]["badge"] == "read live" and out[0]["badge"] == "log row"
+    assert "turn 82" in out[1]["text"]

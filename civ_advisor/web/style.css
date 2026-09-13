@@ -560,3 +560,34 @@ tbody tr.selected { background: rgba(201, 138, 46, .16); }
 .answer { margin: .45rem 0 0; padding: .5rem .7rem; border-left: 3px solid #4c7a9a;
   background: rgba(76, 122, 154, .08); font-size: .88rem; }
 .answer p { margin: .2rem 0; }
+
+/* ---- the copilot ------------------------------------------------------------
+   The panel above the local second opinion. Deliberately plain: the badges and the
+   evidence lines reuse the drawer's own classes, so a "read live" figure looks the
+   same wherever the player meets it. */
+.copilot { margin-top: 2.5rem; padding-top: .25rem; border-top: 1px solid var(--rule); }
+.copilot-note { margin: .3rem 0; font-size: .8rem; color: var(--muted, #8b8578); }
+.copilot-absent { margin: .5rem 0; font-size: .88rem; }
+.copilot-field { display: flex; flex-direction: column; gap: .2rem; font-size: .78rem; }
+.copilot-field textarea { font: inherit; font-size: .9rem; padding: .35rem .4rem;
+  border: 1px solid var(--rule); border-radius: 3px; resize: vertical; }
+.copilot-buttons { display: flex; flex-wrap: wrap; gap: .35rem; margin: .5rem 0; }
+.copilot-param { display: flex; flex-wrap: wrap; align-items: center; gap: .35rem;
+  margin: .3rem 0; font-size: .82rem; }
+.copilot-param-label { color: var(--muted, #8b8578); }
+.copilot-param input, .copilot-param select { font: inherit; font-size: .85rem;
+  padding: .2rem .3rem; border: 1px solid var(--rule); border-radius: 3px; }
+.copilot-answer { margin-top: .9rem; padding-top: .5rem;
+  border-top: 1px dashed rgba(139, 133, 120, .35); }
+.copilot-evidence, .copilot-absences { margin: .35rem 0; padding-left: 1.1rem; font-size: .85rem; }
+.copilot-evidence li { margin: .2rem 0; }
+.copilot-rejected { margin: .3rem 0; font-size: .82rem; color: var(--warn, #c98a2e); }
+.copilot-dated { margin: .8rem 0; font-size: .85rem; color: var(--muted, #8b8578); }
+.copilot-transcript { margin-top: 1rem; }
+.copilot-exchange { padding: .4rem 0; border-bottom: 1px solid var(--rule); }
+.copilot-exchange p { margin: .15rem 0; }
+.copilot-exchange-when { font-family: var(--figures); font-size: .7rem; color: var(--brass); }
+.copilot-exchange-asked { font-size: .85rem; font-style: italic; }
+.copilot-exchange-said { font-size: .85rem; }
+.acting-note { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em;
+  padding: .05rem .35rem; border: 1px solid var(--brass); border-radius: 2px; color: var(--brass); }

@@ -8,7 +8,7 @@ Four questions, three of them fixed and one the player writes:
   challenge    — the player's own short statement of what they intend instead.
 
 Every one is scoped to a single decision and given only that decision's facts, candidates
-and guides. Three properties this module exists to guarantee:
+and guides. Four properties this module exists to guarantee:
 
   - **Fair mode never sees Oracle evidence.** The evidence is filtered before the prompt
     is built, not after the answer comes back, and the evidence mode is part of the cache
@@ -19,6 +19,8 @@ and guides. Three properties this module exists to guarantee:
   - **A citation is not a warrant.** Including `[some.id]` does not make a sentence
     verified. What is verified is the deterministic data the id resolves to; the prose
     around it stays labelled as interpretation.
+  - **Every number is a cited number.** A numeral in the prose that no cited fact
+    carries — as value, turn or note — rejects the answer (`copilot/grounding.py`).
 
 The player's own words are treated as intent. "I am going to build a Monument" is a plan,
 never an observation that a Monument exists.
@@ -28,6 +30,8 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
+
+from civ_advisor.copilot import grounding
 
 WHY = "why"
 INSPECT = "inspect"
@@ -276,6 +280,13 @@ def validate(request: QuestionRequest, data: dict) -> Answer:
         # URLs come from the catalog, resolved server-side. A model-written one is
         # rejected rather than rendered, however plausible it looks.
         raise ValueError("the answer contained a URL, which only the catalog may supply")
+    grounded = grounding.check(text, evidence, request.payload["evidence"],
+                               player_text=request.player_text)
+    if not grounded.ok:
+        # Spec 2026-09-13-civ6-copilot-design section 4.3. This is the check on
+        # CONTENT the structural checks above are not: a number the cited evidence
+        # does not carry is a claim the advisor cannot stand behind.
+        raise ValueError(grounded.describe())
     return Answer(text=text, evidence_ids=evidence, action_ids=actions,
                   guide_ids=guides, unknowns=unknowns, generated=True)
 

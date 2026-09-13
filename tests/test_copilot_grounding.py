@@ -1,0 +1,167 @@
+"""Spec section 4.3: every number in generated prose must appear in a cited fact."""
+
+from civ_advisor.copilot.grounding import check, numerals_in
+
+FACTS = [
+    {"id": "gold.net.59", "value": 7, "unit": "per turn", "observed_turn": 59,
+     "note": "Reserve is 152 gold."},
+    {"id": "comparison.culture.59", "value": 0.44, "unit": "ratio", "observed_turn": 59,
+     "note": "Your 4.4 against a rival median of 10.0."},
+    {"id": "tuner.amenities.Rome.60", "value": 3, "unit": "amenities", "observed_turn": 60,
+     "note": "Luxuries 1, civics 0, entertainment 2; unexplained 0."},
+    {"id": "identity.human", "value": "CIVILIZATION_ROME / LEADER_TRAJAN", "unit": None,
+     "observed_turn": None, "note": None},
+    {"id": "gold.balance.59", "value": -12.5, "unit": "gold", "observed_turn": 59, "note": None},
+]
+
+
+def cited(*ids):
+    return tuple(ids)
+
+
+def test_digits_are_numerals_and_words_from_two_up_are_too():
+    got = [n.text for n in numerals_in("You make 7 gold; three cities; twenty turns; one option.")]
+    assert got == ["7", "three", "twenty"]
+
+
+def test_the_word_one_is_not_a_numeral():
+    """A pronoun in most sentences: rejecting it would reject grammar, not claims."""
+    assert numerals_in("One of them is the one to build.") == ()
+
+
+def test_cited_ids_are_stripped_before_scanning():
+    got = numerals_in("Net gold is 7 [gold.net.59].", strip_ids=["gold.net.59"])
+    assert [n.text for n in got] == ["7"]
+
+
+def test_a_value_in_a_cited_fact_is_grounded():
+    assert check("Your net gold is 7 per turn.", cited("gold.net.59"), FACTS).ok
+
+
+def test_a_number_the_cited_facts_do_not_carry_is_rejected_and_named():
+    got = check("Your net gold is 9 per turn.", cited("gold.net.59"), FACTS)
+    assert not got.ok
+    assert got.ungrounded == ("9",)
+
+
+def test_a_number_in_an_uncited_fact_does_not_help():
+    got = check("Rome has 3 amenities.", cited("gold.net.59"), FACTS)
+    assert not got.ok and got.ungrounded == ("3",)
+
+
+def test_the_observed_turn_of_a_cited_fact_is_grounded():
+    assert check("On turn 59 you netted 7.", cited("gold.net.59"), FACTS).ok
+
+
+def test_numerals_in_a_cited_note_are_grounded():
+    """Notes are written by the deterministic layer from the data."""
+    assert check("Your reserve is 152 gold.", cited("gold.net.59"), FACTS).ok
+
+
+def test_a_ratio_may_be_written_as_a_percentage():
+    assert check("You are at 44% of the median.", cited("comparison.culture.59"), FACTS).ok
+    assert check("You are at 0.44 of the median.", cited("comparison.culture.59"), FACTS).ok
+
+
+def test_rounding_to_the_written_precision_matches():
+    assert check("Roughly 0.4 of the median.", cited("comparison.culture.59"), FACTS).ok
+    assert not check("Roughly 0.45 of the median.", cited("comparison.culture.59"), FACTS).ok
+
+
+def test_a_non_ratio_is_not_a_percentage():
+    got = check("Amenities are at 300%.", cited("tuner.amenities.Rome.60"), FACTS)
+    assert not got.ok
+
+
+def test_thousands_separators_are_stripped():
+    facts = FACTS + [{"id": "x", "value": 1250, "unit": "gold", "observed_turn": 59, "note": None}]
+    assert check("You hold 1,250 gold.", cited("x"), facts).ok
+
+
+def test_a_negative_matches_only_a_negative():
+    assert check("Balance is -12.5.", cited("gold.balance.59"), FACTS).ok
+    assert not check("Balance is 12.5.", cited("gold.balance.59"), FACTS).ok
+
+
+def test_number_words_are_checked_like_digits():
+    assert check("You have three amenities in Rome.", cited("tuner.amenities.Rome.60"), FACTS).ok
+    assert not check("You have four amenities in Rome.", cited("tuner.amenities.Rome.60"), FACTS).ok
+
+
+def test_an_answer_citing_nothing_may_contain_no_numbers():
+    assert check("The advisor cannot see that.", (), FACTS).ok
+    assert not check("It is usually about 10 turns.", (), FACTS).ok
+
+
+def test_a_string_value_is_not_a_number_source():
+    got = check("Trajan has 1 capital.", cited("identity.human"), FACTS)
+    assert not got.ok and got.ungrounded == ("1",)
+
+
+def test_a_player_reported_figure_is_admitted_when_attributed():
+    facts = FACTS + [{"id": "report.turns", "kind": "player_report", "value": 8, "unit": "turns",
+                      "observed_turn": 59, "note": None}]
+    assert check("The 8 turns you reported on turn 59 make this the quicker option.",
+                 cited("report.turns"), facts).ok
+
+
+def test_a_player_reported_figure_stated_as_the_games_is_rejected():
+    facts = FACTS + [{"id": "report.turns", "kind": "player_report", "value": 8, "unit": "turns",
+                      "observed_turn": 59, "note": None}]
+    got = check("The Granary takes 8 turns here.", cited("report.turns"), facts)
+    assert not got.ok and got.unattributed == ("8",)
+
+
+def test_a_figure_the_game_also_states_needs_no_attribution():
+    # Grounded by a log fact as well as a report: the game did say it.
+    facts = FACTS + [{"id": "report.net", "kind": "player_report", "value": 7, "unit": "per turn",
+                      "observed_turn": 59, "note": None}]
+    assert check("Your net gold is 7 per turn.", cited("gold.net.59", "report.net"), facts).ok
+
+
+def test_a_number_the_player_just_typed_is_not_a_citation():
+    """Spec 4.3 rule 7: typed into the box, it is neither dated nor stored."""
+    got = check("The Granary takes 8 turns.", cited("gold.net.59"), FACTS,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.ungrounded == ("8",)
+
+
+def test_a_typed_number_may_be_repeated_as_the_players_claim():
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    text = ("You mention 8 turns; the tuner read 4 for the Granary in Rome on turn 49. "
+            "Both are reported here and neither has been corrected to the other.")
+    assert check(text, cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                 player_text="should I take the 8-turn Granary?").ok
+
+
+def test_a_typed_number_repeated_without_the_claim_phrase_is_rejected():
+    got = check("So 8 turns it is, then, and that settles the question here.", (), FACTS,
+                player_text="8 turns for the Granary")
+    assert not got.ok and got.ungrounded == ("8",)
+
+
+def test_a_typed_number_repeated_while_the_cited_figure_goes_unstated_is_rejected():
+    """The disagreement must be NAMED: the player's 8 beside the game's 4, never 8 alone."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("You mention 8 turns, which is quick enough to be worth taking now.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.unreconciled == ("8",)
+
+
+def test_the_cited_figure_stated_while_the_players_claim_is_silently_dropped_is_rejected():
+    """The mirror case: neither side may be used alone. The game's 4 without the
+    player's 8 quietly overrides them; the 8 without the 4 quietly adopts them."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("The tuner read 4 turns for the Granary in Rome on turn 49, so take it.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.unreconciled == ("8",)
+
+
+def test_every_ungrounded_numeral_is_reported_once_in_order():
+    got = check("First 9, then 9 again, then 11.", cited("gold.net.59"), FACTS)
+    assert got.ungrounded == ("9", "11")

@@ -70,28 +70,34 @@ def test_the_off_singleton_says_which_absence_it_is():
     assert TUNER_OFF.unavailable is TunerUnavailable.NOT_ENABLED
 
 
-def test_the_four_absences_are_distinct_causes_worded_differently():
-    """Told apart on purpose: only NOT_ENABLED is fixable by the player, and a game
-    that has no socket at all is not a game whose socket is switched off. Four
-    members is not the claim -- four DIFFERENT statements is, so the prose each one
-    carries is checked for being distinct too."""
-    assert len(set(TunerUnavailable)) == 4
-    assert {c.value for c in TunerUnavailable} == {
-        "not_enabled", "not_answering", "unreachable", "no_socket"}
+def test_every_absence_is_a_distinct_cause_worded_differently():
+    """Told apart on purpose: only NOT_ENABLED is fixable by changing the game, a game
+    with no socket at all is not a game whose socket is switched off, and a run that
+    never asked is neither. The count is not the claim -- one DIFFERENT statement per
+    cause is, so the prose each one carries is checked for being distinct too."""
+    from civ_advisor.store import NO_TUNER_THIS_RUN
 
     said = {
         TunerUnavailable.NOT_ENABLED: TUNER_OFF.reason,
         TunerUnavailable.NO_SOCKET: TUNER_ABSENT.reason,
+        TunerUnavailable.NOT_ASKED: NO_TUNER_THIS_RUN.reason,
         TunerUnavailable.NOT_ANSWERING: NullTuner(
             TunerUnavailable.NOT_ANSWERING, "the game did not answer").reason,
         TunerUnavailable.UNREACHABLE: NullTuner(
             TunerUnavailable.UNREACHABLE, "no VM implements this call").reason,
     }
-    assert len(set(said.values())) == 4
-    # The two that are easiest to confuse, stated as what each must and must not say.
+    # Every member is accounted for above: a new cause must be given its own words
+    # here rather than quietly inheriting another's.
+    assert set(said) == set(TunerUnavailable)
+    assert len(set(said.values())) == len(TunerUnavailable)
+
+    # The three that are easiest to confuse, stated as what each must and must not say.
     assert "EnableTuner" in said[TunerUnavailable.NOT_ENABLED]
     assert "EnableTuner" not in said[TunerUnavailable.NO_SOCKET]
     assert "nothing you could enable" in said[TunerUnavailable.NO_SOCKET]
+    assert "EnableTuner" not in said[TunerUnavailable.NOT_ASKED]
+    assert "--no-tuner" in said[TunerUnavailable.NOT_ASKED]
+    assert NO_TUNER_THIS_RUN.unavailable is TunerUnavailable.NOT_ASKED
 
 
 def test_the_absent_singleton_offers_no_setting_to_change():

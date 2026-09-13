@@ -20,17 +20,23 @@ from typing import Callable, Protocol, runtime_checkable
 
 
 class TunerUnavailable(StrEnum):
-    """Why there is no reading. Four genuinely different situations.
+    """Why there is no reading. Five genuinely different situations.
 
-    Only NOT_ENABLED is something the player can fix, and saying the wrong one
-    would send them to change a setting that is already correct -- or, for
-    NO_SOCKET, a setting that does not exist in the game they are playing.
+    Only NOT_ENABLED is something the player can fix by changing the game. Saying the
+    wrong one would send them to change a setting that is already correct -- or, for
+    NO_SOCKET, a setting that does not exist in the game they are playing, or, for
+    NOT_ASKED, a setting that is fine and was simply never consulted.
+
+    Each member is a machine-readable cause a consumer branches on. A distinct cause
+    carrying another cause's enum is the same defect as carrying another cause's prose,
+    just harder to see: the page would act on one story while the player reads another.
     """
 
     NOT_ENABLED = "not_enabled"          # the socket is closed; EnableTuner is 0
     NOT_ANSWERING = "not_answering"      # enabled, but no game is running or it did not reply
     UNREACHABLE = "unreachable"          # answered, but this figure exists in no VM
     NO_SOCKET = "no_socket"              # this game has no tuner socket to enable at all
+    NOT_ASKED = "not_asked"              # the socket was never contacted; this run chose not to
 
 
 @dataclass(frozen=True)

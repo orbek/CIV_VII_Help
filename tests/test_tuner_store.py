@@ -45,6 +45,10 @@ def test_no_tuner_says_this_run_chose_not_to_ask(civ6_store):
     assert "--no-tuner" in snap.tuner.reason
     assert "EnableTuner" not in snap.tuner.reason
     assert "no tuner socket" not in snap.tuner.reason
+    # The machine-readable cause too, not just the prose: shipping "not_enabled" for a
+    # socket nobody contacted is the same reason-vs-cause split one layer down, and a
+    # consumer branching on the enum would act on a story the player never reads.
+    assert snap.tuner.unavailable is TunerUnavailable.NOT_ASKED
 
 
 def test_a_tuner_that_raises_does_not_fail_the_rebuild(civ6_store):

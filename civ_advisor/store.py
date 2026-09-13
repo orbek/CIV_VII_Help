@@ -33,12 +33,12 @@ if TYPE_CHECKING:
 log = logging.getLogger(__name__)
 
 # The tuner was not asked because THIS RUN said not to ask -- not because the socket is
-# off and not because the game lacks one. The enum has no member for a choice the
-# advisor made about itself, so the prose carries the real cause, which is what a
-# player reads. Saying "set EnableTuner 1" here would send someone to change a setting
-# that is very likely already correct.
-_NO_TUNER_THIS_RUN = NullTuner(
-    TunerUnavailable.NOT_ENABLED,
+# off, and not because the game lacks one. It carries its own cause as well as its own
+# prose: labelling it NOT_ENABLED shipped "unavailable": "not_enabled" to the page for a
+# socket nobody ever contacted, which is the same reason-vs-cause split that the
+# Civ VII/AppOptions defect was, one layer down.
+NO_TUNER_THIS_RUN = NullTuner(
+    TunerUnavailable.NOT_ASKED,
     "This run was started with --no-tuner, so the advisor never contacted the game's "
     "tuner socket. Nothing about the game is wrong; drop the flag to read these figures.",
 )
@@ -374,7 +374,7 @@ class Store:
         if factory is None:
             provider = TUNER_ABSENT
         elif not self.use_tuner:
-            provider = _NO_TUNER_THIS_RUN
+            provider = NO_TUNER_THIS_RUN
         else:
             try:
                 provider = factory()

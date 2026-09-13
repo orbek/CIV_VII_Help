@@ -1197,6 +1197,9 @@
     if (!isLive && fact.reported_at) meta.push(`entered ${fact.reported_at}`);
     node.append(el("p", "fact-meta", meta.join(" · ")));
     if (fact.turn_disagreement) node.append(el("p", "fact-disagree", fact.turn_disagreement));
+    /* Provenance travels apart from the note -- the number rule admits a note's numerals
+       and must never admit a file's timestamp or digest -- so the drawer shows both. */
+    if (fact.source_detail) node.append(el("p", "fact-note", fact.source_detail));
     if (fact.note) node.append(el("p", "fact-note", fact.note));
     if ((fact.contributing || []).length) {
       const names = fact.contributing

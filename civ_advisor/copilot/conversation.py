@@ -203,11 +203,23 @@ def source_phrase(fact: EvidenceFact) -> str:
     return f"computed from {', '.join(fact.contributing)}{turn}"
 
 
+# What the page is shown and the model is not. `source_detail` is provenance -- a file's
+# modification time and digest -- whose digits are arbitrary: the number rule refuses
+# them, so putting them in front of the model can only tempt a rejection. The player,
+# who is checking the claim rather than writing it, gets them.
+MODEL_HIDDEN = ("source_detail",)
+
+
 def fact_payload(fact: EvidenceFact) -> dict:
     return {"id": fact.id, "label": fact.label, "kind": fact.source_kind.value,
             "provenance": fact.provenance.value, "value": fact.value, "unit": fact.unit,
             "observed_turn": fact.observed_turn, "subject": fact.subject_id,
-            "note": fact.note, "source": source_phrase(fact)}
+            "note": fact.note, "source": source_phrase(fact),
+            "source_detail": fact.source_detail}
+
+
+def model_fact_payload(fact: EvidenceFact) -> dict:
+    return {k: v for k, v in fact_payload(fact).items() if k not in MODEL_HIDDEN}
 
 
 def absence_payload(absence: Absence) -> dict:
@@ -230,7 +242,7 @@ def compose_prompt(request: ChatRequest, resolved: Resolved) -> str:
     payload = {
         "player": request.text,
         "turn": request.turn,
-        "facts": [fact_payload(f) for f in resolved.facts],
+        "facts": [model_fact_payload(f) for f in resolved.facts],
         "cannot_answer": [absence_payload(a) for a in resolved.absences],
         "notes": list(resolved.notes),
         "earlier": _history_payload(request),
@@ -383,5 +395,6 @@ class Transcript:
 
 __all__ = ["ASK_LIMIT", "CANNOT", "ChatAnswer", "ChatRequest", "Exchange", "HISTORY_LIMIT",
            "MAX_QUESTIONS", "Resolved", "Selected", "Transcript", "absence_payload",
-           "compose_prompt", "compose_schema", "fact_payload", "fallback", "parse_selection",
+           "compose_prompt", "compose_schema", "fact_payload", "fallback",
+           "model_fact_payload", "parse_selection",
            "resolve", "select_prompt", "select_schema", "source_phrase", "validate_answer"]

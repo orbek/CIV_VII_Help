@@ -378,7 +378,12 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
     Undated on purpose. A ruleset figure is not something that happened on a turn; it is
     what the installed files say, and dating it to the analysis turn would imply the game
     reported it this turn. The one honest "when" — when the game last wrote that file —
-    lives in the note, together with the digest that makes the claim checkable.
+    lives in `source_detail`, together with the digest that makes the claim checkable.
+
+    Both of those are provenance, and provenance stays OUT of `note`: the number rule
+    admits every numeral a cited note carries, so a modification time and a sha256 there
+    are a dozen arbitrary digits generated prose may quote as figures. `note` carries
+    prose about the figure and nothing else.
 
     Accepts only a `RulesetFigure`. A `RulesetCount` or `RulesetMention` has no `value`
     field and would fail below with an AttributeError regardless, but this checks first
@@ -398,8 +403,9 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
         source_file=figure.identity.path.name,
         record_key=(figure.table, figure.column) + figure.row_key,
         subject_id=figure.subject,
-        note=(f"Read from {figure.identity.describe()}. That file records no game build, "
-              "no expansion list and no mod list, so none is claimed here."),
+        source_detail=f"Read from {figure.identity.describe()}",
+        note=("That file records no game build, no expansion list and no mod list, so "
+              "none is claimed here."),
     ))
 
 

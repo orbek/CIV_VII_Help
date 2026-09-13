@@ -76,6 +76,15 @@ class EvidenceFact:
     subject_id: str | None = None    # player id, city key, plot — whatever this is about
     contributing: tuple[str, ...] = ()   # fact ids this one was derived from
     note: str | None = None          # a limitation the reader must not miss
+    # WHERE this came from, in more words than `source_file` holds -- a file's
+    # modification time and digest, say. Kept out of `note` on purpose: the number rule
+    # (copilot/grounding.py) admits every numeral in a cited fact's note, because notes
+    # are written by the deterministic layer ABOUT the figure. Provenance is not about
+    # the figure, and its digits are arbitrary -- a timestamp and a sha256 put roughly a
+    # dozen of them into the admitted pool, which generated prose could spend on a
+    # payback period nothing ever computed. Nothing in `grounding.admitted` reads this
+    # field, and nothing ever should.
+    source_detail: str | None = None
     reported_at: str | None = None   # ISO timestamp, for player reports
 
     def __post_init__(self) -> None:

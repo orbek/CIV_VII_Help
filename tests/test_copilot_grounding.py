@@ -1,4 +1,5 @@
 """Spec section 4.3: every number in generated prose must appear in a cited fact."""
+from pathlib import Path
 
 from civ_advisor.copilot.grounding import check, numerals_in
 
@@ -218,3 +219,69 @@ def test_a_cited_id_written_bare_in_prose_is_still_scanned():
     got = check("Follow guide.district.7 to the letter, in the order it gives.",
                 cited("guide.district.7"), facts)
     assert not got.ok and got.ungrounded == ("7",)
+
+
+# ---- provenance is not a pool of numbers -------------------------------------------
+
+def test_a_figure_assembled_out_of_a_files_timestamp_and_digest_is_rejected():
+    """Reproduced from a real ruleset fact: the mtime and the sha256 in a fact's note
+    put a dozen arbitrary digits into the admitted pool, and prose could spend them on a
+    payback period nothing computed. The player must read WHICH numbers were refused."""
+    from civ_advisor.copilot import conversation as conv
+    from civ_advisor.decisions.evidence import EvidenceLedger, ruleset_fact
+    from civ_advisor.ruleset.base import RulesetFigure, RulesetIdentity
+
+    identity = RulesetIdentity(path=Path("/games/DebugGameplay.sqlite"), size=18_051_072,
+                               # 2026-09-13 14:32 UTC, and a digest whose first 12 hex
+                               # characters contain 9, 3, 1, 7, 40 and 2.
+                               mtime_ns=1_789_655_520_000_000_000,
+                               digest="9f3a1c7b40e2" + "0" * 52)
+    figure = RulesetFigure(subject="BUILDING_LIBRARY", label="Library production cost",
+                           value=90, unit="production", table="Buildings", column="Cost",
+                           row_key=("BUILDING_LIBRARY",), identity=identity)
+    payload = conv.fact_payload(ruleset_fact(EvidenceLedger(), figure))
+    text = ("The Library costs 90 production [ruleset.Buildings.BUILDING_LIBRARY.Cost]. "
+            "At your current output that is about 14 turns, and it will have returned "
+            "40 science by turn 32.")
+
+    got = check(text, cited("ruleset.Buildings.BUILDING_LIBRARY.Cost"), [payload])
+
+    assert not got.ok
+    assert got.ungrounded == ("14", "40", "32")
+    assert "14, 40, 32" in got.describe()
+
+
+# ---- a turn in a question is not a claim about a quantity ---------------------------
+
+def test_asking_about_a_turn_does_not_reject_a_correct_answer():
+    """Rule 7 exists to stop the player's FIGURE being adopted. "on turn 130" names a
+    point on the game's clock; it is not a quantity the advisor holds a rival figure for,
+    and rejecting over it left the player with the fallback for every such question."""
+    got = check("Your net gold is 7 per turn.", cited("gold.net.59"), FACTS,
+                player_text="what should I do on turn 130?")
+    assert got.ok, got.describe()
+
+
+def test_a_quantity_the_player_typed_still_has_to_be_reconciled():
+    """The narrowing must not reach the case rule 7 is for: a duration the player
+    asserts, against a duration the tuner read."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("The tuner read 4 turns for the Granary in Rome on turn 49, so take it.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.unreconciled == ("8",)
+
+
+# ---- a numeral no Decimal can compare is refused in words ---------------------------
+
+def test_an_absurdly_precise_numeral_is_rejected_in_words_not_by_raising():
+    text = f"Your net gold is {'7.' + '0' * 9000}1 per turn."
+    got = check(text, cited("gold.net.59"), FACTS)
+    assert not got.ok and got.ungrounded
+    assert "no cited fact carries" in got.describe()
+
+
+def test_a_value_written_with_absurd_but_harmless_precision_still_matches():
+    assert check(f"Your net gold is {'7.' + '0' * 9000} per turn.",
+                 cited("gold.net.59"), FACTS).ok

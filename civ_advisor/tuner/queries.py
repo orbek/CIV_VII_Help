@@ -20,40 +20,65 @@ from .base import BuildOption, CityAmenities, Maintenance, SettlementOptions
 # transient failure, so it is read as absence and never retried.
 NOT_IMPLEMENTED = "Not Implemented."
 
+# Every body below is wrapped in its own pcall. An uncaught error in a Lua
+# chunk aborts the whole chunk, so a call that does not exist in this VM would
+# otherwise silence the sentinel this module's caller appends after the query
+# -- and a caller waiting for a sentinel that will never come cannot tell that
+# apart from a game that simply is not running. Printing "PROBEERR" instead
+# turns that silence into a line the client can recognise immediately.
 _MAINTENANCE_LUA = (
+    'local ok,err=pcall(function() '
     'local t=Players[Game.GetLocalPlayer()]:GetTreasury() '
     'print("total", t:GetTotalMaintenance()) '
     'print("buildings", t:GetBuildingMaintenance()) '
     'print("districts", t:GetDistrictMaintenance()) '
     'print("units", t:GetUnitMaintenance()) '
     'print("gold", t:GetGoldBalance()) '
-    'print("goldYield", t:GetGoldYield())'
+    'print("goldYield", t:GetGoldYield()) end) '
+    'if not ok then print("PROBEERR", tostring(err)) end'
 )
 
 _AMENITIES_LUA = (
+    'local ok,err=pcall(function() '
     'for _,c in Players[Game.GetLocalPlayer()]:GetCities():Members() do '
     'local g=c:GetGrowth() '
     'print(Locale.Lookup(c:GetName()), g:GetAmenities(), g:GetAmenitiesFromLuxuries(), '
     'g:GetAmenitiesFromCivics(), g:GetAmenitiesFromEntertainment(), g:GetHousing(), '
-    'g:GetFoodSurplus()) end'
+    'g:GetFoodSurplus()) end end) '
+    'if not ok then print("PROBEERR", tostring(err)) end'
 )
 
 # Runs in the UI VM: CanProduce and GetTurnsLeft are present in GameCore_Tuner
-# and raise "Not Implemented." there.
+# and raise "Not Implemented." there. CanProduce already guards itself with an
+# inner pcall (its failure is expected for buildings a settlement cannot
+# build); the outer pcall added here also covers GetTurnsLeft, which is not
+# expected to fail but must not be allowed to abort the whole reply if it does.
 _BUILD_OPTIONS_LUA = (
+    'local ok,err=pcall(function() '
     'for _,c in Players[Game.GetLocalPlayer()]:GetCities():Members() do '
     'local q=c:GetBuildQueue() '
     'for row in GameInfo.Buildings() do '
-    'local ok,can=pcall(function() return q:CanProduce(row.Hash,true) end) '
-    'if ok and can then print(Locale.Lookup(c:GetName()), row.BuildingType, '
-    'q:GetTurnsLeft(row.Hash)) end end end'
+    'local ok2,can=pcall(function() return q:CanProduce(row.Hash,true) end) '
+    'if ok2 and can then print(Locale.Lookup(c:GetName()), row.BuildingType, '
+    'q:GetTurnsLeft(row.Hash)) end end end end) '
+    'if not ok then print("PROBEERR", tostring(err)) end'
 )
 
 
 def looks_unreachable(lines: list[str]) -> bool:
     """Whether a reply says the figure does not exist, rather than carrying one."""
     joined = "\n".join(lines)
-    return NOT_IMPLEMENTED in joined or "\tnil" in joined or joined.strip().endswith("nil")
+    return (
+        NOT_IMPLEMENTED in joined
+        or "\tnil" in joined
+        or joined.strip().endswith("nil")
+        # Observed live: an uncaught Lua error prints a "Runtime Error"/"ERR:"
+        # line from the game's own error reporting before the chunk aborts.
+        # "PROBEERR" is this module's own pcall guard from above.
+        or "Runtime Error" in joined
+        or "ERR:" in joined
+        or "PROBEERR" in joined
+    )
 
 
 def _fields(line: str) -> list[str]:

@@ -13,11 +13,20 @@ FIXTURES = Path(__file__).parent / "fixtures" / "tuner"
 
 
 class FakeGame:
-    """Replays captured bytes, keyed by which state a command addressed."""
+    """Replays captured bytes, keyed by which state a command addressed.
 
-    def __init__(self, replies: dict[int, bytes], *, drip: bool = False):
+    An uncaught Lua error aborts the chunk before the sentinel this module's
+    caller appends ever runs -- observed against the real game. `abort_states`
+    models exactly that: for those states, the fake sends the reply but never
+    follows it with the sentinel frame, the same way a real aborted chunk
+    would never reach its own trailing `print(SENTINEL)`.
+    """
+
+    def __init__(self, replies: dict[int, bytes], *, drip: bool = False,
+                 abort_states: frozenset[int] = frozenset()):
         self.replies = replies
         self.drip = drip          # send one byte at a time, to split frames
+        self.abort_states = abort_states
         self.asked: list[str] = []
         self._srv = socket.socket()
         self._srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -51,13 +60,23 @@ class FakeGame:
                         self.asked.append(payload)
                         state = int(payload.split(":")[1])
                         self._send(conn, self.replies.get(state, b""))
-                        self._send(conn, frame(TAG_HANDSHAKE,
-                                               f"O\x00x: {SENTINEL}"))
+                        if state not in self.abort_states:
+                            self._send(conn, frame(TAG_HANDSHAKE,
+                                                   f"O\x00x: {SENTINEL}"))
         except OSError:
             return
 
     def close(self):
         self._srv.close()
+
+
+def aborted_reply(text: str) -> bytes:
+    """One output frame carrying an error line, and nothing after it.
+
+    Models what the real game sends when an un-`pcall`'d call fails: the
+    chunk stops dead, so this is the entire reply -- no sentinel follows.
+    """
+    return frame(TAG_HANDSHAKE, f"O\x00x: {text}")
 
 
 def replies() -> dict[int, bytes]:
@@ -136,5 +155,58 @@ def test_the_client_exposes_no_way_to_run_arbitrary_lua():
         assert not hasattr(t, "query")
         assert not hasattr(t, "run")
         assert not hasattr(t, "eval")
+        # `_ask` itself must reject anything that is not a known catalog id --
+        # otherwise it is an arbitrary-Lua primitive with an underscore on it.
+        with pytest.raises(KeyError):
+            t._ask("not-a-query")
     finally:
         game.close()
+
+
+def test_an_aborted_chunk_is_reported_as_unreachable_not_as_a_dead_game():
+    """The sentinel never prints when Lua raises. That must not read as 'no game'."""
+    game = FakeGame({4: aborted_reply("ERR:Runtime Error: function expected instead of nil")},
+                     abort_states=frozenset({4}))
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        assert "running" not in (t.reason or "")
+    finally:
+        game.close()
+
+
+def test_an_aborted_chunk_does_not_burn_the_whole_timeout():
+    """Detection is by content, not by waiting."""
+    import time
+
+    game = FakeGame({4: aborted_reply("ERR:Runtime Error: function expected instead of nil")},
+                     abort_states=frozenset({4}))
+    try:
+        t = open_tuner(port=game.port, timeout=5.0)
+        start = time.monotonic()
+        t.maintenance()
+        assert time.monotonic() - start < 2.0
+    finally:
+        game.close()
+
+
+def test_a_failure_does_not_leak_into_the_next_call_on_the_same_instance():
+    game = FakeGame({4: aborted_reply("ERR:Runtime Error: boom"),
+                      125: (FIXTURES / "query_buildoptions.bin").read_bytes()},
+                     abort_states=frozenset({4}))
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        t.build_options()
+        assert t.unavailable is None
+        assert t.reason is None
+    finally:
+        game.close()
+
+
+def test_an_out_of_range_port_does_not_raise():
+    t = open_tuner(port=99999, timeout=0.5)
+    assert t.available is False
+    assert t.unavailable is TunerUnavailable.NOT_ENABLED

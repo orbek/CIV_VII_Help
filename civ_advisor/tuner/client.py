@@ -16,7 +16,7 @@ from .base import (
     TunerProvider, TunerReading, TunerUnavailable,
 )
 from .protocol import TAG_COMMAND, TAG_HANDSHAKE, consume, frame, output_text, parse_states
-from .queries import CATALOG, Query, looks_unreachable
+from .queries import CATALOG, looks_unreachable
 
 HOST = "127.0.0.1"      # loopback only, always. Never configurable.
 PORT = 4318
@@ -73,8 +73,16 @@ class Civ6Tuner:
         except OSError:
             pass
 
-    def _ask(self, query: Query) -> list[str] | None:
-        """Run one catalog entry and return its output lines, or None."""
+    def _ask(self, query_id: str) -> list[str] | None:
+        """Run one catalog entry, by id, and return its output lines, or None.
+
+        Takes an id rather than a `Query` so that nothing on this object can be
+        handed Lua directly -- the only Lua that can run is Lua already sitting
+        in CATALOG. An unknown id raises KeyError rather than silently doing
+        nothing, since it is a programming error inside this package, never a
+        value that arrived from a caller.
+        """
+        query = CATALOG[query_id]
         index = self._states.get(query.state)
         if index is None:
             self._unavailable = TunerUnavailable.UNREACHABLE
@@ -110,14 +118,30 @@ class Civ6Tuner:
                     self._reading = TunerReading(
                         turn=self._turn, read_at=_now(), state=query.state)
                     return lines
+                if looks_unreachable([text]):
+                    # An uncaught Lua error aborts the chunk before the
+                    # sentinel prints, so waiting out the timeout here would
+                    # misreport this as a game that is not running, when the
+                    # truth is that this call does not exist in this VM.
+                    # Detection is by content, not by waiting.
+                    self._unavailable = TunerUnavailable.UNREACHABLE
+                    self._reason = (
+                        f"the game's {query.state} state does not implement "
+                        f"the calls {query.id} needs")
+                    return None
                 lines.append(text)
         self._unavailable = TunerUnavailable.NOT_ANSWERING
         self._reason = _NOT_ANSWERING
         return None
 
     def _answer(self, query_id: str):
+        # Cleared up front: a poll asks maintenance, amenities and build
+        # options on this same instance, and a failure on one must not leak
+        # into how the next is reported.
+        self._unavailable = None
+        self._reason = None
         query = CATALOG[query_id]
-        lines = self._ask(query)
+        lines = self._ask(query_id)
         if lines is None:
             return None
         if looks_unreachable(lines):
@@ -151,9 +175,12 @@ def open_tuner(port: int = PORT, timeout: float = 3.0) -> TunerProvider:
     """
     try:
         sock = socket.create_connection((HOST, port), timeout=timeout)
-    except OSError:
+    except (OSError, OverflowError, TypeError, ValueError):
         # Closed port and refused connection are the same thing to a player:
-        # the setting is off, or the game is not running.
+        # the setting is off, or the game is not running. An out-of-range or
+        # malformed port is not something a socket error would ever raise for
+        # -- create_connection raises OverflowError/TypeError/ValueError for
+        # those instead -- but open_tuner must never raise regardless of why.
         return TUNER_OFF
 
     try:

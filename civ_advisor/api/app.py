@@ -551,7 +551,11 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         captured = current()
         context, _ = brief_for(captured, bool(oracle))
         return {
+            # `verified_on` travels with each question and is shown on it: the date says
+            # this question was run against a real game, and a date the page never shows
+            # is a guarantee nobody can check.
             "questions": [{"id": q.id, "description": q.description, "oracle": q.oracle,
+                           "verified_on": q.verified_on,
                            "params": [{"name": p.name, "kind": p.kind.value,
                                        "description": p.description} for p in q.params]}
                           for q in catalog.CATALOG.values()],

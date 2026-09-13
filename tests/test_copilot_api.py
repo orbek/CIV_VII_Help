@@ -1,5 +1,6 @@
 """Does a grounded answer reach the page? Only the HTTP payload is proof."""
 import json
+import re
 import threading
 
 import pytest
@@ -39,6 +40,17 @@ def test_the_catalog_and_this_turns_choices_reach_the_page(fixture_dir):
         ids = {q["id"] for q in body["questions"]}
         assert "empire.comparison" in ids and "ruleset.building" in ids
         assert body["choices"]["stat"] == ["culture", "science", "gold", "production", "food"]
+
+
+def test_the_catalog_says_when_each_question_was_last_verified(fixture_dir):
+    """`verified_on` records that the question was run against a real game on that date.
+    It reaches the page, which shows it on the question itself: a date kept in the code
+    and read by nothing would look like a guarantee and be none."""
+    with TestClient(app_with(fixture_dir)) as c:
+        questions = c.get("/api/copilot/catalog").json()["questions"]
+        assert questions
+        for q in questions:
+            assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", q["verified_on"] or ""), q["id"]
 
 
 def test_a_direct_question_returns_the_deterministic_answer_with_its_evidence(fixture_dir):

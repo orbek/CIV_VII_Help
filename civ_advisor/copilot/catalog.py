@@ -423,7 +423,7 @@ def _live_options(context: DecisionContext, params: dict[str, str]) -> Resolutio
 
 # ---- ruleset-backed resolvers (Task 6) ------------------------------------------------
 
-def _ruleset(question_id: str, lookup: str, param: str, *, id_prefix: str) -> Resolver:
+def _ruleset(question_id: str, lookup: str, param: str) -> Resolver:
     def resolve(context: DecisionContext, params: dict[str, str]) -> Resolution:
         provider = context.ruleset
         if not provider.available:
@@ -489,44 +489,44 @@ CATALOG: dict[str, Question] = {
                  params=(Param("city", ParamKind.CITY, "the settlement"),), verified_on="2026-09-13"),
         Question("ruleset.building", "A building's cost, upkeep, prerequisites, flat yields, "
                  "housing, entertainment and whether it needs a plot, from your installed ruleset.",
-                 _ruleset("ruleset.building", "building", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.building", "building", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. BUILDING_LIBRARY"),),
                  verified_on="2026-09-13"),
         Question("ruleset.district", "A district's cost, prerequisites, housing and upkeep.",
-                 _ruleset("ruleset.district", "district", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.district", "district", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. DISTRICT_CAMPUS"),),
                  verified_on="2026-09-13"),
         Question("ruleset.unit", "A unit's cost, upkeep, strength, moves, range and prerequisites.",
-                 _ruleset("ruleset.unit", "unit", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.unit", "unit", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. UNIT_ARCHER"),),
                  verified_on="2026-09-13"),
         Question("ruleset.technology", "A technology's cost, era, prerequisites and eurekas.",
-                 _ruleset("ruleset.technology", "technology", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.technology", "technology", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. TECH_WRITING"),),
                  verified_on="2026-09-13"),
         Question("ruleset.civic", "A civic's cost, era, prerequisites and inspirations.",
-                 _ruleset("ruleset.civic", "civic", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.civic", "civic", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. CIVIC_CODE_OF_LAWS"),),
                  verified_on="2026-09-13"),
         Question("ruleset.improvement", "A tile improvement's prerequisites, housing and yields.",
-                 _ruleset("ruleset.improvement", "improvement", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.improvement", "improvement", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. IMPROVEMENT_FARM"),),
                  verified_on="2026-09-13"),
         Question("ruleset.policy", "Which slot a policy card fills and what unlocks it. Its "
                  "effect is not quantified by the ruleset.",
-                 _ruleset("ruleset.policy", "policy", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.policy", "policy", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. POLICY_URBAN_PLANNING"),),
                  verified_on="2026-09-13"),
         Question("ruleset.government", "A government's slot counts, tier and unlocking civic.",
-                 _ruleset("ruleset.government", "government", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.government", "government", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. GOVERNMENT_CLASSICAL_REPUBLIC"),),
                  verified_on="2026-09-13"),
         Question("ruleset.resource", "A resource's class, amenities and prerequisites.",
-                 _ruleset("ruleset.resource", "resource", "item", id_prefix="ruleset"),
+                 _ruleset("ruleset.resource", "resource", "item"),
                  params=(Param("item", ParamKind.TYPE_KEY, "e.g. RESOURCE_SILK"),),
                  verified_on="2026-09-13"),
         Question("ruleset.parameter", "One of the game's global rule constants, by name.",
-                 _ruleset("ruleset.parameter", "parameter", "name", id_prefix="ruleset"),
+                 _ruleset("ruleset.parameter", "parameter", "name"),
                  params=(Param("name", ParamKind.PARAMETER_NAME, "one of the fixed names"),),
                  verified_on="2026-09-13"),
     )

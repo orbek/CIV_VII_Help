@@ -1891,6 +1891,15 @@
     return form;
   }
 
+  /* What a question is, and when it was last run against a real game. The date is
+     recorded per question in the catalog; showing it is what makes it checkable rather
+     than a reassurance kept in the source. */
+  function copilotQuestionTitle(q) {
+    return q.id
+      + (q.oracle ? " — answered only with Oracle on" : "")
+      + (q.verified_on ? ` — verified against a real game on ${q.verified_on}` : "");
+  }
+
   function copilotCatalogControls(catalog) {
     const wrap = el("div", "copilot-catalog");
     const plain = el("div", "copilot-buttons");
@@ -1899,7 +1908,7 @@
       const button = el("button", null, q.description);
       button.type = "button";
       button.dataset.focusKey = `copilot:q:${q.id}`;
-      button.title = q.id + (q.oracle ? " — answered only with Oracle on" : "");
+      button.title = copilotQuestionTitle(q);
       button.addEventListener("click",
         () => copilotPost("/api/copilot/question", { id: q.id, params: {} }));
       plain.append(button);
@@ -1908,7 +1917,9 @@
     (catalog.questions || []).forEach((q) => {
       if (!q.params.length) return;
       const row = el("form", "copilot-param");
-      row.append(el("span", "copilot-param-label", q.description));
+      const label = el("span", "copilot-param-label", q.description);
+      label.title = copilotQuestionTitle(q);
+      row.append(label);
       const inputs = {};
       q.params.forEach((p) => {
         const choices = (catalog.choices || {})[p.kind] || [];

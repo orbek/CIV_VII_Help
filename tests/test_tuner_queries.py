@@ -78,6 +78,47 @@ def test_maintenance_parses_the_real_reply():
     assert m.net_gold == 7
 
 
+def test_maintenance_parses_a_real_fractional_reply():
+    """Against a live probe of a real Civ VI game on 2026-09-13: GetTotalMaintenance
+    14, GetBuildingMaintenance 2, GetDistrictMaintenance 4, GetUnitMaintenance 8,
+    GetGoldBalance 428.8125, GetGoldYield 55.953125. This is the reply the old
+    `int(parts[1])` parser choked on -- `int("428.8125")` raised, the caller's
+    `except ValueError: continue` swallowed it, "gold" and "goldYield" both vanished
+    from `got`, and the client blamed the game's reply for it. This is not a
+    fixture .bin (no capture was taken of this exact probe), so the lines are built
+    here the same way tests/test_tuner_queries.py already does for
+    build_options_ids when no capture exists -- real numbers, not invented ones."""
+    m = CATALOG["maintenance"].parse([
+        "total\t14", "buildings\t2", "districts\t4", "units\t8",
+        "gold\t428.8125", "goldYield\t55.953125",
+    ])
+    assert m.total == 14 and m.buildings == 2 and m.districts == 4 and m.units == 8
+    assert m.gold == 428.8125
+    assert m.gold_yield == 55.953125
+    assert m.net_gold == pytest.approx(55.953125 - 14)
+
+
+def test_maintenance_still_parses_an_integer_only_reply():
+    """The early-game case that produced the original (wrong) assumption: gold as a
+    whole number. It must keep parsing correctly now that the parser also accepts
+    fractions -- this is not a case the fix may regress."""
+    m = CATALOG["maintenance"].parse(lines("query_maintenance.bin"))
+    assert m.gold == 152
+    assert m.net_gold == 7
+
+
+def test_a_genuinely_unparseable_maintenance_field_names_the_real_absence():
+    """`gold` here is not a number at all -- a field that truly cannot be parsed.
+    The resulting absence must say the advisor could not read it, never that the
+    game's reply was unreadable: the reply is not the thing at fault when every
+    other field on the same line parses fine."""
+    with pytest.raises(ValueError, match=r"missing \['gold'\]"):
+        CATALOG["maintenance"].parse([
+            "total\t14", "buildings\t2", "districts\t4", "units\t8",
+            "gold\tNaN-ish-garbage", "goldYield\t55.953125",
+        ])
+
+
 def test_amenities_parses_every_city_in_the_real_reply():
     rows = CATALOG["amenities"].parse(lines("query_amenities.bin"))
     by_city = {r.city: r for r in rows}
@@ -85,6 +126,17 @@ def test_amenities_parses_every_city_in_the_real_reply():
     assert by_city["Rome"].from_entertainment == 2
     assert by_city["Puteoli"].total == 1
     assert by_city["Puteoli"].housing == 5
+
+
+def test_amenities_food_surplus_is_fractional_and_the_rest_stays_integer():
+    """Food surplus is fractional in Civ VI generally, unlike amenity counts and
+    housing beside it (verified integer in a real mid-game state), so it alone must
+    survive a decimal point rather than raising and dropping the whole city."""
+    rows = CATALOG["amenities"].parse(["Rome\t3\t1\t0\t2\t9\t2.5"])
+    r = rows[0]
+    assert r.food_surplus == 2.5
+    assert r.total == 3 and r.housing == 9
+    assert isinstance(r.total, int) and isinstance(r.housing, int)
 
 
 def test_build_options_parses_each_settlement_separately():
@@ -116,3 +168,58 @@ def test_a_good_reply_does_not_read_as_unreachable():
 def test_parsing_a_truncated_reply_raises_rather_than_inventing_a_figure():
     with pytest.raises(ValueError):
         CATALOG["maintenance"].parse(["total\t1"])
+
+
+# `query_buildoptions_ids.bin` does not exist: Task 1's write spike, which was to capture
+# it from a live game, is DEFERRED per docs/superpowers/sdd .../progress.md ("needs the
+# user's running game and a save they are willing to damage, which they have not yet
+# supplied"). Fabricating a fake ".bin" and calling it a capture would be exactly the
+# defect tests/fixtures/tuner/README.md warns against ("these are captures, not
+# hand-written"), so this parser is exercised against lines built in the test itself --
+# the same shape the real reply will have, six tab-separated fields per row -- and
+# labelled as synthetic rather than pretending to be real bytes off a socket.
+_SYNTHETIC_BUILD_OPTION_ID_LINES = [
+    "65536\tRome\tBUILDING_GRANARY\t123456789\tfalse\t8",
+    "65536\tRome\tBUILDING_LIBRARY\t987654321\tfalse\t11",
+    "65537\tPuteoli\tBUILDING_MONUMENT\t555555555\ttrue\t60",
+]
+
+
+def test_build_option_ids_carry_the_city_id_the_hash_and_placement():
+    """Against a REAL capture, taken from a running game on 2026-09-13, turn 112.
+
+    This replaced a synthetic fixture as soon as a live game was available. The
+    write spike had not run, but this query only prints -- so the capture cost
+    nothing and no throwaway save was needed to take it.
+    """
+    rows = CATALOG["build_options_ids"].parse(lines("query_buildoptions_ids.bin"))
+    by_city = {r.city: r for r in rows}
+    assert set(by_city) == {"Washington", "New York", "Philadelphia"}
+    assert by_city["Washington"].city_id == 65536
+    assert by_city["New York"].city_id == 131073
+
+    barracks = by_city["Washington"].offers("BUILDING_BARRACKS")
+    assert barracks.item_hash == 1697130061
+    assert barracks.requires_placement is False
+    assert barracks.turns == 7
+
+    # A wonder needs a plot chosen; an ordinary building does not. Both shapes are
+    # in this one capture, which is why it is worth keeping.
+    gardens = by_city["Washington"].offers("BUILDING_HANGING_GARDENS")
+    assert gardens.requires_placement is True
+    assert gardens.item_hash == -754251518
+
+    for city in by_city.values():
+        assert isinstance(city.city_id, int)
+        for o in city.options:
+            assert isinstance(o.item_hash, int) and o.item.startswith("BUILDING_")
+            assert o.requires_placement in (True, False)
+            assert o.turns >= 0
+
+
+def test_build_option_ids_runs_in_the_ui_state():
+    assert CATALOG["build_options_ids"].state == "InGame"
+
+
+def test_build_option_ids_lua_is_a_constant():
+    assert "{" not in CATALOG["build_options_ids"].lua and "%s" not in CATALOG["build_options_ids"].lua

@@ -26,7 +26,7 @@ def test_two_rulesets_with_different_content_have_different_digests(tmp_path):
     vanilla = make_ruleset(tmp_path / "a", name="DebugGameplay.sqlite")
     modded = make_ruleset(tmp_path / "b", name="DebugGameplay.sqlite", rows={
         "Buildings": [("BUILDING_LIBRARY", "LOC_X", 45, 1, "DISTRICT_CAMPUS",
-                       "TECH_WRITING", "", 0, 0)]})
+                       "TECH_WRITING", "", 0, 0, 0, None, 0)]})
 
     assert identify(vanilla).digest != identify(modded).digest
 

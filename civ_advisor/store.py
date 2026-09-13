@@ -251,7 +251,8 @@ class Store:
     def __init__(self, logs_dir: Path | None, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
                  identity_provider: Callable[[Snapshot], dict] | None = None,
-                 *, profile: GameProfile | None, use_tuner: bool = True) -> None:
+                 *, profile: GameProfile | None, use_tuner: bool = True,
+                 allow_actions: bool = False) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision
@@ -265,6 +266,10 @@ class Store:
         # singleton, and mutating one to disable its tuner would disable it for
         # every store in the interpreter, permanently and undetectably.
         self.use_tuner = use_tuner
+        # Set by `create_app` from its own `allow_actions` (Task 11). Gates the fourth
+        # tuner query, `build_options_ids`: a run that cannot act has no use for a city
+        # id or an item hash, so it is asked only when this run allows acting.
+        self.allow_actions = allow_actions
         self._pending_switch = False   # a game switch forces the next snapshot to a new epoch
         # Bumped on every ACTUAL switch_to (not a no-op one). `profile`/`logs_dir` alone
         # cannot detect an A->B->A sequence: profile objects are per-game singletons, so
@@ -383,7 +388,7 @@ class Store:
                     TunerUnavailable.NOT_ANSWERING,
                     "the tuner socket could not be reached this turn")
         try:
-            tuner = capture(provider)
+            tuner = capture(provider, acting=self.allow_actions)
         finally:
             self._close_tuner(provider)
         with self._lock:

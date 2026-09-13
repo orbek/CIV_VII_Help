@@ -304,3 +304,19 @@ def test_visibly_broken_prose_is_rejected_even_when_its_citations_are_valid():
     good = ("Culture is the widest observed gap here and the settlement's queue frees up "
             "next turn, which makes its next choice worth deciding now.")
     assert questions.validate(made, dict(base, text=good)).text == good
+
+
+def test_a_generated_answer_with_an_ungrounded_number_is_rejected():
+    data = {"text": "You trail the field at 0.44 and should expect about 12 turns to close it.",
+            "evidence_ids": ["comparison.culture.81"], "action_ids": [], "guide_ids": [],
+            "unknowns": []}
+    with pytest.raises(ValueError, match="12"):
+        questions.validate(request(), data)
+
+
+def test_a_generated_answer_whose_numbers_are_all_cited_passes():
+    data = {"text": "You trail the field at 0.44 of the median on turn 81, which is why this "
+                    "is the call to weigh now.",
+            "evidence_ids": ["comparison.culture.81"], "action_ids": [], "guide_ids": [],
+            "unknowns": []}
+    assert questions.validate(request(), data).text.startswith("You trail")

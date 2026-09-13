@@ -10,17 +10,28 @@ import socket
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .base import (
-    CityAmenities, Maintenance, NullTuner, SettlementOptions, TUNER_OFF,
-    TunerProvider, TunerReading, TunerUnavailable,
+    CityAmenities, Maintenance, NullTuner, SettlementOptionIds, SettlementOptions,
+    TUNER_NOT_ANSWERING_ENABLED, TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable,
+    tuner_unestablished,
 )
+from .options import TunerFlag, read_enable_tuner
 from .protocol import TAG_COMMAND, TAG_HANDSHAKE, consume, frame, output_text, parse_states
 from .queries import CATALOG, looks_unreachable, split_turn
 
 HOST = "127.0.0.1"      # loopback only, always. Never configurable.
 PORT = 4318
 SENTINEL = "---CIV-ADVISOR-END---"
+
+# A refused connection is ONE observation. Measured 2026-09-13: 8/8 connections succeed
+# against a loaded match, and the listener cycles at the main menu and during loads, so
+# a refusal is retried -- bounded to well under the one-second poll -- before anything
+# is concluded from it. What IS concluded afterwards comes from AppOptions.txt (Task 2),
+# not from the refusals.
+CONNECT_ATTEMPTS = 3
+CONNECT_RETRY_SECONDS = 0.25
 
 _NOT_ANSWERING = (
     "The tuner socket is open but the game did not answer. This usually means no "
@@ -178,7 +189,14 @@ class Civ6Tuner:
             return query.parse(lines)
         except ValueError as exc:
             self._unavailable = TunerUnavailable.UNREACHABLE
-            self._reason = f"the {query.id} reply could not be read: {exc}"
+            # NOT "the reply could not be read": that blames the game for a defect
+            # in OUR parser. The reply was a real, complete answer off the socket --
+            # every case caught here is this module failing to read a shape the
+            # reply legitimately had (see queries.py's `_parse_number` for the
+            # concrete instance that proved it: a bare `int()` on a fractional gold
+            # figure). The absence must name the true cause: this advisor's own
+            # parser, not the game's own reply.
+            self._reason = f"the advisor could not read the {query.id} figures: {exc}"
             return None
 
     def maintenance(self) -> Maintenance | None:
@@ -190,21 +208,36 @@ class Civ6Tuner:
     def build_options(self) -> tuple[SettlementOptions, ...]:
         return self._answer("build_options") or ()
 
+    def build_option_ids(self) -> tuple[SettlementOptionIds, ...]:
+        return self._answer("build_options_ids") or ()
 
-def open_tuner(port: int = PORT, timeout: float = 3.0) -> TunerProvider:
+
+def open_tuner(port: int = PORT, timeout: float = 3.0, app_options: Path | None = None, *,
+               attempts: int = CONNECT_ATTEMPTS,
+               retry_seconds: float = CONNECT_RETRY_SECONDS) -> TunerProvider:
     """Connect and handshake, or return a NullTuner saying why not.
 
     Never raises. A tuner failure must not cost a poll that read the logs fine.
     """
-    try:
-        sock = socket.create_connection((HOST, port), timeout=timeout)
-    except (OSError, OverflowError, TypeError, ValueError):
-        # Closed port and refused connection are the same thing to a player:
-        # the setting is off, or the game is not running. An out-of-range or
-        # malformed port is not something a socket error would ever raise for
-        # -- create_connection raises OverflowError/TypeError/ValueError for
-        # those instead -- but open_tuner must never raise regardless of why.
-        return TUNER_OFF
+    sock = None
+    for attempt in range(attempts):
+        try:
+            sock = socket.create_connection((HOST, port), timeout=timeout)
+            break
+        except (OSError, OverflowError, TypeError, ValueError):
+            if attempt + 1 < attempts:
+                time.sleep(retry_seconds)
+    if sock is None:
+        # Every attempt was refused. Which of three things that means is READ from the
+        # file that enables the tuner (Task 2); the refusals themselves decide nothing.
+        if app_options is None:
+            return tuner_unestablished("no AppOptions.txt path was supplied for this game")
+        flag, detail = read_enable_tuner(app_options)
+        if flag is TunerFlag.ON:
+            return TUNER_NOT_ANSWERING_ENABLED
+        if flag is TunerFlag.OFF:
+            return TUNER_OFF
+        return tuner_unestablished(detail)
 
     try:
         sock.sendall(frame(TAG_HANDSHAKE, "APP:civ-advisor"))
@@ -241,4 +274,5 @@ def open_tuner(port: int = PORT, timeout: float = 3.0) -> TunerProvider:
     return Civ6Tuner(_sock=sock, _states=states, _timeout=timeout, _buf=buf)
 
 
-__all__ = ["Civ6Tuner", "HOST", "PORT", "SENTINEL", "open_tuner"]
+__all__ = ["CONNECT_ATTEMPTS", "CONNECT_RETRY_SECONDS", "Civ6Tuner", "HOST", "PORT",
+           "SENTINEL", "open_tuner"]

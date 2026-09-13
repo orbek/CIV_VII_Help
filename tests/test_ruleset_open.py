@@ -73,7 +73,8 @@ def test_a_modded_ruleset_is_re_derived_rather_than_served_stale(tmp_path):
 
     path.unlink()
     make_ruleset(tmp_path, rows={"Buildings": [
-        ("BUILDING_LIBRARY", "LOC_X", 45, 1, "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0)]})
+        ("BUILDING_LIBRARY", "LOC_X", 45, 1, "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0,
+         0, None, 0)]})
 
     provider = open_ruleset(path)
     assert provider.building("BUILDING_LIBRARY").cost.value == 45

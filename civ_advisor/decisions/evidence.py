@@ -352,6 +352,24 @@ def human_identity_fact(ledger: EvidenceLedger, state: GameState) -> EvidenceFac
     ))
 
 
+def analysis_turn_fact(ledger: EvidenceLedger, state: GameState) -> EvidenceFact:
+    """The turn the logs are complete through, as a citable fact.
+
+    Exists so a generated answer may say "turn 59" and be grounded: spec section 4.3
+    admits a number only from a cited fact, and the frame of the whole answer is a
+    number. LOG, not DERIVED: it is the newest turn Player_Stats.csv has a complete
+    row for, read off that file.
+    """
+    turn = state.complete_through_turn
+    return ledger.add(EvidenceFact(
+        id=f"turn.analysis.{turn}", label="The turn the logs are complete through",
+        source_kind=SourceKind.LOG, provenance=Provenance.FAIR, observed_turn=turn,
+        value=turn, unit="turn", source_file=STATS_FILE, record_key=(STATS_FILE, turn),
+        note=("The logs are complete through this turn. A live tuner reading may be one "
+              "turn ahead of it; that is normal and is reported beside each reading."),
+    ))
+
+
 # ---- the installed ruleset -------------------------------------------------------
 
 def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
@@ -360,7 +378,12 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
     Undated on purpose. A ruleset figure is not something that happened on a turn; it is
     what the installed files say, and dating it to the analysis turn would imply the game
     reported it this turn. The one honest "when" — when the game last wrote that file —
-    lives in the note, together with the digest that makes the claim checkable.
+    lives in `source_detail`, together with the digest that makes the claim checkable.
+
+    Both of those are provenance, and provenance stays OUT of `note`: the number rule
+    admits every numeral a cited note carries, so a modification time and a sha256 there
+    are a dozen arbitrary digits generated prose may quote as figures. `note` carries
+    prose about the figure and nothing else.
 
     Accepts only a `RulesetFigure`. A `RulesetCount` or `RulesetMention` has no `value`
     field and would fail below with an AttributeError regardless, but this checks first
@@ -380,8 +403,9 @@ def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
         source_file=figure.identity.path.name,
         record_key=(figure.table, figure.column) + figure.row_key,
         subject_id=figure.subject,
-        note=(f"Read from {figure.identity.describe()}. That file records no game build, "
-              "no expansion list and no mod list, so none is claimed here."),
+        source_detail=f"Read from {figure.identity.describe()}",
+        note=("That file records no game build, no expansion list and no mod list, so "
+              "none is claimed here."),
     ))
 
 
@@ -420,8 +444,10 @@ def tuner_net_gold_fact(ledger: EvidenceLedger, reading: TunerReading,
         source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
         observed_turn=reading.turn, reported_at=reading.read_at,
         value=maintenance.net_gold, unit="per turn", subject_id=None,
+        # Rounded for this SENTENCE only -- `maintenance.gold_yield` above keeps its
+        # full precision; a player reading prose should never see "55.953125 gold".
         note=(f"Read from {reading.state}. Upkeep {maintenance.total} against a gold "
-              f"yield of {maintenance.gold_yield}; unattributed upkeep "
+              f"yield of {maintenance.gold_yield:.1f}; unattributed upkeep "
               f"{maintenance.unattributed}."),
     ))
 
@@ -507,4 +533,5 @@ def build_ledger(state: GameState, stats: tuple[str, ...] = YIELD_STATS) -> Evid
     age_fact(ledger, state)
     human_identity_fact(ledger, state)
     defense_facts(ledger, state)
+    analysis_turn_fact(ledger, state)
     return ledger

@@ -3,7 +3,8 @@
      executing them rather than by grepping this file. */
   const B = window.Civ7Briefing;
   const { acceptResponse, seen: seenIn, ago: AGO, coverageLines, pinnedGameGap,
-    tunerLiveOptions, tunerLiveTurns, factKindLabel } = B;
+    tunerLiveOptions, tunerLiveTurns, factKindLabel,
+    copilotLabel, copilotEvidenceLines, formatFactValue } = B;
   const $ = (sel) => document.querySelector(sel);
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -73,7 +74,13 @@
     changes: null, record: null, answers: {}, challengeText: {},
     /* Which game, and whether a switch is in flight (disables the control so a second
        click cannot race the first's request). */
-    game: null, gameBusy: false };
+    game: null, gameBusy: false,
+    /* The copilot. `reply` is the newest answer envelope from /api/copilot/*, kept with
+       the turn it was answered for so a reply about an earlier turn is never painted as
+       this turn's; `asked` is what produced it, so a "generating" reply can be polled
+       for with the same request rather than a guessed one. */
+    copilot: { catalog: null, reply: null, asked: null, text: "", params: {},
+               transcript: [], timer: null, busy: false } };
 
   try { state.acks = JSON.parse(localStorage.getItem("civ7.acks") || "{}"); } catch (_) { /* ignore */ }
   try { state.pins = JSON.parse(localStorage.getItem("civ7.pins") || "{}"); } catch (_) { /* ignore */ }
@@ -179,6 +186,7 @@
     state.connected = true;
     state.lastUpdate = Date.now();
     render();
+    ensureCopilotCatalog();
   }
 
   /* The server already filtered by mode; filter again so a reply still in flight after
@@ -349,6 +357,11 @@
     const game = state.game;
     const select = $("#game-select");
     const mode = $("#game-mode");
+    /* Acting is a property of the RUN, not of the game: it says this process was started
+       with --allow-actions and may send a command into Civ. It belongs beside the game
+       label because that is where the player looks to see what the advisor is attached to. */
+    const catalog = state.copilot.catalog;
+    $("#acting-note").hidden = !(catalog && catalog.acting);
     if (!game) { mode.textContent = ""; return; }
     const names = {};
     game.games.forEach((g) => { names[g.id] = g.display_name; });
@@ -450,7 +463,7 @@
 
   function paint() {
     const d = state.data;
-    if (!d) { renderStatus(); renderGame(); renderCoverage(); return; }
+    if (!d) { renderStatus(); renderGame(); renderCoverage(); renderCopilot(); return; }
     const ins = visible();
     renderHero(d, ins);
     renderRanks(d);
@@ -466,6 +479,7 @@
       + `for turn ${d.complete_through_turn} · ${actionable} actionable`
       + (hidden ? ` · ${hidden} intercept${hidden === 1 ? "" : "s"} hidden` : "");
     $("#checklist-stream").replaceChildren(stream(ins, undefined));
+    renderCopilot();
     renderCommentary();
 
     /* The toggle gates table content as well as cards: with Oracle off the
@@ -1156,7 +1170,7 @@
     label.append(document.createTextNode(fact.label + " "), kindSpan);
     if (fact.provenance === "oracle") label.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     node.append(label);
-    const value = fact.value === null || fact.value === undefined ? "—" : String(fact.value);
+    const value = fact.value === null || fact.value === undefined ? "—" : formatFactValue(fact.value);
     node.append(el("p", "fact-value", fact.unit ? `${value} ${fact.unit}` : value));
     const meta = [];
     if (isLive) {
@@ -1183,6 +1197,9 @@
     if (!isLive && fact.reported_at) meta.push(`entered ${fact.reported_at}`);
     node.append(el("p", "fact-meta", meta.join(" · ")));
     if (fact.turn_disagreement) node.append(el("p", "fact-disagree", fact.turn_disagreement));
+    /* Provenance travels apart from the note -- the number rule admits a note's numerals
+       and must never admit a file's timestamp or digest -- so the drawer shows both. */
+    if (fact.source_detail) node.append(el("p", "fact-note", fact.source_detail));
     if (fact.note) node.append(el("p", "fact-note", fact.note));
     if ((fact.contributing || []).length) {
       const names = fact.contributing
@@ -1445,7 +1462,11 @@
           // sources and the game has more in both directions (war weariness pushes
           // this negative), so a remainder is a real reading, not an error.
           a.unexplained === 0 ? dim("—") : a.unexplained,
-          a.housing, a.food_surplus,
+          // Rounded for this cell only: food surplus is fractional in Civ VI
+          // generally (unlike the amenity counts and housing beside it, which are
+          // genuine integers), and the JSON `a.food_surplus` upstream keeps the
+          // real value -- only this table cell rounds it for a player to read.
+          a.housing, formatFactValue(a.food_surplus),
         ])));
       if (panel.amenities.note) amen.append(el("p", "live-note", panel.amenities.note));
       if (panel.amenities.disagreement) {
@@ -1460,7 +1481,10 @@
       upkeep.append(el("p", "cap-absent-why", panel.upkeep.absent));
     } else {
       upkeep.append(table([{ label: "Item" }, { label: "Gold per turn", num: true }],
-        panel.upkeep.figures.map((r) => [r.label, r.value])));
+        // formatFactValue rounds a fractional gold figure (net gold, drawn from
+        // GetGoldYield minus upkeep) for display only -- the panel above keeps the
+        // real number.
+        panel.upkeep.figures.map((r) => [r.label, formatFactValue(r.value)])));
       if (panel.upkeep.note) upkeep.append(el("p", "live-note", panel.upkeep.note));
       if (panel.upkeep.disagreement) {
         upkeep.append(el("p", "fact-disagree", panel.upkeep.disagreement));
@@ -1771,6 +1795,285 @@
   /* Waiting states poll; terminal ones do not. "queued" and "generating" are kept
      distinct because they tell the player different things about how long to wait. */
   const WAITING = ["queued", "generating"];
+
+  /* ================= the copilot ================= */
+
+  /* A question is asked by NAMING a catalog entry and picking parameter values from the
+     server's own allowlist for this turn. The player's free text has exactly one
+     destination -- the prompt that CHOOSES catalog entries -- and never becomes a
+     parameter, a query string or anything the game is asked. */
+
+  async function ensureCopilotCatalog() {
+    const status = state.status;
+    if (!status) return;
+    const want = `${status.analysis_turn}|${state.showOracle ? 1 : 0}`;
+    if (state.copilot.catalogKey === want || state.copilot.busy) return;
+    state.copilot.busy = true;
+    try {
+      const response = await fetch(`/api/copilot/catalog?oracle=${state.showOracle ? 1 : 0}`);
+      if (response.ok) {
+        state.copilot.catalog = await response.json();
+        state.copilot.catalogKey = want;
+      }
+    } catch (_) { /* the panel says so below; nothing else waits on this */ }
+    state.copilot.busy = false;
+    render();
+  }
+
+  const copilotError = (text) => ({
+    status: "error", turn: (state.status || {}).analysis_turn,
+    answer: { text, evidence_ids: [], unknowns: [], generated: false },
+    evidence: [], absences: [], notes: [], rejection: "",
+  });
+
+  async function copilotPost(path, body) {
+    if (state.copilot.timer !== null) {
+      clearTimeout(state.copilot.timer);
+      state.copilot.timer = null;
+    }
+    try {
+      const response = await fetch(path, {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify(Object.assign({ oracle: state.showOracle ? 1 : 0 }, body)),
+      });
+      const payload = await response.json();
+      state.copilot.reply = response.ok ? payload
+        : copilotError(payload.detail || "That could not be asked.");
+    } catch (_) {
+      state.copilot.reply = copilotError("The advisor could not be reached.");
+    }
+    render();
+    loadCopilotTranscript();
+    /* "generating" means the deterministic answer is ALREADY on screen and a local model
+       is writing prose that may replace it. Poll with the same request; nothing waits. */
+    if (state.copilot.reply.status === "generating") {
+      state.copilot.timer = setTimeout(() => {
+        state.copilot.timer = null;
+        copilotPost(path, body);
+      }, 2500);
+    }
+  }
+
+  async function loadCopilotTranscript() {
+    try {
+      const response = await fetch("/api/copilot/transcript");
+      if (!response.ok) return;
+      state.copilot.transcript = (await response.json()).exchanges || [];
+    } catch (_) { return; }
+    render();
+  }
+
+  function copilotAskForm(catalog) {
+    const form = el("form", "copilot-ask");
+    const field = el("label", "copilot-field", "Ask in your own words");
+    const box = el("textarea");
+    box.maxLength = 600;
+    box.rows = 2;
+    box.dataset.focusKey = "copilot:ask";
+    box.value = state.copilot.text;
+    box.addEventListener("input", () => { state.copilot.text = box.value; });
+    field.append(box);
+    form.append(field);
+    const send = el("button", null, "Ask");
+    send.type = "submit";
+    send.dataset.focusKey = "copilot:send";
+    form.append(send);
+    form.addEventListener("submit", (event) => {
+      event.preventDefault();
+      const text = box.value.trim();
+      if (!text) return;
+      state.copilot.text = text;
+      copilotPost("/api/copilot/ask", { text });
+    });
+    form.append(el("p", "copilot-note",
+      "Your words reach only the step that chooses which of the fixed questions to look "
+      + "up. They never become a parameter and never reach the game."));
+    return form;
+  }
+
+  /* What a question is, and when it was last run against a real game. The date is
+     recorded per question in the catalog; showing it is what makes it checkable rather
+     than a reassurance kept in the source. */
+  function copilotQuestionTitle(q) {
+    return q.id
+      + (q.oracle ? " — answered only with Oracle on" : "")
+      + (q.verified_on ? ` — verified against a real game on ${q.verified_on}` : "");
+  }
+
+  function copilotCatalogControls(catalog) {
+    const wrap = el("div", "copilot-catalog");
+    const plain = el("div", "copilot-buttons");
+    (catalog.questions || []).forEach((q) => {
+      if (q.params.length) return;
+      const button = el("button", null, q.description);
+      button.type = "button";
+      button.dataset.focusKey = `copilot:q:${q.id}`;
+      button.title = copilotQuestionTitle(q);
+      button.addEventListener("click",
+        () => copilotPost("/api/copilot/question", { id: q.id, params: {} }));
+      plain.append(button);
+    });
+    if (plain.childNodes.length) wrap.append(plain);
+    (catalog.questions || []).forEach((q) => {
+      if (!q.params.length) return;
+      const row = el("form", "copilot-param");
+      const label = el("span", "copilot-param-label", q.description);
+      label.title = copilotQuestionTitle(q);
+      row.append(label);
+      const inputs = {};
+      q.params.forEach((p) => {
+        const choices = (catalog.choices || {})[p.kind] || [];
+        const held = (state.copilot.params[q.id] || {})[p.name] || "";
+        let control;
+        if (choices.length) {
+          control = el("select");
+          choices.forEach((v) => {
+            const option = el("option", null, v);
+            option.value = v;
+            control.append(option);
+          });
+          if (choices.indexOf(held) !== -1) control.value = held;
+        } else {
+          // A type key is not a menu and is not free text either: it is matched against
+          // the same pattern the server binds, so nothing else can be typed into it.
+          control = el("input");
+          control.type = "text";
+          control.placeholder = p.description;
+          control.pattern = "[A-Z][A-Z0-9_]{2,63}";
+          control.value = held;
+        }
+        control.dataset.focusKey = `copilot:p:${q.id}:${p.name}`;
+        control.addEventListener("input", () => {
+          const kept = Object.assign({}, state.copilot.params[q.id] || {});
+          kept[p.name] = control.value;
+          state.copilot.params = Object.assign({}, state.copilot.params, { [q.id]: kept });
+        });
+        inputs[p.name] = control;
+        row.append(control);
+      });
+      const go = el("button", null, "Ask");
+      go.type = "submit";
+      go.dataset.focusKey = `copilot:go:${q.id}`;
+      row.append(go);
+      row.addEventListener("submit", (event) => {
+        event.preventDefault();
+        const params = {};
+        q.params.forEach((p) => { params[p.name] = inputs[p.name].value; });
+        state.copilot.params = Object.assign({}, state.copilot.params, { [q.id]: params });
+        copilotPost("/api/copilot/question", { id: q.id, params });
+      });
+      wrap.append(row);
+    });
+    return wrap;
+  }
+
+  function copilotAnswerBlock(reply) {
+    const wrap = el("div", "copilot-answer");
+    const answer = reply.answer || {};
+    wrap.append(el("p", "generated-label", reply.status === "error"
+      ? "Could not ask" : copilotLabel(reply.status, answer.generated)));
+    if (answer.text) wrap.append(el("p", null, answer.text));
+    /* A rejection is stated, not swallowed. "There was a model, it wrote something, and
+       this is why you are not reading it" is a different thing from "there was no model". */
+    if (reply.rejection) {
+      wrap.append(el("p", "copilot-rejected",
+        `The generated prose was withheld: ${reply.rejection}`));
+    }
+    const lines = copilotEvidenceLines(answer, reply.evidence || []);
+    if (lines.length) {
+      wrap.append(el("h3", "map-subhead", "The evidence this rests on"));
+      const list = el("ul", "copilot-evidence");
+      lines.forEach((line) => {
+        const item = el("li");
+        // The same badge classes the evidence drawer uses, so "read live" looks the same
+        // here as it does there and never blurs into a plain log row.
+        item.append(el("span", line.badge === "read live" ? "fact-kind fact-kind-live" : "fact-kind",
+          line.badge), document.createTextNode(" " + line.text));
+        list.append(item);
+      });
+      wrap.append(list);
+    }
+    (reply.notes || []).forEach((note) => wrap.append(el("p", "fact-note", note)));
+    if ((reply.absences || []).length) {
+      const list = el("ul", "copilot-absences");
+      reply.absences.forEach((a) => {
+        // Each absence carries its OWN cause. Never a blank, never a zero, and never one
+        // general reason standing in for six different ones.
+        list.append(el("li", null, `Not available — ${a.question}: ${a.why}`
+          + (a.cause ? ` (${a.cause})` : "")));
+      });
+      wrap.append(list);
+    }
+    /* A deterministic answer's `unknowns` ARE its absences, already listed above with
+       their causes; repeating them a third time is noise. A generated answer's are the
+       model's own declaration of what it could not say, which is new information. */
+    if (answer.generated && (answer.unknowns || []).length) {
+      const list = el("ul", "decision-unknowns");
+      answer.unknowns.forEach((u) => list.append(el("li", null, u)));
+      wrap.append(list);
+    }
+    if (reply.status === "ready" && answer.generated) {
+      wrap.append(el("p", "guide-note",
+        `Written by the local model${answer.model ? ` (${answer.model})` : ""} around the `
+        + "facts listed above, which it cited. Citing them is not the same as being "
+        + "verified: what is verified is the evidence itself."));
+    } else if (answer.generated === false && reply.status !== "unsupported"
+               && reply.status !== "error") {
+      wrap.append(el("p", "guide-note",
+        "Assembled from the resolved facts, not written by a model."));
+    }
+    return wrap;
+  }
+
+  function copilotTranscriptBlock() {
+    const wrap = el("div", "copilot-transcript");
+    wrap.append(el("h3", "map-subhead", "Asked this sitting"));
+    state.copilot.transcript.forEach((e) => {
+      const item = el("div", "copilot-exchange");
+      item.append(el("p", "copilot-exchange-when", `turn ${e.turn}`));
+      if (e.text) item.append(el("p", "copilot-exchange-asked", e.text));
+      else if ((e.question_ids || []).length) {
+        item.append(el("p", "copilot-exchange-asked", e.question_ids.join(", ")));
+      }
+      item.append(el("p", "copilot-exchange-said", e.answer_text));
+      wrap.append(item);
+    });
+    return wrap;
+  }
+
+  function renderCopilot() {
+    const panel = $("#copilot");
+    if (!panel) return;
+    const catalog = state.copilot.catalog;
+    const nodes = [el("h2", "section-head", "Ask the advisor")];
+    if (!catalog) {
+      nodes.push(el("p", "empty", "The question catalog has not loaded yet."));
+      panel.replaceChildren(...nodes);
+      return;
+    }
+    nodes.push(el("p", "copilot-note",
+      "Every answer is built from this turn's own evidence, and each figure below carries "
+      + "the source it came from. A local model, where there is one, may only write prose "
+      + "around those same figures."));
+    if (catalog.model) nodes.push(copilotAskForm(catalog));
+    else nodes.push(el("p", "copilot-absent", catalog.unsupported));
+    nodes.push(copilotCatalogControls(catalog));
+    const reply = state.copilot.reply;
+    const turnNow = (state.status || {}).analysis_turn;
+    if (reply) {
+      /* The same rule `acceptResponse` applies to the briefing: an answer about a turn
+         that is no longer on screen is dated history, never this turn's answer. */
+      if (turnNow !== undefined && reply.turn !== turnNow) {
+        nodes.push(el("p", "copilot-dated",
+          `The last answer was about turn ${reply.turn}; the brief has moved to turn `
+          + `${turnNow}. Ask again for an answer about this turn.`));
+      } else {
+        nodes.push(copilotAnswerBlock(reply));
+      }
+    }
+    if (state.copilot.transcript.length) nodes.push(copilotTranscriptBlock());
+    panel.replaceChildren(...nodes);
+  }
 
   function renderCommentary() {
     const result = state.commentary;

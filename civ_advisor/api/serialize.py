@@ -321,7 +321,8 @@ def evidence_to_dict(fact: EvidenceFact, analysis_turn: int) -> dict:
         "observed_turn": fact.observed_turn, "age": fact.age_in(analysis_turn),
         "source_file": fact.source_file, "record_key": list(fact.record_key),
         "subject_id": fact.subject_id, "contributing": list(fact.contributing),
-        "note": fact.note, "reported_at": fact.reported_at,
+        "note": fact.note, "source_detail": fact.source_detail,
+        "reported_at": fact.reported_at,
         "logs_complete_through": analysis_turn if live else None,
         "turn_disagreement": (
             reading_turn_disagreement(fact.observed_turn, analysis_turn)
@@ -490,6 +491,15 @@ def tuner_to_dict(tuner: object | None, analysis_turn: int | None = None) -> dic
         ],
         "build_options_reason": absence("build_options"),
         "build_options_read": read("build_options"),
+        "build_option_ids": [
+            {"city": so.city, "city_id": so.city_id,
+             "options": [{"item": o.item, "item_hash": o.item_hash,
+                          "requires_placement": o.requires_placement, "turns": o.turns}
+                         for o in so.options]}
+            for so in (getattr(tuner, "build_option_ids", ()) if available else ())
+        ],
+        "build_option_ids_reason": absence("build_options_ids"),
+        "build_option_ids_read": read("build_options_ids"),
     }
 
 

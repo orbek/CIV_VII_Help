@@ -184,6 +184,14 @@
   /* What the Economy tab shows from a live tuner reading, and what it says where the
      tuner could not supply a figure.
 
+     Every absence -- off, not answering, no socket, not asked, unreachable, or
+     unestablished (a refusal whose AppOptions.txt could not be read) -- is passed
+     through as the server's own `reason` sentence below, never re-worded here. In
+     particular, "not answering" carries its own prose from the server (it may name
+     the main menu when the flag reads on) and this file adds no "set EnableTuner"
+     hint of its own for it: that hint belongs only to the NOT_ENABLED cause, and only
+     the server knows which cause a given refusal actually was.
+
      Turning the tuner ON used to REPLACE an honest notice with a blank: the capability
      report flips happiness and maintenance to supported the moment the socket answers,
      which removes the "Civ VI writes no amenities log" notice -- and nothing rendered
@@ -253,6 +261,10 @@
         upkeep.push({ label: "Not itemised by the game", value: m.unattributed });
       }
       upkeep.push({ label: "Total upkeep", value: m.total });
+      // Left as the real number here -- this panel is the data model, not the
+      // rendering. `formatFactValue` rounds it for DISPLAY at the table cell
+      // (app.js), so callers that want the actual figure (e.g. tests reading this
+      // panel directly) still get a number, not a pre-formatted string.
       upkeep.push({ label: "Net gold per turn", value: m.net_gold });
     }
 
@@ -394,6 +406,56 @@
     return insightIds.every(function (id) { return written.indexOf(id) !== -1; });
   }
 
+  /* ---- the copilot panel -------------------------------------------------------- */
+
+  /* What the copilot panel calls an answer. "fallback" is NOT a degraded state: it is
+     the facts themselves, and it must never read as though a model wrote it. */
+  function copilotLabel(status, generated) {
+    if (status === "ready" && generated) return "Generated interpretation";
+    if (status === "rejected") return "The model's answer was not shown; this is the evidence itself";
+    if (status === "unsupported") return "This cannot be answered";
+    if (status === "generating") return "From the evidence — the local model is writing an interpretation";
+    return "From the evidence, not written by a model";
+  }
+
+  /* One badge per source kind. Six kinds, six badges: a live tuner reading, a log row,
+     a ruleset figure, the player's own report, an advisor threshold and a computed
+     figure are distinct claims, and the badge is where the page keeps them distinct. */
+  var KIND_BADGES = {
+    log: "log row", derived: "computed", rule: "advisor rule", player_report: "your report",
+    installed_ruleset: "installed ruleset", live_reading: "read live",
+  };
+
+  /* A figure the way a player should read it, never the way the game's socket typed
+     it. Civ VI answers some figures (gold balance, gold yield, food surplus) with
+     real fractional precision -- 428.8125, not a rounding artifact -- and printing
+     that raw in a sentence ("55.953125 gold") is not what "sensible" means to a
+     player. The STORED value (`fact.value`, JSON, everything upstream) keeps full
+     precision; only this rendering step rounds. A whole number prints bare, since
+     rounding "3" would just be theater. */
+  function formatFactValue(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value !== "number") return String(value);
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
+  /* One line per CITED fact, in citation order, each with its kind badge and its source
+     phrase. Uncited facts the resolver also returned are not lines: the answer did not
+     rest on them. */
+  function copilotEvidenceLines(answer, evidence) {
+    var byId = {};
+    (evidence || []).forEach(function (f) { byId[f.id] = f; });
+    return (answer.evidence_ids || []).map(function (id) {
+      var f = byId[id];
+      if (!f) return { id: id, badge: "unresolved", text: id };
+      var value = formatFactValue(f.value);
+      var unit = f.unit ? " " + f.unit : "";
+      var turn = f.observed_turn === null || f.observed_turn === undefined ? "" : " (turn " + f.observed_turn + ")";
+      return { id: id, badge: KIND_BADGES[f.kind] || f.kind,
+               text: f.label + ": " + value + unit + turn + " — " + (f.source || "") };
+    });
+  }
+
   const api = {
     acceptResponse: acceptResponse, seen: seen, ago: ago, coverageLines: coverageLines,
     pinnedGameGap: pinnedGameGap, capabilityNotices: capabilityNotices,
@@ -405,6 +467,9 @@
     tunerLiveOptions: tunerLiveOptions, tunerLiveTurns: tunerLiveTurns,
     tunerEconomy: tunerEconomy,
     factKindLabel: factKindLabel,
+    copilotLabel: copilotLabel, copilotEvidenceLines: copilotEvidenceLines,
+    formatFactValue: formatFactValue,
+    KIND_BADGES: KIND_BADGES,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Civ7Briefing = api;

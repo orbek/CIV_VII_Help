@@ -44,10 +44,22 @@ def civ6_dir() -> Path:
     return FIXTURE_CIV6_DIR
 
 
+import tempfile
+
 from civ_advisor.games.base import GameProfile
 from civ_advisor.games.civ6 import CIV6
 from civ_advisor.tuner.client import open_tuner  # noqa: E402
 from civ_advisor.store import Store  # noqa: E402
+
+# Written once, under a fresh tempdir, so a refusal on port 1 is ESTABLISHED rather
+# than UNESTABLISHED: without a readable AppOptions.txt behind it, task 2's client
+# cannot tell "off" from "the file could not be read" and the two fixtures below
+# would stop asserting the cause they are named for.
+_UNREACHABLE_APP_OPTIONS_OFF = Path(tempfile.mkdtemp()) / "AppOptions.txt"
+_UNREACHABLE_APP_OPTIONS_OFF.write_text("[Debug]\nEnableTuner 0\n")
+
+_UNREACHABLE_APP_OPTIONS_ON = Path(tempfile.mkdtemp()) / "AppOptions.txt"
+_UNREACHABLE_APP_OPTIONS_ON.write_text("[Debug]\nEnableTuner 1\n")
 
 
 def unreachable_tuner(profile: GameProfile) -> GameProfile:
@@ -57,9 +69,21 @@ def unreachable_tuner(profile: GameProfile) -> GameProfile:
     Civilization VI open: the real CIV6 profile dials 127.0.0.1:4318, so a running
     game turns "the socket is closed" tests into "the socket answered" ones. Port 1
     is reserved and cannot be bound, so the refusal is a property of the test rather
-    than of the machine it runs on.
+    than of the machine it runs on. `app_options` says the flag is off, so the
+    refusal is ESTABLISHED as NOT_ENABLED rather than UNESTABLISHED.
     """
-    return replace(profile, tuner=lambda: open_tuner(port=1, timeout=0.2))
+    return replace(profile, tuner=lambda: open_tuner(
+        port=1, timeout=0.2, app_options=_UNREACHABLE_APP_OPTIONS_OFF))
+
+
+def unreachable_tuner_enabled(profile: GameProfile) -> GameProfile:
+    """The same as `unreachable_tuner`, but AppOptions.txt says the flag is ON.
+
+    A refusal against this profile is ESTABLISHED as NOT_ANSWERING: the flag is set,
+    so nothing tells the player to change it.
+    """
+    return replace(profile, tuner=lambda: open_tuner(
+        port=1, timeout=0.2, app_options=_UNREACHABLE_APP_OPTIONS_ON))
 
 
 @pytest.fixture

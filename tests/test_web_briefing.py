@@ -408,3 +408,61 @@ def test_a_live_reading_gets_its_own_badge_text():
     assert run_js('return B.factKindLabel("player_report");') == "you told us"
     assert run_js('return B.factKindLabel("log");') == "log"
     assert run_js('return B.factKindLabel("something_else");') == "log"
+
+
+def test_copilot_labels_never_call_a_fallback_generated():
+    assert run_js('return B.copilotLabel("fallback", false);') == "From the evidence, not written by a model"
+    assert run_js('return B.copilotLabel("ready", true);') == "Generated interpretation"
+    assert run_js('return B.copilotLabel("rejected", false);').startswith("The model's answer was not shown")
+    assert run_js('return B.copilotLabel("unsupported", false);') == "This cannot be answered"
+
+
+def test_format_fact_value_rounds_a_fraction_for_display_only():
+    """Civ VI answers gold and food surplus with real fractional precision (a live
+    treasury reported GetGoldYield 55.953125); a player-facing sentence must never
+    print that raw. A whole number prints bare -- rounding "3" would be theater."""
+    assert run_js("return B.formatFactValue(55.953125);") == "56.0"
+    assert run_js("return B.formatFactValue(3);") == "3"
+    assert run_js("return B.formatFactValue(null);") == ""
+    assert run_js('return B.formatFactValue("Rome");') == "Rome"
+
+
+def test_copilot_evidence_lines_round_a_fractional_figure_for_the_sentence():
+    out = run_js("""
+      return B.copilotEvidenceLines(
+        {evidence_ids: ["g"]},
+        [{id: "g", label: "Your net gold per turn, read live", kind: "live_reading",
+          value: 41.953125, unit: "per turn", observed_turn: 59, source: "read live"}]);
+    """)
+    assert "41.953125" not in out[0]["text"]
+    assert "42.0" in out[0]["text"]
+
+
+def test_tuner_economy_leaves_net_gold_as_a_real_number_for_the_panel():
+    """`tunerEconomy` builds the data model, not the rendered page: the actual
+    float is kept here (a consumer may need the real figure, not a rounded
+    string), and `formatFactValue` is what rounds it at the table cell."""
+    tuner = {"available": True, "maintenance": {
+        "total": 14, "buildings": 2, "districts": 4, "units": 8,
+        "gold": 428.8125, "gold_yield": 55.953125, "unattributed": 0,
+        "net_gold": 41.953125,
+    }, "maintenance_reason": None, "maintenance_read": {"turn": 59}}
+    out = run_js(f"return B.tunerEconomy({json.dumps(tuner)});")
+    row = next(r for r in out["upkeep"]["figures"] if r["label"] == "Net gold per turn")
+    assert row["value"] == pytest.approx(41.953125)
+    assert run_js(f"return B.formatFactValue({row['value']});") == "42.0"
+
+
+def test_copilot_evidence_lines_carry_kind_turn_and_source_for_every_cited_fact():
+    out = run_js("""
+      return B.copilotEvidenceLines(
+        {evidence_ids: ["a", "b"]},
+        [{id: "a", label: "Your culture", kind: "log", value: 4, unit: "per turn",
+          observed_turn: 81, source: "from Player_Stats.csv, turn 81"},
+         {id: "b", label: "Rome's amenities", kind: "live_reading", value: 3, unit: "amenities",
+          observed_turn: 82, source: "read live from the game, turn 82"},
+         {id: "c", label: "not cited", kind: "log", value: 9}]);
+    """)
+    assert [l["id"] for l in out] == ["a", "b"]
+    assert out[1]["badge"] == "read live" and out[0]["badge"] == "log row"
+    assert "turn 82" in out[1]["text"]

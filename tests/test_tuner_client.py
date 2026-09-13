@@ -112,9 +112,12 @@ def replies(turn: int = 59) -> dict[int, bytes]:
     }
 
 
-def test_a_closed_port_is_reported_as_not_enabled():
-    # Port 1 is reserved and nothing listens there.
-    t = open_tuner(port=1, timeout=0.5)
+def test_a_closed_port_is_reported_as_not_enabled(tmp_path):
+    # Port 1 is reserved and nothing listens there. A bare refusal alone no longer
+    # asserts NOT_ENABLED -- it must be read from a file that says the flag is 0.
+    app_options = tmp_path / "AppOptions.txt"
+    app_options.write_text("[Debug]\nEnableTuner 0\n")
+    t = open_tuner(port=1, timeout=0.5, app_options=app_options)
     assert t.available is False
     assert t.unavailable is TunerUnavailable.NOT_ENABLED
     assert "EnableTuner" in t.reason
@@ -232,6 +235,31 @@ def test_a_not_implemented_reply_yields_absence_not_an_exception():
         game.close()
 
 
+def line(text: str) -> bytes:
+    """One `print()` line as its own output frame, the same shape `turn_line` uses."""
+    return frame(TAG_HANDSHAKE, f"O\x00x: {text}")
+
+
+def test_an_unparseable_field_blames_the_advisor_not_the_games_reply():
+    """The defect this guards: a field this parser cannot read used to produce "the
+    maintenance reply could not be read", which is FALSE -- the reply was a real,
+    complete answer off the socket (every other field on it parses fine here). The
+    absence must name the true cause: this advisor's own parser, never the game's
+    reply."""
+    reply = (turn_line(59) + line("total\t14") + line("buildings\t2")
+             + line("districts\t4") + line("units\t8") + line("gold\tNaN-ish-garbage")
+             + line("goldYield\t55.953125"))
+    game = FakeGame({4: reply})
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        assert "the advisor could not read the maintenance figures" in t.reason
+        assert "reply could not be read" not in t.reason
+    finally:
+        game.close()
+
+
 def test_the_client_exposes_no_way_to_run_arbitrary_lua():
     """The catalog is the allowlist; there must be no bypass on the object."""
     game = FakeGame(replies())
@@ -292,6 +320,48 @@ def test_a_failure_does_not_leak_into_the_next_call_on_the_same_instance():
 
 
 def test_an_out_of_range_port_does_not_raise():
+    # No app_options supplied: the refusal cannot be established as either cause.
     t = open_tuner(port=99999, timeout=0.5)
     assert t.available is False
-    assert t.unavailable is TunerUnavailable.NOT_ENABLED
+    assert t.unavailable is TunerUnavailable.UNESTABLISHED
+
+
+def test_a_refusal_is_retried_a_bounded_number_of_times_before_being_believed(monkeypatch):
+    import civ_advisor.tuner.client as client_mod
+    calls = []
+
+    def refusing(address, timeout):
+        calls.append(address)
+        raise ConnectionRefusedError
+
+    monkeypatch.setattr(client_mod.socket, "create_connection", refusing)
+    monkeypatch.setattr(client_mod.time, "sleep", lambda s: None)
+    client_mod.open_tuner(port=1, timeout=0.5)
+    assert len(calls) == client_mod.CONNECT_ATTEMPTS
+
+
+def test_a_listener_that_answers_on_the_second_try_is_a_live_tuner(monkeypatch):
+    """The menu-transition case: refused once, then up."""
+    game = FakeGame(replies())
+    try:
+        import civ_advisor.tuner.client as client_mod
+        real = client_mod.socket.create_connection
+        state = {"n": 0}
+
+        def flaky(address, timeout):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise ConnectionRefusedError
+            return real(address, timeout=timeout)
+
+        monkeypatch.setattr(client_mod.socket, "create_connection", flaky)
+        t = client_mod.open_tuner(port=game.port, timeout=3.0, retry_seconds=0)
+        assert t.available is True
+        t.close()
+    finally:
+        game.close()
+
+
+def test_the_retry_budget_stays_under_one_poll():
+    from civ_advisor.tuner.client import CONNECT_ATTEMPTS, CONNECT_RETRY_SECONDS
+    assert (CONNECT_ATTEMPTS - 1) * CONNECT_RETRY_SECONDS < 1.0

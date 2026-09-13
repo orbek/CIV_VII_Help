@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from civ_advisor.advisors.base import Provenance
+from civ_advisor.copilot.grounding import numerals_in
 from civ_advisor.decisions.evidence import EvidenceLedger, ruleset_fact
 from civ_advisor.decisions.models import EvidenceFact, SourceKind
 from civ_advisor.ruleset.base import RulesetFigure, RulesetIdentity
@@ -40,7 +41,21 @@ def test_a_ruleset_fact_never_claims_a_version():
 
     assert fact.note is not None
     assert "version" not in fact.note.lower()
-    assert IDENTITY.short_digest in fact.note
+    # The digest is still carried, and still shown -- in `source_detail`, which is
+    # provenance. It may NOT be in `note`: the number rule admits every numeral in a
+    # note, so a digest there is a pool of arbitrary digits the model may quote as a
+    # figure. See test_the_note_of_a_ruleset_fact_carries_no_digits_at_all below.
+    assert IDENTITY.short_digest in fact.source_detail
+
+
+def test_the_note_of_a_ruleset_fact_carries_no_digits_at_all():
+    """Spec 4.3 rule 2 admits every numeral in a cited fact's note. The mtime and the
+    digest are not figures about the game -- admitting them let generated prose state a
+    payback period assembled out of a timestamp and a hash."""
+    fact = ruleset_fact(EvidenceLedger(), LIBRARY_COST)
+
+    assert numerals_in(fact.note) == ()
+    assert not any(c.isdigit() for c in fact.note)
 
 
 def test_adding_the_same_figure_twice_is_not_a_conflict():

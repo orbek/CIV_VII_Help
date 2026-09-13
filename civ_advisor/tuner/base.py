@@ -20,16 +20,22 @@ from typing import Callable, Protocol, runtime_checkable
 
 
 class TunerUnavailable(StrEnum):
-    """Why there is no reading. Five genuinely different situations.
+    """Why there is no reading. Six genuinely different situations.
 
-    Only NOT_ENABLED is something the player can fix by changing the game. Saying the
-    wrong one would send them to change a setting that is already correct -- or, for
-    NO_SOCKET, a setting that does not exist in the game they are playing, or, for
-    NOT_ASKED, a setting that is fine and was simply never consulted.
+    Only NOT_ENABLED is something the player can fix by changing the game, and it is
+    asserted only when the file was read and says so. Saying the wrong one would send
+    them to change a setting that is already correct -- or, for NO_SOCKET, a setting
+    that does not exist in the game they are playing, or, for NOT_ASKED, a setting that
+    is fine and was simply never consulted.
 
     Each member is a machine-readable cause a consumer branches on. A distinct cause
     carrying another cause's enum is the same defect as carrying another cause's prose,
     just harder to see: the page would act on one story while the player reads another.
+
+    UNESTABLISHED is the honest answer when a connection was refused and
+    AppOptions.txt could not be read: asserting either NOT_ENABLED or NOT_ANSWERING
+    there would be inferring from the refusal alone, which is the defect that made
+    this member necessary.
     """
 
     NOT_ENABLED = "not_enabled"          # the socket is closed; EnableTuner is 0
@@ -37,6 +43,7 @@ class TunerUnavailable(StrEnum):
     UNREACHABLE = "unreachable"          # answered, but this figure exists in no VM
     NO_SOCKET = "no_socket"              # this game has no tuner socket to enable at all
     NOT_ASKED = "not_asked"              # the socket was never contacted; this run chose not to
+    UNESTABLISHED = "unestablished"      # refused, and the file that would say why could not be read
 
 
 @dataclass(frozen=True)
@@ -75,7 +82,11 @@ class CityAmenities:
     from_civics: int
     from_entertainment: int
     housing: int
-    food_surplus: int
+    # A float, not an int: amenity counts and housing are verified integers in a
+    # real mid-game state, but food surplus is fractional in Civ VI generally --
+    # the same fact that makes Maintenance.gold and .gold_yield floats below, and
+    # the same live probe that caught it (see queries.py's `_parse_number`).
+    food_surplus: float
 
     @property
     def unexplained(self) -> int:
@@ -99,8 +110,14 @@ class Maintenance:
     buildings: int
     districts: int
     units: int
-    gold: int
-    gold_yield: int
+    # Floats, not ints: GetGoldBalance and GetGoldYield answered 428.8125 and
+    # 55.953125 against a real live treasury on 2026-09-13 (turn well past the
+    # game's start). The original `int(...)` assumption came from a single
+    # early-game reading where gold happened to be a whole number (152) -- one
+    # observation standing in for a validator. queries.py's `_parse_number`
+    # documents the full story.
+    gold: float
+    gold_yield: float
 
     @property
     def unattributed(self) -> int:
@@ -151,6 +168,39 @@ class SettlementOptions:
         return next((o for o in self.options if o.item == item), None)
 
 
+@dataclass(frozen=True)
+class BuildOptionId:
+    """One offered building with the integers an operation would need.
+
+    `item_hash` is the game's own hash for the type, as `GameInfo.Buildings()` reports
+    it. It is the ONLY form in which an item ever reaches a command: a name is for the
+    player and the model, a hash is what the game asked for. `requires_placement` is
+    read from the same row, so an item that needs a plot is known before anyone proposes
+    it.
+    """
+
+    item: str
+    item_hash: int
+    requires_placement: bool
+    turns: int
+
+    def __post_init__(self) -> None:
+        if type(self.item_hash) is not int:
+            raise ValueError(f"item_hash must be an int, got {type(self.item_hash).__name__}")
+        if self.turns < 0:
+            raise ValueError(f"turns must not be negative, got {self.turns}")
+
+
+@dataclass(frozen=True)
+class SettlementOptionIds:
+    city_id: int
+    city: str
+    options: tuple[BuildOptionId, ...]
+
+    def offers(self, item: str) -> BuildOptionId | None:
+        return next((o for o in self.options if o.item == item), None)
+
+
 @runtime_checkable
 class TunerProvider(Protocol):
     """A closed set of questions. There is deliberately no `query(lua)`."""
@@ -165,6 +215,7 @@ class TunerProvider(Protocol):
     def amenities(self) -> tuple[CityAmenities, ...]: ...
     def maintenance(self) -> Maintenance | None: ...
     def build_options(self) -> tuple[SettlementOptions, ...]: ...
+    def build_option_ids(self) -> tuple[SettlementOptionIds, ...]: ...
 
 
 @dataclass(frozen=True)
@@ -194,6 +245,9 @@ class NullTuner:
     def build_options(self) -> tuple[SettlementOptions, ...]:
         return ()
 
+    def build_option_ids(self) -> tuple[SettlementOptionIds, ...]:
+        return ()
+
 
 TUNER_OFF = NullTuner(
     TunerUnavailable.NOT_ENABLED,
@@ -201,6 +255,24 @@ TUNER_OFF = NullTuner(
     "tuner socket, which is off. Set `EnableTuner 1` under [Debug] in the game's "
     "AppOptions.txt and restart the game. The advisor never edits that file.",
 )
+
+
+TUNER_NOT_ANSWERING_ENABLED = NullTuner(
+    TunerUnavailable.NOT_ANSWERING,
+    "The tuner is enabled (AppOptions.txt says `EnableTuner 1`) but the game is not "
+    "answering on its socket, after three attempts. It may be at the main menu, "
+    "between screens, or not running; the listener only answers reliably inside a "
+    "loaded match. Nothing needs changing in the file.",
+)
+
+
+def tuner_unestablished(detail: str) -> NullTuner:
+    return NullTuner(
+        TunerUnavailable.UNESTABLISHED,
+        "The tuner socket refused the connection, and whether the tuner is enabled could "
+        f"not be established: {detail}. Either the flag is off or the game is not "
+        "answering; the advisor does not know which and will not guess.",
+    )
 
 
 TUNER_ABSENT = NullTuner(
@@ -224,6 +296,13 @@ class TunerSnapshot:
     amenities: tuple[CityAmenities, ...] = ()
     maintenance: Maintenance | None = None
     build_options: tuple[SettlementOptions, ...] = ()
+    # The city id and item hash an operation would need. Read ONLY on a run started
+    # with `--allow-actions` (`capture(acting=True)`): a normal advisory run has no use
+    # for these integers, and asking for them costs one query fewer every poll. With
+    # `acting` false this stays `()` and no absence is recorded for it either, because
+    # nothing was asked -- an empty tuple here must never be misread as "the game
+    # offered nothing."
+    build_option_ids: tuple[SettlementOptionIds, ...] = ()
     # Why a particular figure is missing, keyed by catalog id. A figure absent from
     # this map was read successfully; one present here says which of the four
     # absences applied to IT, which is not always the same for every figure.
@@ -278,12 +357,18 @@ def _ask(provider: TunerProvider, query_id: str, fn: Callable[[], object], empty
     return result, None, reading
 
 
-def capture(provider: TunerProvider) -> TunerSnapshot:
+def capture(provider: TunerProvider, *, acting: bool = False) -> TunerSnapshot:
     """Read every figure once, recording per-figure absence with its real cause.
 
     One unreachable figure must not discard the two that worked, and must not be
     reported as the reason the others are missing. Never raises: a tuner failure
     must not cost the rebuild that is capturing it.
+
+    `acting` gates a fourth query, `build_options_ids`: the city id and item hash an
+    action would need to name what it refers to. A run that cannot act has no use for
+    either, so it is asked only when this rebuild was started with actions allowed --
+    everyone else's poll costs one query fewer and gets an untouched, empty tuple with
+    no absence recorded, because nothing was asked of the game for it.
     """
     if not getattr(provider, "available", False):
         return TunerSnapshot(available=False, reason=getattr(provider, "reason", None),
@@ -296,36 +381,35 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
     build_options, build_options_why, build_options_read = _ask(
         provider, "build_options", provider.build_options, ())
 
-    absences = tuple(
-        (query_id, why)
-        for query_id, why in (
-            ("amenities", amenities_why),
-            ("maintenance", maintenance_why),
-            ("build_options", build_options_why),
-        )
-        if why
-    )
+    query_results = [
+        ("amenities", amenities_why, amenities_read),
+        ("maintenance", maintenance_why, maintenance_read),
+        ("build_options", build_options_why, build_options_read),
+    ]
+    build_option_ids: tuple = ()
+    if acting:
+        build_option_ids, build_option_ids_why, build_option_ids_read = _ask(
+            provider, "build_options_ids", provider.build_option_ids, ())
+        query_results.append(
+            ("build_options_ids", build_option_ids_why, build_option_ids_read))
+
+    absences = tuple((query_id, why) for query_id, why, _ in query_results if why)
     readings = tuple(
-        (query_id, reading)
-        for query_id, reading in (
-            ("amenities", amenities_read),
-            ("maintenance", maintenance_read),
-            ("build_options", build_options_read),
-        )
-        if reading is not None
-    )
+        (query_id, reading) for query_id, _, reading in query_results if reading is not None)
     return TunerSnapshot(
         available=True,
         reason=None,
         amenities=tuple(amenities),
         maintenance=maintenance,
         build_options=tuple(build_options),
+        build_option_ids=tuple(build_option_ids),
         absences=absences,
         readings=readings,
     )
 
 
-__all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
-           "SettlementOptions", "TUNER_ABSENT", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
+__all__ = ["BuildOption", "BuildOptionId", "CityAmenities", "Maintenance", "NullTuner",
+           "SettlementOptionIds", "SettlementOptions", "TUNER_ABSENT",
+           "TUNER_NOT_ANSWERING_ENABLED", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
            "TunerProvider", "TunerReading", "TunerSnapshot", "TunerUnavailable",
-           "capture"]
+           "capture", "tuner_unestablished"]

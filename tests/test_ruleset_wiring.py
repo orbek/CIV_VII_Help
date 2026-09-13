@@ -38,7 +38,7 @@ def _ruleset(tmp_path):
     so the wiring is exercised through a real guide entry rather than a stub."""
     return open_ruleset(make_ruleset(tmp_path, rows={
         "Buildings": [(AMPHITHEATER, "LOC_X", 150, 1, "DISTRICT_THEATER", "",
-                       "CIVIC_DRAMA", 0, 0)],
+                       "CIVIC_DRAMA", 0, 0, 0, None, 0)],
         "Building_YieldChanges": [(AMPHITHEATER, "YIELD_CULTURE", 2)]}))
 
 
@@ -220,7 +220,8 @@ def test_a_zero_maintenance_building_fills_gold_upkeep_as_zero_not_unstated(snap
     a comparison claim "either option costs 1 gold" when the ruleset said one was free."""
     free = "BUILDING_FREE_UPKEEP"
     ruleset = open_ruleset(make_ruleset(tmp_path, rows={"Buildings": [
-        (free, "LOC_X", 100, 0, "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0)]}))
+        (free, "LOC_X", 100, 0, "DISTRICT_CAMPUS", "TECH_WRITING", "", 0, 0,
+         0, None, 0)]}))
     context = build_context(snap, ruleset=ruleset)
 
     preview = context.previews(CITY, free, stat="culture")

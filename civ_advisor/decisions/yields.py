@@ -148,9 +148,23 @@ def compare(context: DecisionContext, city: str, items: tuple[str, ...],
 def _source_note(preview: Previews) -> str:
     """Which source each preview's figures came from, honestly. A ruleset figure is a
     fact about the installed game; a player's own reading is a dated observation of one
-    settlement. Saying "your figures" about a number the player never typed would record
-    one source as the other -- the exact confusion this project's provenance labelling
-    exists to prevent."""
+    settlement; a live tuner reading is a value the advisor asked the running game for at
+    a moment it chose -- a Refine pre-fill, not yet confirmed by the player. Saying
+    "your figures" about a number the player never typed -- whether it came from the
+    ruleset or from the tuner -- would record one source as another, the exact confusion
+    this project's provenance labelling exists to prevent."""
+    if preview.live_filled:
+        filled = {m for m in ("completion_turns", "yield_delta", "gold_upkeep", "happiness_cost")
+                 if getattr(preview, m) is not None}
+        player_typed = filled - preview.ruleset_filled - preview.live_filled
+        parts: list[str] = []
+        if player_typed:
+            parts.append(f"your figures, read on turn {preview.observed_turn}")
+        parts.append(f"a live reading of your game, taken turn {preview.observed_turn}"
+                     if preview.observed_turn is not None else "a live reading of your game")
+        if preview.ruleset_filled:
+            parts.append("your installed ruleset")
+        return " and ".join(parts)
     if not preview.ruleset_filled:
         return f"your figures, read on turn {preview.observed_turn}"
     if preview.observed_turn is None:

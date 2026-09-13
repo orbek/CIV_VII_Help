@@ -148,6 +148,136 @@
     return out;
   }
 
+  /* ---- the live tuner's pre-fill for the Refine flow ----------------------------
+
+     A tuner reading is a value the advisor asked the running game for at a moment it
+     chose. It pre-fills the Refine form so the player is not asked to retype what the
+     game already told the advisor -- but it is a suggestion, not a submission: the
+     player still presses Record before it becomes their own report. These two lookups
+     are pure so the wiring that decides WHAT gets pre-filled can be tested without a
+     DOM, leaving app.js only the job of putting it on screen. */
+
+  /* This settlement's live build options, or null: the tuner never answered for it, or
+     is off, or has no reading for this city. */
+  function tunerLiveOptions(tuner, city) {
+    if (!tuner || !tuner.available) return null;
+    var found = null;
+    (tuner.build_options || []).forEach(function (so) {
+      if (so.city === city) found = so;
+    });
+    return found;
+  }
+
+  /* How many turns the tuner said this settlement's build of `item` would take, or
+     null if it did not answer for this item. The only metric a live reading may
+     pre-fill -- see `civ_advisor/decisions/context.py:Previews` for why the other
+     three stay for the ruleset or the player alone. */
+  function tunerLiveTurns(liveOptions, item) {
+    if (!liveOptions) return null;
+    var match = null;
+    (liveOptions.options || []).forEach(function (o) {
+      if (o.item === item) match = o;
+    });
+    return match ? match.turns : null;
+  }
+
+  /* What the Economy tab shows from a live tuner reading, and what it says where the
+     tuner could not supply a figure.
+
+     Turning the tuner ON used to REPLACE an honest notice with a blank: the capability
+     report flips happiness and maintenance to supported the moment the socket answers,
+     which removes the "Civ VI writes no amenities log" notice -- and nothing rendered
+     an amenities figure or an upkeep breakdown in its place. A player who did exactly
+     what the notice asked was left with less on screen than before.
+
+     Pure, so what the tab shows can be executed in a test rather than grepped for.
+     Each section carries its OWN absence reason: one figure the game will not itemise
+     must not be reported as the reason the others are missing, and must never be
+     reported as a zero. */
+  function tunerEconomy(tuner) {
+    var live = !!(tuner && tuner.available);
+
+    function label(read) {
+      /* Every figure is labelled with the turn and instant THAT query produced, never
+         with the snapshot's log-derived turn -- and with BOTH turns side by side,
+         because the socket reads the live game while the logs are complete only
+         through the last finished turn. The gap is the live_reading/log distinction
+         made concrete, so it is stated rather than hidden or reconciled. */
+      if (!read) return null;
+      var note = "read live — turn " + read.turn + " (" + read.read_at + ")";
+      if (read.logs_complete_through !== null && read.logs_complete_through !== undefined) {
+        note += ", logs complete through " + read.logs_complete_through;
+      }
+      return note;
+    }
+
+    function section(figures, reason, read) {
+      if (!live) return { figures: [], note: null, absent: (tuner && tuner.reason) || null,
+                          disagreement: null };
+      if (!figures.length) return { figures: [], note: null, absent: reason || null,
+                                    disagreement: null };
+      /* Figures with no reading are treated as ABSENT, not rendered bare. A live
+         figure whose turn is unknown is defect 1 arriving through another door: the
+         number would go on screen with nothing dating it, and a reader would take the
+         turn from whatever is nearest. The guard lives here rather than in the
+         renderer so it stays executable in a test, and it closes the class rather
+         than today's one path -- `Civ6Tuner` dates every figure it returns, so this
+         is latent, and it stops being latent the moment a second provider exists or
+         `_answer` stops stamping before it parses. */
+      if (!read) {
+        return {
+          figures: [], note: null, disagreement: null,
+          absent: "These figures arrived without a reading, so the turn that produced "
+            + "them is not known. A live figure is never shown without the turn it "
+            + "came from.",
+        };
+      }
+      /* A reading BEHIND the logs cannot happen in one continuous match, so it is
+         reported as the event it is -- a reload, another game on the socket, or a
+         connection held across a session change -- rather than papered over by
+         preferring one of the two numbers. */
+      return { figures: figures, note: label(read), absent: null,
+               disagreement: (read && read.disagreement) || null };
+    }
+
+    var m = live ? (tuner.maintenance || null) : null;
+    var upkeep = [];
+    if (m) {
+      upkeep.push({ label: "Buildings", value: m.buildings });
+      upkeep.push({ label: "Districts", value: m.districts });
+      upkeep.push({ label: "Units", value: m.units });
+      /* Only when it is non-zero, and named for what it is: the three categories the
+         game itemises are not known to be exhaustive, so the remainder is reported
+         rather than silently folded into one of them. */
+      if (m.unattributed !== 0) {
+        upkeep.push({ label: "Not itemised by the game", value: m.unattributed });
+      }
+      upkeep.push({ label: "Total upkeep", value: m.total });
+      upkeep.push({ label: "Net gold per turn", value: m.net_gold });
+    }
+
+    return {
+      live: live,
+      amenities: section(live ? (tuner.amenities || []) : [],
+                         tuner && tuner.amenities_reason,
+                         tuner && tuner.amenities_read),
+      upkeep: section(upkeep, tuner && tuner.maintenance_reason,
+                      tuner && tuner.maintenance_read),
+    };
+  }
+
+  /* The badge text for one evidence fact's source kind. Its own case for a live
+     reading, distinct from both "you told us" (typed) and a bare log row (the game's
+     own write) -- the confusion this label exists to prevent from reaching the page. */
+  function factKindLabel(kind) {
+    if (kind === "player_report") return "you told us";
+    if (kind === "live_reading") return "read live";
+    if (kind === "derived") return "computed";
+    if (kind === "rule") return "advisor rule";
+    if (kind === "installed_ruleset") return "your installed ruleset";
+    return "log";
+  }
+
   /* ---- the decision brief ------------------------------------------------------
 
      Grouping overlapping warnings by subject, without losing any of them. Two rival
@@ -272,6 +402,9 @@
     fingerprint: fingerprint, acknowledgementKey: acknowledgementKey,
     isAcknowledged: isAcknowledged, commentaryExplains: commentaryExplains,
     SEVERITY_ORDER: SEVERITY_ORDER,
+    tunerLiveOptions: tunerLiveOptions, tunerLiveTurns: tunerLiveTurns,
+    tunerEconomy: tunerEconomy,
+    factKindLabel: factKindLabel,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else root.Civ7Briefing = api;

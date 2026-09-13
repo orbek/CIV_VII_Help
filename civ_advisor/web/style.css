@@ -381,6 +381,17 @@ td.behind { color: var(--brass); }
 .cap-absent-head { font-weight: 600; margin: 0 0 .3rem; }
 .cap-absent-why { margin: .2rem 0; font-size: .9rem; }
 
+/* Figures the advisor asked the running game for, rather than read out of a log.
+   The note under each table is the turn and instant of the query that produced it --
+   the provenance stays attached to the numbers, on screen, not just in the payload. */
+.live-figure { margin-bottom: 1.2rem; }
+.live-figure-head { font-size: .95rem; font-weight: 600; margin: 0 0 .35rem; }
+.live-note { margin: .3rem 0 0; font-size: .85rem; opacity: .75; }
+/* A live reading dated BEHIND the logs: not a stale number to quietly re-date, but
+   evidence that two different games are being described. Stated, never reconciled. */
+.fact-disagree { margin: .35rem 0 0; font-size: .85rem; border-left: 3px solid currentColor;
+  padding-left: .6rem; }
+
 /* Older generated prose, kept only as dated history. */
 .commentary-dated { margin-top: 1rem; padding: .75rem .9rem; border-left: 3px solid var(--muted, #8b8578);
   background: rgba(139, 133, 120, .08); }
@@ -462,6 +473,12 @@ td.behind { color: var(--brass); }
 .fact-note { margin: .15rem 0; font-size: .82rem; }
 .fact-kind { font-size: .7rem; text-transform: uppercase; letter-spacing: .05em;
   border: 1px solid rgba(139, 133, 120, .5); border-radius: 3px; padding: .02rem .3rem; }
+/* Distinct from a log row's plain outline and from "you told us": a value asked for
+   live, from the running game, at a moment the advisor chose -- not typed, not logged. */
+.fact-kind-live { border-color: #5a9c8a; color: #5a9c8a; }
+
+/* ---- a live reading's pre-fill in the refine form ------------------------------ */
+.refine-live { color: #5a9c8a; font-size: .72rem; }
 
 /* ---- refinement panel --------------------------------------------------------- */
 .refine { margin-top: .5rem; padding-top: .5rem; border-top: 1px dashed rgba(139, 133, 120, .35); }

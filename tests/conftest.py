@@ -43,6 +43,20 @@ def civ6_dir() -> Path:
     return FIXTURE_CIV6_DIR
 
 
+from civ_advisor.games.civ6 import CIV6  # noqa: E402
+from civ_advisor.store import Store  # noqa: E402
+
+
+@pytest.fixture
+def civ6_store(civ6_dir: Path) -> Store:
+    return Store(civ6_dir, profile=CIV6)
+
+
+@pytest.fixture
+def civ7_store(fixture_dir: Path) -> Store:
+    return Store(fixture_dir, profile=CIV7)
+
+
 from civ_advisor.games import registry  # noqa: E402
 
 

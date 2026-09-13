@@ -13,7 +13,9 @@ from civ_advisor.advisors import Insight, economy, intel, production, threat, vi
 from civ_advisor.advisors.base import visible
 from civ_advisor.decisions.context import DecisionContext
 from civ_advisor.decisions.evidence import EvidenceLedger
-from civ_advisor.decisions.models import ActionCandidate, DecisionCard, EvidenceFact
+from civ_advisor.decisions.models import (
+    ActionCandidate, DecisionCard, EvidenceFact, SourceKind,
+)
 from civ_advisor.games.base import Capability, GameProfile
 from civ_advisor.games.selection import Resolution
 from civ_advisor.knowledge.catalog import GuideEntry
@@ -33,21 +35,41 @@ ORACLE_THREAT_FIELDS = ("war_score", "war_score_since", "at_war_since", "target_
 
 SCHEMA_VERSION = 1
 
+_NO_TUNER = (
+    "This figure comes from the game's tuner socket, which is not connected."
+)
 
-def capability_report(profile: GameProfile) -> dict[str, dict]:
+
+def capability_report(profile: GameProfile, tuner: object | None = None) -> dict[str, dict]:
     """Every capability this build models, whether this game supports it, and why not.
 
     Exhaustive on purpose, and the reason ships with the answer: the UI must be able to
     say "Civ VI's logs do not record which victory a rival is pursuing" rather than
     quietly rendering one panel fewer, which is indistinguishable from a quiet game.
+
+    A tuner-backed capability is live only for a poll in which the socket
+    answered. The three ways it can be absent are told apart, because only one
+    of them is something the player can fix.
     """
-    return {
-        c.value: {"supported": profile.supports(c), "reason": profile.reason(c)}
-        for c in Capability
-    }
+    live = bool(tuner is not None and getattr(tuner, "available", False))
+    tuner_reason = getattr(tuner, "reason", None) if tuner is not None else None
+    report: dict[str, dict] = {}
+    for c in Capability:
+        if c in profile.tuner_backed:
+            report[c.value] = {
+                "supported": live,
+                "reason": None if live else (tuner_reason or _NO_TUNER),
+                "source": "tuner",
+            }
+        else:
+            report[c.value] = {
+                "supported": profile.supports(c),
+                "reason": profile.reason(c),
+            }
+    return report
 
 
-def game_to_dict(resolution: Resolution) -> dict:
+def game_to_dict(resolution: Resolution, tuner: object | None = None) -> dict:
     """Which game is being advised on, how that was decided, and what else is on offer.
 
     `mode` and `disagrees` are not decoration: a pinned choice that detection contradicts
@@ -56,16 +78,16 @@ def game_to_dict(resolution: Resolution) -> dict:
     """
     from civ_advisor.games.registry import get_profile, profile_ids
 
-    def described(profile) -> dict:
+    def described(profile, profile_tuner: object | None = None) -> dict:
         return {"id": profile.id, "display_name": profile.display_name,
-                "capabilities": capability_report(profile)}
+                "capabilities": capability_report(profile, tuner=profile_tuner)}
 
     active = resolution.profile
     return {
         "mode": resolution.mode,
         "pinned": resolution.pinned_id,
         "active": None if active is None else dict(
-            described(active), logs_dir=str(resolution.logs_dir)),
+            described(active, tuner), logs_dir=str(resolution.logs_dir)),
         "disagrees": resolution.disagrees,
         "detection": {
             "game": resolution.detected_id,
@@ -76,6 +98,7 @@ def game_to_dict(resolution: Resolution) -> dict:
                 for c in resolution.candidates
             ],
         },
+        # Non-active profiles keep the no-tuner call: nothing has been asked of them.
         "games": [described(get_profile(g)) for g in profile_ids()],
     }
 
@@ -220,9 +243,78 @@ def commentary_to_dict(result: CommentaryResult) -> dict:
     }
 
 
+# How a live reading's own turn stands against the turn the LOGS are complete through.
+# Slugs rather than prose, following store.py's epoch_reason, because this is a fact a
+# consumer branches on and not a sentence to match against.
+#
+# LOGS_BEHIND is the NORMAL case and not an anomaly: the socket reads the running game
+# while a log row is only written as a turn finishes, which is exactly why this codebase
+# already keeps `latest_turn` and `analysis_turn` apart. It is also the number that
+# makes the live_reading/log distinction concrete for a player -- "read live on turn 60;
+# logs complete through 59" is the whole difference between the two sources, stated.
+#
+# READING_BEHIND cannot happen against one continuous match, so it is evidence of
+# something real: a reloaded save, a different game answering the socket, or a
+# connection held across a session change. Both numbers are reported and neither is
+# preferred. Nothing here reconciles them -- quietly picking one would hide the event.
+LOGS_BEHIND = "logs_behind"
+SAME_TURN = "same_turn"
+READING_BEHIND = "reading_behind"
+
+
+def reading_turn_relation(turn: int, analysis_turn: int | None) -> str | None:
+    """Which way a live reading's turn stands against the logs', or None if unknown."""
+    if analysis_turn is None:
+        return None
+    if turn > analysis_turn:
+        return LOGS_BEHIND
+    return SAME_TURN if turn == analysis_turn else READING_BEHIND
+
+
+def reading_turn_disagreement(turn: int, analysis_turn: int | None) -> str | None:
+    """What to say when a live reading is BEHIND the logs, and nothing otherwise.
+
+    Being ahead of the logs is normal and gets no note -- calling the usual case an
+    anomaly would teach a player to ignore the one that is not.
+    """
+    if reading_turn_relation(turn, analysis_turn) != READING_BEHIND:
+        return None
+    return (
+        f"The running game answered turn {turn}, but the logs are complete through "
+        f"turn {analysis_turn}. A live reading is never behind the logs of the same "
+        "match, so these two are not describing one continuous game: a save was "
+        "reloaded, another match is answering the socket, or this connection outlived "
+        "the session it was opened in. Both turns are reported as read; neither has "
+        "been corrected to the other.")
+
+
+def reading_to_dict(reading, analysis_turn: int | None) -> dict:
+    """One live reading, beside the turn the logs are complete through.
+
+    Both travel. A figure read live on turn 60 while the logs stop at 59 is not an
+    error and not a figure to re-date; it is the reason the two sources are labelled
+    differently in the first place.
+    """
+    return {
+        "turn": reading.turn,
+        "read_at": reading.read_at,
+        "state": reading.state,
+        "logs_complete_through": analysis_turn,
+        "relation": reading_turn_relation(reading.turn, analysis_turn),
+        "disagreement": reading_turn_disagreement(reading.turn, analysis_turn),
+    }
+
+
 def evidence_to_dict(fact: EvidenceFact, analysis_turn: int) -> dict:
     """One observation, readable. `label` leads, not the id: an internal key is a handle
-    for the code, not something to put in front of a player as the primary label."""
+    for the code, not something to put in front of a player as the primary label.
+
+    A live reading also carries the turn the LOGS are complete through, so the drawer
+    can state the difference between the two sources rather than leave "read live" as a
+    word: "read live on turn 60; logs complete through 59". `age` is clamped at zero and
+    cannot express a figure that is AHEAD of the logs, which a live reading normally is.
+    """
+    live = fact.source_kind is SourceKind.LIVE_READING
     return {
         "id": fact.id, "label": fact.label, "kind": fact.source_kind.value,
         "provenance": fact.provenance.value, "value": fact.value, "unit": fact.unit,
@@ -230,6 +322,10 @@ def evidence_to_dict(fact: EvidenceFact, analysis_turn: int) -> dict:
         "source_file": fact.source_file, "record_key": list(fact.record_key),
         "subject_id": fact.subject_id, "contributing": list(fact.contributing),
         "note": fact.note, "reported_at": fact.reported_at,
+        "logs_complete_through": analysis_turn if live else None,
+        "turn_disagreement": (
+            reading_turn_disagreement(fact.observed_turn, analysis_turn)
+            if live and fact.observed_turn is not None else None),
     }
 
 
@@ -328,6 +424,75 @@ def decisions_to_dict(context: DecisionContext, cards: tuple[DecisionCard, ...])
     }
 
 
+def tuner_to_dict(tuner: object | None, analysis_turn: int | None = None) -> dict:
+    """One tuner rebuild, ready for the page.
+
+    Every reported figure carries the turn and instant it was read, and a figure the
+    tuner could not supply says why -- "not enabled", "not answering" and "unreachable"
+    are three different statements and only the browser needs to tell them apart, so
+    the reason travels rather than a bare `False`, and `unavailable` travels beside it:
+    the same distinction as a value a consumer can branch on, rather than one it would
+    have to infer by matching on prose. `source` is always the literal
+    `"live_reading"`: this is the one channel that carries values the game never wrote
+    to a log, and the browser must never mistake one for a player's own report.
+
+    Each figure carries its OWN reading, and there is deliberately no single turn for
+    the whole section: every query asks the live game for its own turn, so a capture
+    the player presses Enter through leaves amenities on turn 59 and build options on
+    60 -- both true, and one of them false the moment they share a stamp.
+
+    Every reading also carries `logs_complete_through`, so the page can say which
+    source a number came from in the one way a player can check.
+    """
+    available = bool(tuner is not None and getattr(tuner, "available", False))
+    reason = getattr(tuner, "reason", None) if tuner is not None else None
+    unavailable = getattr(tuner, "unavailable", None) if tuner is not None else None
+    maintenance = getattr(tuner, "maintenance", None) if available else None
+
+    def absence(query_id: str) -> str | None:
+        if tuner is None or not hasattr(tuner, "absence"):
+            return None
+        return tuner.absence(query_id)
+
+    def read(query_id: str) -> dict | None:
+        """The reading that dates this figure, as the page needs to label it."""
+        if not available or tuner is None or not hasattr(tuner, "reading_for"):
+            return None
+        r = tuner.reading_for(query_id)
+        return None if r is None else reading_to_dict(r, analysis_turn)
+
+    return {
+        "available": available,
+        "reason": None if available else reason,
+        "unavailable": None if available or unavailable is None else str(unavailable.value),
+        "source": "live_reading",
+        "amenities": [
+            {"city": a.city, "total": a.total, "from_luxuries": a.from_luxuries,
+             "from_civics": a.from_civics, "from_entertainment": a.from_entertainment,
+             "housing": a.housing, "food_surplus": a.food_surplus,
+             "unexplained": a.unexplained}
+            for a in (getattr(tuner, "amenities", ()) if available else ())
+        ],
+        "amenities_reason": absence("amenities"),
+        "amenities_read": read("amenities"),
+        "maintenance": ({
+            "total": maintenance.total, "buildings": maintenance.buildings,
+            "districts": maintenance.districts, "units": maintenance.units,
+            "gold": maintenance.gold, "gold_yield": maintenance.gold_yield,
+            "unattributed": maintenance.unattributed, "net_gold": maintenance.net_gold,
+        } if maintenance is not None else None),
+        "maintenance_reason": absence("maintenance"),
+        "maintenance_read": read("maintenance"),
+        "build_options": [
+            {"city": so.city,
+             "options": [{"item": o.item, "turns": o.turns} for o in so.options]}
+            for so in (getattr(tuner, "build_options", ()) if available else ())
+        ],
+        "build_options_reason": absence("build_options"),
+        "build_options_read": read("build_options"),
+    }
+
+
 def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryResult,
                      changes: dict | None = None, record: dict | None = None,
                      decisions: dict | None = None, game: dict | None = None) -> dict:
@@ -353,6 +518,7 @@ def briefing_to_dict(snapshot: Snapshot, oracle: bool, commentary: CommentaryRes
         "decisions": decisions,
         "changes": changes,
         "record": record,
+        "tuner": tuner_to_dict(snapshot.tuner, snapshot.analysis_turn),
     }
 
 

@@ -75,6 +75,18 @@ def test_every_unsupported_capability_carries_a_reason(profile):
         if profile.supports(capability):
             assert profile.reason(capability) is None, \
                 f"{profile.id} declares {capability.value} supported AND gives a reason it is not"
+        elif capability in profile.tuner_backed:
+            # Not a fixed reason: this capability's absence is explained by the live
+            # tuner state (see capability_report), not by a static profile string.
+            # It must still explain itself, just from the tuner rather than from a
+            # profile-static `unsupported` entry.
+            from civ_advisor.api.serialize import capability_report
+            from civ_advisor.tuner.base import TUNER_OFF
+
+            entry = capability_report(profile, tuner=TUNER_OFF)[capability.value]
+            assert entry["supported"] is False and entry["reason"], \
+                (f"{profile.id} declares {capability.value} tuner-backed but reports no "
+                 "reason with the tuner off")
         else:
             assert profile.reason(capability), \
                 f"{profile.id} does not support {capability.value} and does not say why"

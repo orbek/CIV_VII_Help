@@ -75,6 +75,9 @@ def main(argv: list[str] | None = None) -> int:
                              f"(default: {DEFAULT_ROOT}/<game>/player-context.json)")
     parser.add_argument("--no-context-file", action="store_true",
                         help="keep goals and acknowledgements for this run only")
+    parser.add_argument("--no-tuner", action="store_true",
+                        help="Never contact Civilization VI's tuner socket, even if "
+                             "it is open.")
     args = parser.parse_args(argv)
 
     if args.logs_dir is not None and args.game is None:
@@ -128,7 +131,7 @@ def main(argv: list[str] | None = None) -> int:
                      commentary_worker=worker,
                      player_store=PersistentContextStore(path=store_path) if fixed_notes else None,
                      profile=profile, selector=selector,
-                     storage_base=DEFAULT_ROOT)
+                     storage_base=DEFAULT_ROOT, use_tuner=not args.no_tuner)
     # Task 5's notice, now against whichever game is pinned; with --game auto there is
     # no game yet and nothing is claimed about where a user's old data belongs.
     if profile is not None:

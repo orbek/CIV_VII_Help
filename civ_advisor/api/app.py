@@ -67,7 +67,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                *, profile: GameProfile | None,
                selector: GameSelector | None = None,
                storage_base: Path | None = None,
-               archiving: bool = True) -> FastAPI:
+               archiving: bool = True,
+               use_tuner: bool = True) -> FastAPI:
     context_store = ContextStore()
     history = change_tracking.History()
 
@@ -115,7 +116,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     store = Store(logs_dir, None if profile is None else archive_for(profile),
                   commentary_worker=commentary_worker,
-                  identity_provider=identity_provider, profile=profile)
+                  identity_provider=identity_provider, profile=profile,
+                  use_tuner=use_tuner)
     resolution = selector.resolve()
 
     def activate(new: Resolution) -> bool:
@@ -280,7 +282,7 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             raise HTTPException(status_code=503, detail="state not loaded yet")
         return captured
 
-    def game_now() -> dict:
+    def game_now(captured: Snapshot | None = None) -> dict:
         """The game label for whatever `current()` would return right now.
 
         Deliberately NOT a fresh `selector.resolve()`: detection can flip between one
@@ -288,8 +290,12 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
         the snapshot actually on screen with a game it does not belong to -- the exact
         failure this phase exists to prevent. `resolution` is the same object `activate()`
         last set, which is only ever updated together with the store it describes.
+
+        `captured` is the snapshot this response is otherwise built from, so its tuner
+        reading -- not a separately re-fetched one -- is what tells `capabilities`
+        whether the tuner-backed figures were live for this response.
         """
-        return game_to_dict(resolution)
+        return game_to_dict(resolution, tuner=captured.tuner if captured is not None else None)
 
     def commentary_result(captured: Snapshot, oracle: bool) -> CommentaryResult:
         if store.commentary_worker is None:
@@ -315,7 +321,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
                      captured.epoch_reason, game=captured.game_id)
         active = get_profile(captured.game_id)
         context = build_context(captured, context_store.context(), oracle=oracle,
-                                ruleset=active.ruleset() if active.ruleset else None)
+                                ruleset=active.ruleset() if active.ruleset else None,
+                                tuner=captured.tuner)
         return context, decide_all(context)
 
     def decisions_for(captured: Snapshot, oracle: bool) -> dict:
@@ -356,7 +363,7 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             changes=_changes(captured, oracle_on, context, cards),
             record=player_record_to_dict(record),
             decisions=decisions_to_dict(context, cards),
-            game=game_now())
+            game=game_now(captured))
 
     @app.get("/api/decisions")
     def api_decisions(oracle: int = 1) -> dict:
@@ -539,11 +546,14 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
 
     @app.get("/api/status")
     def api_status(oracle: int = 1) -> dict:
-        return status_to_dict(current(), bool(oracle), game=game_now())
+        captured = current()
+        return status_to_dict(captured, bool(oracle), game=game_now(captured))
 
     @app.get("/api/game")
     def api_game() -> dict:
-        return game_to_dict(selector.resolve() if supervise_selection else resolution)
+        snap = store.snapshot
+        return game_to_dict(selector.resolve() if supervise_selection else resolution,
+                            tuner=snap.tuner if snap is not None else None)
 
     @app.post("/api/game", response_model=None)
     async def api_set_game(body: dict = Body(...)) -> dict:
@@ -565,7 +575,8 @@ def create_app(logs_dir: Path | None, poll_interval: float = 1.0,
             except UnknownGame as exc:
                 raise HTTPException(status_code=422, detail=str(exc)) from exc
             await apply_selection(selector.resolve())
-        return game_to_dict(resolution)
+        snap = store.snapshot
+        return game_to_dict(resolution, tuner=snap.tuner if snap is not None else None)
 
     @app.get("/api/state")
     def api_state(oracle: int = 1) -> dict:

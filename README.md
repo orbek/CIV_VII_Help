@@ -60,9 +60,9 @@ nothing is ever written under them.
 
 ### Playing Civilization VI
 
-There is nothing to install, enable or configure in the game. Civ VI writes its
-gameplay CSVs on its own — no mod, no FireTuner, no `AppOptions.txt` change.
-Start the advisor and play:
+There is nothing to install, enable or configure in the game to get started. Civ
+VI writes its gameplay CSVs on its own — no mod, no FireTuner, no
+`AppOptions.txt` change. Start the advisor and play:
 
     uv run civ-advisor
 
@@ -100,6 +100,46 @@ than watched from the main menu. One caveat on "no configuration" — the machin
 this was verified on has `EnableDebugMenu 1` in `AppOptions.txt`, and no machine
 with it at `0` has been tested. That is the first line to compare if the CSVs
 never appear.
+
+#### The tuner: amenities, upkeep, and what you can build — optional, and a real cost
+
+Civ VI's logs write no amenities figure, no maintenance breakdown, and nothing
+about what a settlement can actually build right now — that last one is not
+something any installed ruleset could answer even in principle, because it
+depends on that settlement's own production, which no log records either. If
+you turn on Civ VI's own **tuner** — a debug interface the game ships with, off
+by default — the advisor can read all three: each city's amenities and where
+they come from, the upkeep breakdown behind your net gold per turn, and, for
+every settlement, what it can build with a completion estimate for each option.
+
+To turn it on: open the game's own `AppOptions.txt` and, under `[Debug]`, set
+
+    EnableTuner 1
+
+then restart Civilization VI. **The advisor will never make this change for
+you.** `AppOptions.txt` lives inside the game's own directory, and this program
+is read-only with respect to both games' directories — the same rule that
+keeps it from ever writing a journal file beside the game's own database.
+
+Read the cost before you decide, plainly: the tuner's socket
+(`127.0.0.1:4318`) executes arbitrary Lua inside your running game, and it has
+**no authentication** — any local process on your machine can use it while it
+is open, not only this advisor. The advisor connects to loopback only and asks
+only a fixed, reviewed catalog of questions; it cannot be handed Lua from
+outside that catalog. But that is a property of the advisor, not of the port —
+the port itself does not know or care who is asking. If you would rather not
+have that open, leave it off. Every panel keeps working either way; the ones
+that need the tuner say what they cannot show and why, instead of leaving a
+blank.
+
+Pass `--no-tuner` to have the advisor never attempt the socket, even if it is
+open:
+
+    uv run civ-advisor --no-tuner
+
+The default is to try connecting — one refused connection when the tuner is
+off costs nothing, so `--no-tuner` exists for anyone who wants the advisor to
+make no attempt at all.
 
 ## Before you end this turn
 
@@ -196,7 +236,12 @@ No figure in a recommendation comes from a wiki or from this advisor's own
 guesses. The logs do not record what a building yields, what a settlement can
 build, what is unlocked, or what a placement would cost, and no packaged guide
 asserts a number verified against an installed ruleset — so every figure comes
-from you, for both games today.
+from you, for Civ VII today, and for Civ VI too unless you have turned its
+tuner on (see [Playing Civilization VI](#playing-civilization-vi)). With the
+tuner on, amenities, the upkeep breakdown behind net gold, and each
+settlement's build options and their completion estimates come from the
+running game instead — the rest, including anything conditional on a policy
+card, government or wonder ability, is still yours to supply.
 
 Civilization VI ships its compiled ruleset as a queryable database, and the
 code to read a building's cost, prerequisites and flat yield from it — labelled
@@ -249,7 +294,8 @@ is being played from the games' own logs each poll, and you can override it from
 the header at any time), `--logs-dir PATH` (requires `--game`, because a log
 directory belongs to one game and the path does not say which), `--port`,
 `--host`, `--poll-interval`, `--llm-model MODEL`, `--llm-timeout SECONDS`,
-`--no-llm`, `--context-file PATH`, and `--no-context-file`.
+`--no-llm`, `--context-file PATH`, `--no-context-file`, and `--no-tuner` (see
+[Playing Civilization VI](#playing-civilization-vi)).
 
 Ollama commentary is optional. The advisor checks only the loopback service at
 `127.0.0.1:11434`, rejects `:cloud` models, and never sends raw logs to the
@@ -378,6 +424,16 @@ citation opens the right observation, and whether hidden data can come back.
 
 See [tests/browser/README.md](tests/browser/README.md). It is excluded from the
 default run so that stays offline and fast.
+
+A third opt-in suite checks the tuner protocol against a real, running Civ VI
+with `EnableTuner 1` set (see [Playing Civilization
+VI](#playing-civilization-vi)) — it asserts shapes, not values, since whoever
+runs it has their own game up:
+
+    uv run pytest tests/live -p no:cacheprovider
+
+See [tests/live/README.md](tests/live/README.md). It, too, is excluded from
+the default run, for the same reason.
 
 ## Design
 

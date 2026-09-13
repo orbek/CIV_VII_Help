@@ -22,11 +22,26 @@ from civ_advisor.games.base import GameProfile
 from civ_advisor.ingest.load import RawLogs, load_logs
 from civ_advisor.state.build import build_state
 from civ_advisor.state.models import GameState
+from civ_advisor.tuner.base import (
+    NullTuner, TUNER_ABSENT, TUNER_SNAPSHOT_OFF, TunerSnapshot,
+    TunerUnavailable, capture,
+)
 
 if TYPE_CHECKING:
     from civ_advisor.llm.worker import CommentaryWorker
 
 log = logging.getLogger(__name__)
+
+# The tuner was not asked because THIS RUN said not to ask -- not because the socket is
+# off, and not because the game lacks one. It carries its own cause as well as its own
+# prose: labelling it NOT_ENABLED shipped "unavailable": "not_enabled" to the page for a
+# socket nobody ever contacted, which is the same reason-vs-cause split that the
+# Civ VII/AppOptions defect was, one layer down.
+NO_TUNER_THIS_RUN = NullTuner(
+    TunerUnavailable.NOT_ASKED,
+    "This run was started with --no-tuner, so the advisor never contacted the game's "
+    "tuner socket. Nothing about the game is wrong; drop the flag to read these figures.",
+)
 
 ARCHIVE_SUFFIXES = {".csv", ".log"}  # mirror every log the game writes, not just the ones we parse
 
@@ -162,6 +177,11 @@ class Snapshot:
     state: GameState
     insights: tuple[Insight, ...]
     coverage: tuple[DomainCoverage, ...]
+    # Never a live provider, and never None: a request handler reading a socket
+    # this game may have moved on from would file a later turn's figures under
+    # this turn's evidence. This is a frozen capture taken during the same
+    # rebuild as the state beside it. TUNER_SNAPSHOT_OFF when there is none.
+    tuner: TunerSnapshot = TUNER_SNAPSHOT_OFF
 
     @property
     def in_progress(self) -> bool:
@@ -231,7 +251,7 @@ class Store:
     def __init__(self, logs_dir: Path | None, archive_root: Path | None = None,
                  commentary_worker: CommentaryWorker | None = None,
                  identity_provider: Callable[[Snapshot], dict] | None = None,
-                 *, profile: GameProfile | None) -> None:
+                 *, profile: GameProfile | None, use_tuner: bool = True) -> None:
         # `identity_provider` supplies the decision, context and catalog revisions that
         # complete a generation's identity. It is a hook rather than an import so this
         # module stays free of the decisions package, and so a store with no decision
@@ -240,6 +260,11 @@ class Store:
         self.logs_dir = logs_dir
         self.profile = profile
         self.archive_root = archive_root
+        # `--no-tuner` is a decision by THIS run, not a property of the game, so it
+        # lives here rather than on the profile: a profile is a process-wide
+        # singleton, and mutating one to disable its tuner would disable it for
+        # every store in the interpreter, permanently and undetectably.
+        self.use_tuner = use_tuner
         self._pending_switch = False   # a game switch forces the next snapshot to a new epoch
         # Bumped on every ACTUAL switch_to (not a no-op one). `profile`/`logs_dir` alone
         # cannot detect an A->B->A sequence: profile objects are per-game singletons, so
@@ -329,11 +354,43 @@ class Store:
         state = build_state(raw)
         insights = run_all(state, profile)
         key = game_key(logs_dir)
+        # Outside the lock, and never fatal: a socket problem must not discard a poll
+        # that read every log correctly. Opened once per rebuild, read once into a
+        # frozen TunerSnapshot, and closed again before the snapshot is even built --
+        # nothing live survives the rebuild, so there is nothing on a published
+        # snapshot a request handler could read a later turn's figures through, and
+        # nothing for a later rebuild to race while closing it.
+        # Three different absences, and each must name its own cause. A game with no
+        # tuner factory has no socket AT ALL, which is not a socket that is switched
+        # off: Civ VII has no tuner, and telling a Civ VII player to set `EnableTuner 1`
+        # in Civilization VI's AppOptions.txt names a cause that does not exist and a
+        # fix they cannot make. `--no-tuner` is a third thing again -- this run chose
+        # not to ask, and nothing about the game is wrong.
+        #
+        # `--no-tuner` is a decision by this run, not a property of the game, which is
+        # why it lives on the Store and not on the profile: `self.use_tuner` gates
+        # whether the factory is CALLED, never whether the game is said to have one.
+        factory = getattr(profile, "tuner", None)
+        if factory is None:
+            provider = TUNER_ABSENT
+        elif not self.use_tuner:
+            provider = NO_TUNER_THIS_RUN
+        else:
+            try:
+                provider = factory()
+            except Exception:       # a third-party socket has many failure shapes
+                provider = NullTuner(
+                    TunerUnavailable.NOT_ANSWERING,
+                    "the tuner socket could not be reached this turn")
+        try:
+            tuner = capture(provider)
+        finally:
+            self._close_tuner(provider)
         with self._lock:
             if self.profile is not profile or self.logs_dir != logs_dir \
                     or self._generation != generation:
                 return None
-            snapshot = self._capture_locked(raw, state, insights, key, profile)
+            snapshot = self._capture_locked(raw, state, insights, key, profile, tuner)
             self.snapshot = snapshot
             # Captured under the same lock as the snapshot itself: a switch_to landing
             # in the gap between releasing this lock and _archive() running must not be
@@ -347,6 +404,16 @@ class Store:
             self.commentary_worker.schedule(snapshot, revisions=self.revisions(snapshot))
         return snapshot
 
+    @staticmethod
+    def _close_tuner(provider: object) -> None:
+        """Close a tuner provider's socket if it has one. Every NullTuner does not."""
+        close = getattr(provider, "close", None)
+        if callable(close):
+            try:
+                close()
+            except Exception:   # closing a socket must never break a rebuild
+                log.exception("closing the tuner failed; continuing")
+
     def revisions(self, snapshot: Snapshot) -> dict:
         """The decision/context/catalog revisions for this snapshot, if anything supplies them."""
         if self.identity_provider is None:
@@ -358,7 +425,7 @@ class Store:
             return {}
 
     def _capture_locked(self, raw: RawLogs, state: GameState, insights: list[Insight],
-                        key: str | None, profile: GameProfile) -> Snapshot:
+                        key: str | None, profile: GameProfile, tuner: TunerSnapshot) -> Snapshot:
         self._revision += 1
         reason = self._session_reason_locked(raw, key)  # compares `key` against the session's own
         if reason is not None:
@@ -386,6 +453,7 @@ class Store:
             latest_turn=state.latest_turn, analysis_turn=state.complete_through_turn,
             state=state, insights=tuple(insights),
             coverage=_coverage(state, state.complete_through_turn, profile),
+            tuner=tuner,
         )
 
     def _session_reason_locked(self, raw: RawLogs, key: str | None) -> str | None:

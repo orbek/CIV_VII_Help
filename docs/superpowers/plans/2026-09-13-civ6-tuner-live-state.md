@@ -283,10 +283,11 @@ def test_a_reading_must_name_the_vm_it_came_from():
         TunerReading(turn=59, read_at="2026-09-13T10:40:00Z", state="")
 
 
-def test_amenities_sources_must_not_exceed_the_total_they_explain():
-    with pytest.raises(ValueError, match="sources"):
-        CityAmenities(city="Rome", total=1, from_luxuries=5, from_civics=0,
-                      from_entertainment=0, housing=9, food_surplus=1)
+def test_war_weariness_is_accepted_and_reported_not_rejected():
+    """A city at war names more positive sources than its total. That is real."""
+    c = CityAmenities(city="Rome", total=4, from_luxuries=3, from_civics=0,
+                      from_entertainment=2, housing=9, food_surplus=1)
+    assert c.unexplained == -1
 
 
 def test_net_gold_is_yield_minus_maintenance():
@@ -294,10 +295,10 @@ def test_net_gold_is_yield_minus_maintenance():
     assert m.net_gold == 7
 
 
-def test_maintenance_parts_must_sum_to_the_total():
-    """A breakdown that does not add up is a parsing bug, not a game fact."""
-    with pytest.raises(ValueError, match="breakdown"):
-        Maintenance(total=9, buildings=0, districts=1, units=0, gold=152, gold_yield=8)
+def test_upkeep_the_breakdown_does_not_explain_is_reported_not_rejected():
+    """The three queried categories are not known to be exhaustive."""
+    m = Maintenance(total=9, buildings=0, districts=1, units=0, gold=152, gold_yield=8)
+    assert m.unattributed == 8
 
 
 def test_a_build_option_carries_its_own_completion_estimate():
@@ -418,18 +419,16 @@ class CityAmenities:
     housing: int
     food_surplus: int
 
-    def __post_init__(self) -> None:
-        named = self.from_luxuries + self.from_civics + self.from_entertainment
-        if named > self.total:
-            raise ValueError(
-                f"sources ({named}) exceed the total they explain ({self.total})")
-
     @property
     def unexplained(self) -> int:
-        """Amenities the game reports that these sources do not account for.
+        """Total minus the three sources this VM exposes. May be negative.
 
-        Civ VI exposes only three of its amenity sources to this VM, so a
-        positive remainder is expected and is reported rather than hidden.
+        Deliberately NOT validated. Civ VI exposes three amenity sources here and
+        has more, in both directions: unexposed positives (great people, religion)
+        push this above zero, and war weariness pushes it below -- a city at war
+        can report luxuries 3 and entertainment 2 against a total of 4. Raising on
+        that would turn a real game state into a crashed poll. The remainder is
+        reported instead, so a reader can see the sources do not add up.
         """
         return self.total - (self.from_luxuries + self.from_civics + self.from_entertainment)
 
@@ -445,11 +444,17 @@ class Maintenance:
     gold: int
     gold_yield: int
 
-    def __post_init__(self) -> None:
-        if self.buildings + self.districts + self.units != self.total:
-            raise ValueError(
-                "breakdown does not sum to the total; this is a parsing bug, "
-                "not a fact about the game")
+    @property
+    def unattributed(self) -> int:
+        """Total upkeep the three queried categories do not account for.
+
+        Not validated, for the same reason as CityAmenities.unexplained: the
+        claim that buildings + districts + units is exhaustive rests on ONE
+        observation where all three happened to be 0, 1 and 0. The same probe
+        found GetRouteMaintenance absent from this VM, which is a hint that the
+        game's own total counts things it will not itemise here.
+        """
+        return self.total - (self.buildings + self.districts + self.units)
 
     @property
     def net_gold(self) -> int:
@@ -1383,7 +1388,16 @@ git commit -m "Make happiness and upkeep conditional on a live tuner"
 
 **Interfaces:**
 - Consumes: `GameProfile.tuner`, `TunerProvider`.
-- Produces: `Snapshot.tuner: TunerProvider` (never `None`; `TUNER_OFF` when there is none), `Store.rebuild()` unchanged in signature.
+- Produces: `Snapshot.tuner: TunerSnapshot` (never `None`; `TUNER_SNAPSHOT_OFF` when
+  there is none), `civ_advisor.tuner.base.capture(provider) -> TunerSnapshot`,
+  `Store.rebuild()` unchanged in signature.
+
+**Corrected after Task 6 review.** The snapshot carries FROZEN readings captured
+during the rebuild, never a live provider. A live socket on a published snapshot
+would put socket I/O on the HTTP request path, let a request read through a socket
+a later rebuild had closed, and — worst — return figures from whatever turn the game
+is on now while filing them under a snapshot dated to an earlier turn. The provider
+is opened, read once, and closed within the rebuild.
 
 - [ ] **Step 1: Write the failing tests**
 

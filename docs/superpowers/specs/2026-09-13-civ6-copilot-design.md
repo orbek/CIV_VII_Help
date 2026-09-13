@@ -292,6 +292,17 @@ branches on, not prose alone:
 | `oracle_hidden` | the answer exists and Oracle is off | which capability |
 | `bad_parameter` | the model named a city or key outside the valid set | what was named |
 | `not_in_catalog` | the model asked for something no question covers | — |
+| `answered_empty` | the source was read, answered, and holds nothing for this subject | which source answered, what it holds nothing of, and the turn it answered at |
+| `ruleset_schema` | a ruleset query failed at the database because a table is not the shape this advisor expects | which table and column, and that a mod or patch may have reshaped it |
+
+The last two exist because each was once said as something else, and both are the
+§4.6 rule applied again. An EMPTY RESULT is an answer -- "you have reported nothing
+this sitting", "the tuner says this settlement can build nothing", "the reply names no
+settlement called X" -- and was being rendered as `CANNOT`: an inability to see, about
+sources that had just been read. A RESHAPED TABLE is not a missing row: the query never
+ran, so `no_such_row` would assert a fact about the player's file that nothing read.
+Each is established by consulting the source -- the reply's own rows, the reading's own
+turn, the database's own `table_info` -- never inferred from the shape of a failure.
 
 The deterministic answer lists every absence with its detail. The model is
 given the same list and instructed to say what it could not find rather than

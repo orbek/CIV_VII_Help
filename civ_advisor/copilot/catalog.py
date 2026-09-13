@@ -43,6 +43,11 @@ class Unanswerable(StrEnum):
     # inability to see -- the two were one sentence until this kind existed, and the
     # first read as a failure of the advisor when nothing had failed at all.
     ANSWERED_EMPTY = "answered_empty"
+    # A query inside the allowlist failed at the database itself, because a mod or a
+    # patch reshaped the table it reads. Whether the ruleset holds a row for that key
+    # was never established, so NO_SUCH_ROW would be a claim about the player's file
+    # that nothing read.
+    RULESET_SCHEMA = "ruleset_schema"
 
 
 @dataclass(frozen=True)
@@ -427,6 +432,16 @@ def _ruleset(question_id: str, lookup: str, param: str, *, id_prefix: str) -> Re
                 provider.reason or "no installed ruleset is readable"))
         facts = getattr(provider, lookup)(params[param])
         if facts is None:
+            # `None` alone does not establish that the row is missing: the reader
+            # returns it for a reshaped table too, where the query never ran. Ask the
+            # file which of the two happened rather than asserting the likelier story.
+            complaint = provider.schema_complaint(lookup)
+            if complaint:
+                return Resolution(absence=Absence(
+                    question_id, Unanswerable.RULESET_SCHEMA,
+                    f"the installed ruleset {complaint}, so whether it holds a {lookup} "
+                    f"row for {params[param]} could not be established; a mod or a patch "
+                    "may have reshaped it"))
             return Resolution(absence=Absence(
                 question_id, Unanswerable.NO_SUCH_ROW,
                 f"the installed ruleset has no {lookup} row for {params[param]}"))

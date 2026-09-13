@@ -347,6 +347,12 @@ class RulesetProvider(Protocol):
 
     def identity(self) -> RulesetIdentity | None: ...
 
+    # What is wrong with the shape of the tables one lookup reads, or None if they are
+    # as expected. A lookup that returns None means "no such row" ONLY when this says
+    # None as well: otherwise the query failed at the database and nothing about rows
+    # was established. `kind` is the lookup's own name -- "building", "unit", ...
+    def schema_complaint(self, kind: str) -> str | None: ...
+
     def building(self, building_type: str) -> BuildingFacts | None: ...
 
     def district(self, district_type: str) -> DistrictFacts | None: ...
@@ -390,6 +396,9 @@ class NullRuleset:
 
     def identity(self) -> RulesetIdentity | None:
         return None
+
+    def schema_complaint(self, kind: str) -> str | None:
+        return None     # nothing is readable here at all; `reason` is what says why
 
     def building(self, building_type: str) -> BuildingFacts | None:
         return None

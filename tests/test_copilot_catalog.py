@@ -1,6 +1,7 @@
 """The catalog is the allowlist: a question not written here cannot be asked, a
 parameter outside its set never reaches a resolver, and every absence names its cause."""
 import re
+import sqlite3
 from dataclasses import replace
 
 import pytest
@@ -173,3 +174,41 @@ def test_no_recorded_objective_says_so_rather_than_cannot_see(civ7_context, monk
     text = _player_sentence(context, "defense.objectives")
     assert conv.CANNOT not in text
     assert "record no attack objective" in text
+
+
+# ---- a reshaped table is not a missing row ----------------------------------------
+
+def test_a_reshaped_table_is_not_asserted_to_be_a_missing_row(civ7_context, tmp_path):
+    """A mod or a patch rewrites the ruleset while the advisor holds it open: the query
+    now fails at the database, the reader degrades to None, and the advisor must NOT
+    then tell the player their installed ruleset has no row for the building. It never
+    established that."""
+    from civ_advisor.ruleset.civ6 import Civ6Ruleset
+    from tests.ruleset_fixture import make_ruleset
+
+    path = make_ruleset(tmp_path)
+    provider = Civ6Ruleset.open(path)
+    setup = sqlite3.connect(path)
+    setup.execute("ALTER TABLE Buildings RENAME COLUMN Cost TO CostRenamed")
+    setup.commit()
+    setup.close()
+    try:
+        context = replace(civ7_context, ruleset=provider)
+        text = _player_sentence(context, "ruleset.building", {"item": "BUILDING_LIBRARY"})
+    finally:
+        provider.close()
+    assert "no building row" not in text
+    assert "Buildings" in text and "Cost" in text
+
+
+def test_a_key_the_ruleset_genuinely_lacks_is_still_a_missing_row(civ7_context, tmp_path):
+    from civ_advisor.ruleset.civ6 import Civ6Ruleset
+    from tests.ruleset_fixture import make_ruleset
+
+    provider = Civ6Ruleset.open(make_ruleset(tmp_path))
+    try:
+        context = replace(civ7_context, ruleset=provider)
+        text = _player_sentence(context, "ruleset.building", {"item": "BUILDING_NOWHERE"})
+    finally:
+        provider.close()
+    assert "no building row for BUILDING_NOWHERE" in text

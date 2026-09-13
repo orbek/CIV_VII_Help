@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import Protocol, runtime_checkable
+from typing import Callable, Protocol, runtime_checkable
 
 from civ_advisor.games.base import Capability
 
@@ -186,6 +186,92 @@ TUNER_OFF = NullTuner(
     "AppOptions.txt and restart the game. The advisor never edits that file.",
 )
 
+
+@dataclass(frozen=True)
+class TunerSnapshot:
+    """What the tuner said during ONE rebuild, frozen and dated to that turn.
+
+    Holding a live provider on a snapshot would let a request read figures from a
+    later turn and file them under this one. These values were all read at the same
+    moment as the logs beside them.
+    """
+
+    available: bool
+    reason: str | None = None
+    reading: TunerReading | None = None
+    amenities: tuple[CityAmenities, ...] = ()
+    maintenance: Maintenance | None = None
+    build_options: tuple[SettlementOptions, ...] = ()
+    # Why a particular figure is missing, keyed by catalog id. A figure absent from
+    # this map was read successfully; one present here says which of the three
+    # absences applied to IT, which is not always the same for every figure.
+    absences: tuple[tuple[str, str], ...] = ()
+
+    def absence(self, query_id: str) -> str | None:
+        return next((why for q, why in self.absences if q == query_id), None)
+
+
+TUNER_SNAPSHOT_OFF = TunerSnapshot(available=False, reason=TUNER_OFF.reason)
+
+
+def _ask(provider: TunerProvider, query_id: str, fn: Callable[[], object], empty: object):
+    """Call one figure, and pair it with the reason belonging to THAT call.
+
+    Guarded so a provider that raises on one figure cannot lose the other two, and
+    the reason recorded is read immediately after this call -- before anything else
+    on the provider has a chance to clear or replace it for the next figure.
+    """
+    try:
+        result = fn()
+    except Exception as exc:      # a provider's own failures are many shapes; never propagate
+        return empty, f"reading {query_id} raised {exc!r}"
+    if not result:
+        reason = getattr(provider, "reason", None)
+        if reason:
+            return result, reason
+    return result, None
+
+
+def capture(provider: TunerProvider) -> TunerSnapshot:
+    """Read every figure once, recording per-figure absence with its real cause.
+
+    One unreachable figure must not discard the two that worked, and must not be
+    reported as the reason the others are missing. Never raises: a tuner failure
+    must not cost the rebuild that is capturing it.
+    """
+    if not getattr(provider, "available", False):
+        return TunerSnapshot(available=False, reason=getattr(provider, "reason", None))
+
+    try:
+        reading = provider.reading()
+    except Exception:
+        reading = None
+
+    amenities, amenities_why = _ask(provider, "amenities", provider.amenities, ())
+    maintenance, maintenance_why = _ask(provider, "maintenance", provider.maintenance, None)
+    build_options, build_options_why = _ask(provider, "build_options", provider.build_options, ())
+
+    absences = tuple(
+        (query_id, why)
+        for query_id, why in (
+            ("amenities", amenities_why),
+            ("maintenance", maintenance_why),
+            ("build_options", build_options_why),
+        )
+        if why
+    )
+    return TunerSnapshot(
+        available=True,
+        reason=None,
+        reading=reading,
+        amenities=tuple(amenities),
+        maintenance=maintenance,
+        build_options=tuple(build_options),
+        absences=absences,
+    )
+
+
 __all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
-           "SettlementOptions", "TUNER_BACKED", "TUNER_OFF", "TunerProvider",
-           "TunerReading", "TunerUnavailable"]
+           "SettlementOptions", "TUNER_BACKED", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
+           "TunerProvider", "TunerReading", "TunerSnapshot", "TunerUnavailable",
+           "capture"]

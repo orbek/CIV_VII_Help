@@ -81,3 +81,74 @@ def test_the_capabilities_a_tuner_can_back_are_named_here():
     from civ_advisor.tuner.base import TUNER_BACKED
     assert Capability.HAPPINESS in TUNER_BACKED
     assert Capability.MAINTENANCE in TUNER_BACKED
+
+
+def test_capturing_an_unavailable_provider_carries_its_own_reason():
+    from civ_advisor.tuner.base import capture
+
+    snap = capture(NullTuner(TunerUnavailable.UNREACHABLE, "the game implements no such call"))
+    assert snap.available is False
+    assert snap.reason == "the game implements no such call"
+    assert snap.amenities == () and snap.maintenance is None and snap.build_options == ()
+    assert snap.absences == ()
+
+
+def test_the_off_singleton_snapshot_carries_the_off_reason():
+    from civ_advisor.tuner.base import TUNER_SNAPSHOT_OFF
+
+    assert TUNER_SNAPSHOT_OFF.available is False
+    assert TUNER_SNAPSHOT_OFF.reason == TUNER_OFF.reason
+
+
+def test_capturing_a_live_provider_reads_every_figure_once():
+    from civ_advisor.tuner.base import capture
+
+    class Live:
+        available = True
+        reason = None
+
+        def reading(self):
+            return TunerReading(turn=12, read_at="2026-09-13T10:00:00Z", state="GameCore_Tuner")
+
+        def amenities(self):
+            return (CityAmenities(city="Rome", total=4, from_luxuries=2, from_civics=1,
+                                  from_entertainment=1, housing=5, food_surplus=2),)
+
+        def maintenance(self):
+            return Maintenance(total=9, buildings=1, districts=1, units=0, gold=100, gold_yield=8)
+
+        def build_options(self):
+            return (SettlementOptions(city="Rome", options=()),)
+
+    snap = capture(Live())
+    assert snap.available is True
+    assert snap.reading is not None and snap.reading.turn == 12
+    assert len(snap.amenities) == 1
+    assert snap.maintenance is not None and snap.maintenance.total == 9
+    assert len(snap.build_options) == 1
+    assert snap.absences == ()
+
+
+def test_a_figure_that_raises_is_recorded_as_an_absence_not_a_crash():
+    from civ_advisor.tuner.base import capture
+
+    class Flaky:
+        available = True
+        reason = None
+
+        def reading(self):
+            return None
+
+        def amenities(self):
+            raise RuntimeError("socket dropped mid-read")
+
+        def maintenance(self):
+            return None
+
+        def build_options(self):
+            return ()
+
+    snap = capture(Flaky())
+    assert snap.available is True
+    assert snap.amenities == ()
+    assert snap.absence("amenities") is not None

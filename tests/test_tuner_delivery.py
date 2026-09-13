@@ -5,11 +5,15 @@ every check called the provider directly. These tests go through the HTTP payloa
 real dashboard request gets, not through `capture()` or a builder function's return
 value.
 """
+import shutil
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 
 from civ_advisor.api.app import create_app
 from civ_advisor.games.civ6 import CIV6
+from civ_advisor.games.civ7 import CIV7
 from civ_advisor.tuner.base import (
     BuildOption, CityAmenities, Maintenance, SettlementOptions, TUNER_OFF, TunerReading,
 )
@@ -58,6 +62,94 @@ def client_no_tuner(civ6_dir):
         yield c
 
 
+# ---- a tuner reading actually cited by a real decision card ----------------------
+#
+# CIV6's own knowledge catalog is deliberately empty (no Civ VI guide has been
+# reviewed yet -- see civ_advisor/knowledge/civ6/guides.json), so no decision family
+# can ever name a specific building for it: `named_build` needs a reviewed catalog
+# entry for the item, which does not exist there. Proving a card actually CITES a
+# tuner-filled figure -- the path that turns a reading into advice, not just a
+# reachable JSON blob -- therefore needs CIV VII's reviewed catalog and its
+# behind-on-culture fixture, with the tuner swapped in as CIV VII's own fixture data
+# doesn't otherwise carry one. The tuner's `build_options()` is independent of the
+# active game's `tuner_backed` declaration (that only gates the capability report), so
+# this is a legitimate way to exercise the citation path over HTTP.
+
+CULTURE_COLUMN = 15   # "Culture" in Player_Stats.csv, zero-based
+BEHIND_CITY = "LOC_CITY_NAME_TEST1"
+
+
+def _behind_on_culture_dir(tmp_path: Path, fixture_dir: Path) -> Path:
+    """A log directory whose human trails worst on *culture*, with one logged queue for
+    BEHIND_CITY -- so the culture family owns a card naming a settlement, exactly like
+    tests/test_api.py's `_behind_dir`."""
+    d = tmp_path / "logs"
+    shutil.copytree(fixture_dir, d)
+    (d / "CityBuildQueue.csv").write_text(
+        "Game Turn, Player, City, Production Added, Current Item, Current Production, "
+        "Production Needed, Overflow\n"
+        f"82, 0, {BEHIND_CITY}, 20.0, UNIT_WARRIOR, 25.0, 30, 0.0\n"
+    )
+    stats = d / "Player_Stats.csv"
+    rows = stats.read_text().splitlines()
+    index = next(i for i, r in enumerate(rows)
+                 if [c.strip() for c in r.split(",")[:2]] == ["81", "0"])
+    cells = rows[index].split(",")
+    cells[CULTURE_COLUMN] = " 1.0"
+    rows.insert(index + 1, ",".join(cells))
+    stats.write_text("\n".join(rows) + "\n")
+    return d
+
+
+class _LiveMonumentTuner:
+    """Answers for BEHIND_CITY only: it read that a Monument would take 4 turns there.
+    Never asked to supply anything else, so it never leaks into a candidate this
+    scenario is not testing."""
+
+    available = True
+    reason = None
+    unavailable = None
+
+    def reading(self):
+        return TunerReading(turn=82, read_at="2026-09-13T09:00:00Z", state="GameCore_Tuner")
+
+    def amenities(self):
+        return ()
+
+    def maintenance(self):
+        return None
+
+    def build_options(self):
+        return (SettlementOptions(city=BEHIND_CITY,
+                                  options=(BuildOption(item="BUILDING_MONUMENT", turns=4),)),)
+
+
+@pytest.fixture
+def client_tuner_cites_a_decision(tmp_path, fixture_dir):
+    profile = CIV7.__class__(**{**CIV7.__dict__, "tuner": _LiveMonumentTuner})
+    with TestClient(create_app(_behind_on_culture_dir(tmp_path, fixture_dir),
+                               poll_interval=60, profile=profile, archiving=False)) as c:
+        yield c
+
+
+def _submit(client, session: str, epoch: int, label: str, value, unit=None):
+    """Submit one report exactly as the Refine form would: read the current context
+    revision, then post with it as `base_revision`."""
+    revision = client.get("/api/context").json()["revision"]
+    resp = client.post("/api/context", json={
+        "id": f"report.{BEHIND_CITY}.{label}", "subject": BEHIND_CITY, "label": label,
+        "value": value, "unit": unit, "observed_turn": 82, "session": session,
+        "reported_at": "2026-09-13T09:05:00Z", "epoch": epoch, "base_revision": revision,
+    })
+    assert resp.status_code == 200, resp.text
+    return resp
+
+
+def _culture_card(body: dict) -> dict:
+    return next(c for c in body["decisions"]["cards"]
+               if c["id"].startswith("decision.culture."))
+
+
 def test_amenities_reach_the_payload_with_a_live_tuner(client_with_live_tuner):
     body = client_with_live_tuner.get("/api/briefing").json()
     # Not "the provider returned 3" -- the number must be in what the page gets.
@@ -87,20 +179,99 @@ def test_build_options_reach_the_refine_prefill(client_with_live_tuner):
     assert options[0]["turns"] == 4
 
 
-def test_a_live_reading_is_labelled_as_such_in_the_evidence(client_with_live_tuner):
-    body = client_with_live_tuner.get("/api/briefing").json()
-    assert "live_reading" in str(body)
-    assert body["tuner"]["source"] == "live_reading"
+def test_a_live_reading_is_cited_by_a_real_decision_card(client_tuner_cites_a_decision):
+    """`tuner_to_dict`'s `source: "live_reading"` is a constant the tuner section emits
+    unconditionally -- it holds even with the tuner off, so it proves nothing on its
+    own. What matters is whether a `live_reading` fact shows up in the evidence the page
+    actually renders for a card: `decisions.evidence`, reached by a card citing it.
+
+    Here the player has confirmed BUILDING_MONUMENT is offered in a settlement that is
+    genuinely behind on culture, but has typed no completion-turns figure at all: the
+    only source for that figure is the tuner. The card must name the building anyway,
+    citing the tuner's own fact -- not a blank, not a player figure that was never
+    entered.
+    """
+    c = client_tuner_cites_a_decision
+    session = c.get("/api/status").json()["session"]
+    epoch = c.get("/api/status").json()["epoch"]
+    _submit(c, session, epoch, "available_options", "BUILDING_MONUMENT")
+
+    body = c.get("/api/briefing").json()
+    card = _culture_card(body)
+    assert card["preferred"]["id"].endswith("BUILDING_MONUMENT")
+
+    tuner_fact_id = f"tuner.build_option.{BEHIND_CITY}.BUILDING_MONUMENT.82"
+    assert tuner_fact_id in card["preferred"]["evidence_ids"]
+
+    evidence = {f["id"]: f for f in body["decisions"]["evidence"]}
+    fact = evidence[tuner_fact_id]     # non-defaulting: a missing citation fails loudly
+    assert fact["kind"] == "live_reading"
+    assert fact["value"] == 4
+    assert fact["observed_turn"] == 82
+    assert fact["reported_at"] == "2026-09-13T09:00:00Z"
+
+    # No player ever typed this figure. Confirming it is the only source cited proves
+    # the reverse of the leak this feature exists to prevent: it must never be labelled
+    # as something the player reported.
+    assert fact["kind"] != "player_report"
 
 
-def test_the_prefill_is_not_recorded_as_a_player_report(client_with_live_tuner):
-    """The player did not type it. Calling it their report would confuse sources."""
-    body = client_with_live_tuner.get("/api/briefing").json()
-    text = str(body)
-    assert "live_reading" in text
-    # The prefill must not show up among the player's own accepted reports.
-    reports = body.get("decisions", {}).get("context", {}).get("reports", [])
-    assert reports == []
+def test_the_prefill_only_becomes_the_players_word_when_they_say_so(
+        client_tuner_cites_a_decision):
+    """The single most important claim this feature makes: a pre-fill is a suggestion
+    until a human acts, and the act -- posting it through the same endpoint the Refine
+    form uses -- is what changes its source kind. Nothing short of that POST may.
+
+    A `.get()` chain that defaults empty proves nothing here: it would pass whether the
+    key is absent, present-but-empty, or the schema changed entirely. Every read below
+    indexes the real key directly, so a missing or renamed field fails the test instead
+    of silently reading as `[]`.
+    """
+    c = client_tuner_cites_a_decision
+    session = c.get("/api/status").json()["session"]
+    epoch = c.get("/api/status").json()["epoch"]
+    _submit(c, session, epoch, "available_options", "BUILDING_MONUMENT")
+
+    before = c.get("/api/briefing").json()
+    # Non-defaulting: `["reports"]`, not `.get("reports", [])`. The player has confirmed
+    # availability but never typed a completion-turns figure, so nothing about THIS
+    # figure is in their own accepted context yet.
+    before_reports = before["decisions"]["context"]["reports"]
+    assert [r["label"] for r in before_reports] == ["available_options"]
+    before_evidence = {f["id"]: f for f in before["decisions"]["evidence"]}
+    assert all(f["kind"] != "player_report" for f in before_evidence.values())
+    tuner_fact_id = f"tuner.build_option.{BEHIND_CITY}.BUILDING_MONUMENT.82"
+    assert before_evidence[tuner_fact_id]["kind"] == "live_reading"
+
+    # The pre-fill itself, exactly as the Refine form would show it and exactly as it
+    # would submit it unedited: same item, same value, same unit.
+    live_options = before["tuner"]["build_options"][0]
+    assert live_options["city"] == BEHIND_CITY
+    prefill = live_options["options"][0]
+    assert prefill["item"] == "BUILDING_MONUMENT"
+    assert prefill["turns"] == 4
+
+    # The player presses Record without editing the pre-filled value.
+    _submit(c, session, epoch, "preview.BUILDING_MONUMENT.completion_turns",
+            prefill["turns"], "turns")
+
+    after = c.get("/api/briefing").json()
+    after_reports = after["decisions"]["context"]["reports"]
+    posted = next(r for r in after_reports
+                 if r["label"] == "preview.BUILDING_MONUMENT.completion_turns")
+    assert posted["value"] == 4 and posted["subject"] == BEHIND_CITY
+
+    card = _culture_card(after)
+    report_fact_id = f"report.{BEHIND_CITY}.preview.BUILDING_MONUMENT.completion_turns"
+    assert report_fact_id in card["preferred"]["evidence_ids"]
+    # The player's own confirmation now stands in for the tuner's -- this decision no
+    # longer needs to ask the tuner for this figure at all.
+    assert tuner_fact_id not in card["preferred"]["evidence_ids"]
+
+    evidence = {f["id"]: f for f in after["decisions"]["evidence"]}
+    fact = evidence[report_fact_id]
+    assert fact["kind"] == "player_report"
+    assert fact["value"] == 4
 
 
 def test_the_reading_carries_when_it_was_taken(client_with_live_tuner):

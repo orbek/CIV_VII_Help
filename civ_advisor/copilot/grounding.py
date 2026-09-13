@@ -136,6 +136,38 @@ def _phrase_by(numeral: Numeral, spans: tuple[tuple[int, int, str], ...],
     return False
 
 
+# A numeral the player typed straight after "turn"/"turns" names a point on the game's
+# clock -- the same form the advisor writes itself ("on turn 59") -- not a quantity.
+_TURN_REFERENCE = re.compile(r"\bturns?\s*#?\s*$", re.IGNORECASE)
+
+
+def quantity_claims(player_text: str) -> tuple[Numeral, ...]:
+    """The numerals in the player's message that are CLAIMS ABOUT A QUANTITY, which is
+    what rule 7 is about: their figure against the advisor's, neither quietly dropped.
+
+    What this tells apart, and only this: a numeral that FOLLOWS the word "turn" or
+    "turns" is a reference to a turn of the game ("what should I do on turn 130?"), and a
+    reference is not a rival figure for anything the advisor holds. A numeral that
+    precedes it ("the 8-turn Granary", "8 turns for the Granary") is a duration the
+    player is asserting, and stays a claim. Firing on every digit instead rejected
+    correct, fully grounded answers to any question that mentioned a turn, and the player
+    then read the deterministic fallback and never the prose -- silently, and for every
+    such question.
+
+    What it CANNOT tell apart, stated so nobody relies on more: whether a quantity the
+    player typed is about the same subject as any cited figure. "8 turns for the Granary"
+    and a cited 4 turns for the Library are treated as rival figures here; only the
+    evidence drawer, which shows each cited fact's subject, settles that. Erring that way
+    costs a rejection and a deterministic answer, never a false figure.
+    """
+    out: list[Numeral] = []
+    for numeral in numerals_in(player_text):
+        if _TURN_REFERENCE.search(player_text[:numeral.start]):
+            continue
+        out.append(numeral)
+    return tuple(out)
+
+
 def numerals_in(text: str, *, strip_ids: Iterable[str] = ()) -> tuple[Numeral, ...]:
     """Every numeral in `text`, after the bracketed citations the answer is allowed to
     make are removed -- an id like `[comparison.culture.81]` carries a turn number that is
@@ -223,6 +255,10 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
     cited = set(cited_ids)
     pool = admitted(f for f in facts if f.get("id") in cited)
     typed = {n.value for n in numerals_in(player_text)}
+    # Rule 7 weighs the player's QUANTITIES against the advisor's; a turn they named is
+    # not one. `typed` above stays every numeral they wrote, because repeating any of
+    # them as their claim is still governed by the CLAIM phrases below.
+    claimed = quantity_claims(player_text)
     # Sentences are taken from the masked text so a dotted id cannot introduce a break,
     # and the mask preserves length so a numeral's offset still indexes into it.
     spans = _sentences(_mask_citations(text, cited))
@@ -234,12 +270,11 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
         _matches(n, c) for n in numerals for c in pool if not c.player)
     pool_has_values = any(not c.player for c in pool)
     repeats_a_claim = any(n.value in typed and _phrase_by(n, spans, CLAIM) for n in numerals)
-    if typed and pool_has_values and states_a_cited_value and not repeats_a_claim:
+    if claimed and pool_has_values and states_a_cited_value and not repeats_a_claim:
         # The mirror of the case below: the game's figure stated, the player's number
         # never acknowledged. Quietly overriding them is the same defect as quietly
         # adopting them, so both numbers must be on the page.
-        unreconciled.extend(n.text for n in numerals_in(player_text)
-                            if n.text not in unreconciled)
+        unreconciled.extend(n.text for n in claimed if n.text not in unreconciled)
     for numeral in numerals:
         matches = [c for c in pool if _matches(numeral, c)]
         if matches:
@@ -251,8 +286,11 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
             continue
         if numeral.value in typed and _phrase_by(numeral, spans, CLAIM):
             # The player's own typed figure, repeated as their claim. Allowed -- but
-            # not while a cited figure it might disagree with goes unstated.
-            if pool_has_values and not states_a_cited_value and numeral.text not in unreconciled:
+            # not while a cited figure it might disagree with goes unstated. A turn they
+            # named is not a rival figure, so it does not have to be reconciled with one.
+            claims_a_quantity = any(n.value == numeral.value for n in claimed)
+            if (claims_a_quantity and pool_has_values and not states_a_cited_value
+                    and numeral.text not in unreconciled):
                 unreconciled.append(numeral.text)
             continue
         if numeral.text not in ungrounded:
@@ -263,4 +301,4 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
 
 
 __all__ = ["ATTRIBUTION", "CLAIM", "Admitted", "Grounding", "NUMBER_WORDS", "Numeral",
-           "admitted", "check", "numerals_in"]
+           "admitted", "check", "numerals_in", "quantity_claims"]

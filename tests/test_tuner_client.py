@@ -235,6 +235,31 @@ def test_a_not_implemented_reply_yields_absence_not_an_exception():
         game.close()
 
 
+def line(text: str) -> bytes:
+    """One `print()` line as its own output frame, the same shape `turn_line` uses."""
+    return frame(TAG_HANDSHAKE, f"O\x00x: {text}")
+
+
+def test_an_unparseable_field_blames_the_advisor_not_the_games_reply():
+    """The defect this guards: a field this parser cannot read used to produce "the
+    maintenance reply could not be read", which is FALSE -- the reply was a real,
+    complete answer off the socket (every other field on it parses fine here). The
+    absence must name the true cause: this advisor's own parser, never the game's
+    reply."""
+    reply = (turn_line(59) + line("total\t14") + line("buildings\t2")
+             + line("districts\t4") + line("units\t8") + line("gold\tNaN-ish-garbage")
+             + line("goldYield\t55.953125"))
+    game = FakeGame({4: reply})
+    try:
+        t = open_tuner(port=game.port, timeout=3.0)
+        assert t.maintenance() is None
+        assert t.unavailable is TunerUnavailable.UNREACHABLE
+        assert "the advisor could not read the maintenance figures" in t.reason
+        assert "reply could not be read" not in t.reason
+    finally:
+        game.close()
+
+
 def test_the_client_exposes_no_way_to_run_arbitrary_lua():
     """The catalog is the allowlist; there must be no bypass on the object."""
     game = FakeGame(replies())

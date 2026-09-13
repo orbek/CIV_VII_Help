@@ -261,6 +261,10 @@
         upkeep.push({ label: "Not itemised by the game", value: m.unattributed });
       }
       upkeep.push({ label: "Total upkeep", value: m.total });
+      // Left as the real number here -- this panel is the data model, not the
+      // rendering. `formatFactValue` rounds it for DISPLAY at the table cell
+      // (app.js), so callers that want the actual figure (e.g. tests reading this
+      // panel directly) still get a number, not a pre-formatted string.
       upkeep.push({ label: "Net gold per turn", value: m.net_gold });
     }
 
@@ -422,6 +426,19 @@
     installed_ruleset: "installed ruleset", live_reading: "read live",
   };
 
+  /* A figure the way a player should read it, never the way the game's socket typed
+     it. Civ VI answers some figures (gold balance, gold yield, food surplus) with
+     real fractional precision -- 428.8125, not a rounding artifact -- and printing
+     that raw in a sentence ("55.953125 gold") is not what "sensible" means to a
+     player. The STORED value (`fact.value`, JSON, everything upstream) keeps full
+     precision; only this rendering step rounds. A whole number prints bare, since
+     rounding "3" would just be theater. */
+  function formatFactValue(value) {
+    if (value === null || value === undefined) return "";
+    if (typeof value !== "number") return String(value);
+    return Number.isInteger(value) ? String(value) : value.toFixed(1);
+  }
+
   /* One line per CITED fact, in citation order, each with its kind badge and its source
      phrase. Uncited facts the resolver also returned are not lines: the answer did not
      rest on them. */
@@ -431,7 +448,7 @@
     return (answer.evidence_ids || []).map(function (id) {
       var f = byId[id];
       if (!f) return { id: id, badge: "unresolved", text: id };
-      var value = f.value === null || f.value === undefined ? "" : String(f.value);
+      var value = formatFactValue(f.value);
       var unit = f.unit ? " " + f.unit : "";
       var turn = f.observed_turn === null || f.observed_turn === undefined ? "" : " (turn " + f.observed_turn + ")";
       return { id: id, badge: KIND_BADGES[f.kind] || f.kind,
@@ -451,6 +468,7 @@
     tunerEconomy: tunerEconomy,
     factKindLabel: factKindLabel,
     copilotLabel: copilotLabel, copilotEvidenceLines: copilotEvidenceLines,
+    formatFactValue: formatFactValue,
     KIND_BADGES: KIND_BADGES,
   };
   if (typeof module !== "undefined" && module.exports) module.exports = api;

@@ -135,6 +135,30 @@ def _fields(line: str) -> list[str]:
     return [p for p in line.split("\t") if p != ""]
 
 
+def _parse_number(text: str) -> int | float:
+    """Read one figure the way the game actually prints it -- int OR float.
+
+    This exists because of a live defect, not a hypothetical one: the parser below
+    used to be a bare `int(parts[1])` inside `except ValueError: continue`, and it
+    was written against a single early-game observation where the player's gold
+    happened to be a whole number (152). Queried again live on 2026-09-13, the
+    same treasury reported GetGoldBalance 428.8125 and GetGoldYield 55.953125 --
+    `int("428.8125")` raised, the `continue` swallowed it, the field vanished, and
+    the client told the player "the maintenance reply could not be read", blaming a
+    reply that was in fact perfect. A rule inferred from one sample was a guess
+    wearing a validator's clothes.
+
+    Civ VI's own Lua prints a whole number bare ("14") and a fractional one with a
+    decimal point ("428.8125"); the decimal point is what decides int vs float
+    here; int-ness is preserved (not just for looks, but because integer figures
+    such as amenity counts and housing are genuinely integers, never fractional,
+    and must not silently grow a decimal point). Anything that is neither raises
+    ValueError, exactly as `int()` used to, so a genuinely unparseable field is
+    still refused by the caller rather than invented.
+    """
+    return float(text) if "." in text else int(text)
+
+
 def split_turn(lines: list[str]) -> tuple[int | None, list[str]]:
     """The game turn this reply named, and the reply with that line removed.
 
@@ -157,12 +181,16 @@ def split_turn(lines: list[str]) -> tuple[int | None, list[str]]:
 
 
 def _parse_maintenance(lines: list[str]) -> Maintenance:
-    got: dict[str, int] = {}
+    # `_parse_number`, not `int`: GetGoldBalance and GetGoldYield are fractional in
+    # a real mid-game state (see its docstring for the live reply that proved it),
+    # while total/buildings/districts/units stay whole. The same call handles both,
+    # since a bare integer parses through it unchanged.
+    got: dict[str, int | float] = {}
     for line in lines:
         parts = _fields(line)
         if len(parts) == 2:
             try:
-                got[parts[0]] = int(parts[1])
+                got[parts[0]] = _parse_number(parts[1])
             except ValueError:
                 continue
     needed = ("total", "buildings", "districts", "units", "gold", "goldYield")
@@ -182,7 +210,13 @@ def _parse_amenities(lines: list[str]) -> tuple[CityAmenities, ...]:
             continue
         city, *rest = parts
         try:
-            total, lux, civ, ent, housing, food = (int(v) for v in rest)
+            # Amenity counts and housing are verified integers in a real mid-game
+            # state, so they stay `int`; food surplus is fractional in Civ VI
+            # generally, the same reason GetGoldBalance/GetGoldYield are, so it goes
+            # through the tolerant `_parse_number` rather than a bare `int` that
+            # would raise and silently drop the whole city on a fractional turn.
+            total, lux, civ, ent, housing = (int(v) for v in rest[:5])
+            food = _parse_number(rest[5])
         except ValueError:
             continue
         out.append(CityAmenities(city=city, total=total, from_luxuries=lux,

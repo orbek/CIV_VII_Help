@@ -82,7 +82,11 @@ class CityAmenities:
     from_civics: int
     from_entertainment: int
     housing: int
-    food_surplus: int
+    # A float, not an int: amenity counts and housing are verified integers in a
+    # real mid-game state, but food surplus is fractional in Civ VI generally --
+    # the same fact that makes Maintenance.gold and .gold_yield floats below, and
+    # the same live probe that caught it (see queries.py's `_parse_number`).
+    food_surplus: float
 
     @property
     def unexplained(self) -> int:
@@ -106,8 +110,14 @@ class Maintenance:
     buildings: int
     districts: int
     units: int
-    gold: int
-    gold_yield: int
+    # Floats, not ints: GetGoldBalance and GetGoldYield answered 428.8125 and
+    # 55.953125 against a real live treasury on 2026-09-13 (turn well past the
+    # game's start). The original `int(...)` assumption came from a single
+    # early-game reading where gold happened to be a whole number (152) -- one
+    # observation standing in for a validator. queries.py's `_parse_number`
+    # documents the full story.
+    gold: float
+    gold_yield: float
 
     @property
     def unattributed(self) -> int:

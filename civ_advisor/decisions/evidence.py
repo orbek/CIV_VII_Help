@@ -438,8 +438,10 @@ def tuner_net_gold_fact(ledger: EvidenceLedger, reading: TunerReading,
         source_kind=SourceKind.LIVE_READING, provenance=Provenance.FAIR,
         observed_turn=reading.turn, reported_at=reading.read_at,
         value=maintenance.net_gold, unit="per turn", subject_id=None,
+        # Rounded for this SENTENCE only -- `maintenance.gold_yield` above keeps its
+        # full precision; a player reading prose should never see "55.953125 gold".
         note=(f"Read from {reading.state}. Upkeep {maintenance.total} against a gold "
-              f"yield of {maintenance.gold_yield}; unattributed upkeep "
+              f"yield of {maintenance.gold_yield:.1f}; unattributed upkeep "
               f"{maintenance.unattributed}."),
     ))
 

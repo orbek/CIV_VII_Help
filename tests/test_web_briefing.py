@@ -417,6 +417,42 @@ def test_copilot_labels_never_call_a_fallback_generated():
     assert run_js('return B.copilotLabel("unsupported", false);') == "This cannot be answered"
 
 
+def test_format_fact_value_rounds_a_fraction_for_display_only():
+    """Civ VI answers gold and food surplus with real fractional precision (a live
+    treasury reported GetGoldYield 55.953125); a player-facing sentence must never
+    print that raw. A whole number prints bare -- rounding "3" would be theater."""
+    assert run_js("return B.formatFactValue(55.953125);") == "56.0"
+    assert run_js("return B.formatFactValue(3);") == "3"
+    assert run_js("return B.formatFactValue(null);") == ""
+    assert run_js('return B.formatFactValue("Rome");') == "Rome"
+
+
+def test_copilot_evidence_lines_round_a_fractional_figure_for_the_sentence():
+    out = run_js("""
+      return B.copilotEvidenceLines(
+        {evidence_ids: ["g"]},
+        [{id: "g", label: "Your net gold per turn, read live", kind: "live_reading",
+          value: 41.953125, unit: "per turn", observed_turn: 59, source: "read live"}]);
+    """)
+    assert "41.953125" not in out[0]["text"]
+    assert "42.0" in out[0]["text"]
+
+
+def test_tuner_economy_leaves_net_gold_as_a_real_number_for_the_panel():
+    """`tunerEconomy` builds the data model, not the rendered page: the actual
+    float is kept here (a consumer may need the real figure, not a rounded
+    string), and `formatFactValue` is what rounds it at the table cell."""
+    tuner = {"available": True, "maintenance": {
+        "total": 14, "buildings": 2, "districts": 4, "units": 8,
+        "gold": 428.8125, "gold_yield": 55.953125, "unattributed": 0,
+        "net_gold": 41.953125,
+    }, "maintenance_reason": None, "maintenance_read": {"turn": 59}}
+    out = run_js(f"return B.tunerEconomy({json.dumps(tuner)});")
+    row = next(r for r in out["upkeep"]["figures"] if r["label"] == "Net gold per turn")
+    assert row["value"] == pytest.approx(41.953125)
+    assert run_js(f"return B.formatFactValue({row['value']});") == "42.0"
+
+
 def test_copilot_evidence_lines_carry_kind_turn_and_source_for_every_cited_fact():
     out = run_js("""
       return B.copilotEvidenceLines(

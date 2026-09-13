@@ -189,7 +189,14 @@ class Civ6Tuner:
             return query.parse(lines)
         except ValueError as exc:
             self._unavailable = TunerUnavailable.UNREACHABLE
-            self._reason = f"the {query.id} reply could not be read: {exc}"
+            # NOT "the reply could not be read": that blames the game for a defect
+            # in OUR parser. The reply was a real, complete answer off the socket --
+            # every case caught here is this module failing to read a shape the
+            # reply legitimately had (see queries.py's `_parse_number` for the
+            # concrete instance that proved it: a bare `int()` on a fractional gold
+            # figure). The absence must name the true cause: this advisor's own
+            # parser, not the game's own reply.
+            self._reason = f"the advisor could not read the {query.id} figures: {exc}"
             return None
 
     def maintenance(self) -> Maintenance | None:

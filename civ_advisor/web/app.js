@@ -4,7 +4,7 @@
   const B = window.Civ7Briefing;
   const { acceptResponse, seen: seenIn, ago: AGO, coverageLines, pinnedGameGap,
     tunerLiveOptions, tunerLiveTurns, factKindLabel,
-    copilotLabel, copilotEvidenceLines } = B;
+    copilotLabel, copilotEvidenceLines, formatFactValue } = B;
   const $ = (sel) => document.querySelector(sel);
   const el = (tag, cls, text) => {
     const e = document.createElement(tag);
@@ -1170,7 +1170,7 @@
     label.append(document.createTextNode(fact.label + " "), kindSpan);
     if (fact.provenance === "oracle") label.append(document.createTextNode(" "), el("span", "tag", "intercept"));
     node.append(label);
-    const value = fact.value === null || fact.value === undefined ? "—" : String(fact.value);
+    const value = fact.value === null || fact.value === undefined ? "—" : formatFactValue(fact.value);
     node.append(el("p", "fact-value", fact.unit ? `${value} ${fact.unit}` : value));
     const meta = [];
     if (isLive) {
@@ -1459,7 +1459,11 @@
           // sources and the game has more in both directions (war weariness pushes
           // this negative), so a remainder is a real reading, not an error.
           a.unexplained === 0 ? dim("—") : a.unexplained,
-          a.housing, a.food_surplus,
+          // Rounded for this cell only: food surplus is fractional in Civ VI
+          // generally (unlike the amenity counts and housing beside it, which are
+          // genuine integers), and the JSON `a.food_surplus` upstream keeps the
+          // real value -- only this table cell rounds it for a player to read.
+          a.housing, formatFactValue(a.food_surplus),
         ])));
       if (panel.amenities.note) amen.append(el("p", "live-note", panel.amenities.note));
       if (panel.amenities.disagreement) {
@@ -1474,7 +1478,10 @@
       upkeep.append(el("p", "cap-absent-why", panel.upkeep.absent));
     } else {
       upkeep.append(table([{ label: "Item" }, { label: "Gold per turn", num: true }],
-        panel.upkeep.figures.map((r) => [r.label, r.value])));
+        // formatFactValue rounds a fractional gold figure (net gold, drawn from
+        // GetGoldYield minus upkeep) for display only -- the panel above keeps the
+        // real number.
+        panel.upkeep.figures.map((r) => [r.label, formatFactValue(r.value)])));
       if (panel.upkeep.note) upkeep.append(el("p", "live-note", panel.upkeep.note));
       if (panel.upkeep.disagreement) {
         upkeep.append(el("p", "fact-disagree", panel.upkeep.disagreement));

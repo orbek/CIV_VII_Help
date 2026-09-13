@@ -225,6 +225,52 @@ def test_capturing_a_live_provider_reads_every_figure_once():
     assert snap.absences == ()
 
 
+def test_a_normal_capture_asks_exactly_three_queries_an_acting_one_asks_four():
+    """Nothing here disputes the gating logic -- `capture`'s own docstring already
+    says a normal run must not pay for `build_options_ids`. What was missing is a
+    test that would actually FAIL if a change made a normal run ask for it anyway,
+    or made an acting run skip one of the other three."""
+    from civ_advisor.tuner.base import BuildOptionId, SettlementOptionIds, capture
+
+    class Counting:
+        available = True
+        reason = None
+
+        def __init__(self):
+            self.calls: list[str] = []
+
+        def reading(self):
+            return TunerReading(turn=12, read_at="2026-09-13T10:00:00Z", state="GameCore_Tuner")
+
+        def amenities(self):
+            self.calls.append("amenities")
+            return ()
+
+        def maintenance(self):
+            self.calls.append("maintenance")
+            return Maintenance(total=1, buildings=0, districts=1, units=0,
+                               gold=152, gold_yield=8)
+
+        def build_options(self):
+            self.calls.append("build_options")
+            return ()
+
+        def build_option_ids(self):
+            self.calls.append("build_options_ids")
+            return (SettlementOptionIds(city_id=1, city="Rome", options=(
+                BuildOptionId(item="BUILDING_GRANARY", item_hash=1, requires_placement=False,
+                             turns=8),)),)
+
+    normal = Counting()
+    capture(normal)
+    assert sorted(normal.calls) == ["amenities", "build_options", "maintenance"]
+
+    acting = Counting()
+    capture(acting, acting=True)
+    assert sorted(acting.calls) == [
+        "amenities", "build_options", "build_options_ids", "maintenance"]
+
+
 def test_a_figure_that_raises_is_recorded_as_an_absence_not_a_crash():
     from civ_advisor.tuner.base import capture
 

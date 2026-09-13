@@ -25,3 +25,23 @@ def _tuner_is_up() -> bool:
 def require_tuner():
     if not _tuner_is_up():
         pytest.skip("needs a running Civ VI with EnableTuner 1", allow_module_level=True)
+
+
+@pytest.fixture
+def tuner():
+    """One connection per test, always closed.
+
+    `open_tuner` holds a real socket against the player's game. Each test used to call
+    it and drop the result, leaking a connection per test into whatever the game does
+    with abandoned tuner clients. `close` is looked up rather than assumed: on any
+    failure `open_tuner` returns a NullTuner, which has no socket to close.
+    """
+    from civ_advisor.tuner.client import open_tuner
+
+    provider = open_tuner()
+    try:
+        yield provider
+    finally:
+        close = getattr(provider, "close", None)
+        if callable(close):
+            close()

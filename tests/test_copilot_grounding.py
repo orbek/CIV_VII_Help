@@ -271,3 +271,20 @@ def test_a_quantity_the_player_typed_still_has_to_be_reconciled():
                 cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
                 player_text="should I take the 8-turn Granary?")
     assert not got.ok and got.unreconciled == ("8",)
+# ---- a numeral no Decimal can compare is refused in words ---------------------------
+
+def test_an_absurdly_precise_numeral_is_rejected_in_words_not_by_raising():
+    text = f"Your net gold is {'7.' + '0' * 9000}1 per turn."
+    got = check(text, cited("gold.net.59"), FACTS)
+    assert not got.ok and got.ungrounded
+    reason = got.describe()
+    assert "no cited fact carries" in reason
+    assert "InvalidOperation" not in reason
+    # The reason is read by a person: a numeral 9000 characters long is abbreviated in
+    # it, while the tuple keeps what was written.
+    assert len(reason) < 300 and len(got.ungrounded[0]) > 300
+
+
+def test_a_value_written_with_absurd_but_harmless_precision_still_matches():
+    assert check(f"Your net gold is {'7.' + '0' * 9000} per turn.",
+                 cited("gold.net.59"), FACTS).ok

@@ -60,6 +60,17 @@ ATTRIBUTION = ("you reported", "your report", "you told the advisor", "you enter
 CLAIM = ("you mention", "you mentioned", "you say", "you wrote", "your message")
 
 
+# A numeral is quoted back to the player in the rejection reason, and prose can carry one
+# thousands of characters long. Abbreviated there so the reason stays a sentence a person
+# reads; the numeral itself is kept whole in the tuple for anything that checks it.
+_READABLE_NUMERAL = 24
+
+
+def _readable(numerals: tuple[str, ...]) -> str:
+    return ", ".join(n if len(n) <= _READABLE_NUMERAL else f"{n[:_READABLE_NUMERAL]}..."
+                     for n in numerals)
+
+
 @dataclass(frozen=True)
 class Grounding:
     ok: bool
@@ -75,13 +86,13 @@ class Grounding:
             return ""
         parts = []
         if self.ungrounded:
-            parts.append(f"the answer contains {', '.join(self.ungrounded)}, which no cited "
+            parts.append(f"the answer contains {_readable(self.ungrounded)}, which no cited "
                          "fact carries")
         if self.unattributed:
-            parts.append(f"the answer states {', '.join(self.unattributed)} as though the game "
+            parts.append(f"the answer states {_readable(self.unattributed)} as though the game "
                          "said it, when only your own report does; it must say you reported it")
         if self.unreconciled:
-            parts.append(f"you mentioned {', '.join(self.unreconciled)} and the evidence holds "
+            parts.append(f"you mentioned {_readable(self.unreconciled)} and the evidence holds "
                          "a figure of its own; the answer used one side alone, and a "
                          "disagreement is named, never resolved by dropping either")
         return "; ".join(parts) + " -- a number the evidence does not state is not shown"
@@ -223,13 +234,37 @@ def admitted(facts: Iterable[Mapping]) -> tuple[Admitted, ...]:
     return tuple(out)
 
 
+def _rounded(value: Decimal, places: int) -> Decimal | None:
+    """`value` rounded to `places` decimals, or None when Decimal cannot represent that.
+
+    `quantize` RAISES `InvalidOperation` rather than returning anything when the result
+    would exceed the context's precision -- a numeral written with thousands of decimal
+    places, or a cited value large enough that rounding it overflows. That exception
+    used to escape `check`, be swallowed by the worker's blanket handler, and reach the
+    player as the rejection reason "[<class 'decimal.InvalidOperation'>]". None instead
+    means "this cannot be compared at that precision", which is not a match; exact
+    equality is tried first in `_matches` and never raises, so a value written with
+    absurd but harmless precision ("7.000...0") still matches the 7 it is.
+    """
+    try:
+        return value.quantize(Decimal(1).scaleb(-places))
+    except InvalidOperation:
+        return None
+
+
 def _matches(numeral: Numeral, candidate: Admitted) -> bool:
-    quant = Decimal(1).scaleb(-numeral.places)
     if numeral.percent:
         if not candidate.ratio:
             return False
-        return numeral.value == (candidate.value * 100).quantize(quant)
-    if numeral.value == candidate.value.quantize(quant):
+        scaled = candidate.value * 100
+        if numeral.value == scaled:
+            return True
+        rounded = _rounded(scaled, numeral.places)
+        return rounded is not None and numeral.value == rounded
+    if numeral.value == candidate.value:
+        return True
+    rounded = _rounded(candidate.value, numeral.places)
+    if rounded is not None and numeral.value == rounded:
         return True
     # Nothing else matches. A ratio written as its plain value ("0.44 of the median")
     # is already covered by the equality above; only the `%` form needs the extra rule.

@@ -237,7 +237,7 @@ branches on, not prose alone:
 | Kind | Meaning | Detail carries |
 | --- | --- | --- |
 | `not_logged` | this game writes no log that could answer it | the profile's own `unsupported` reason |
-| `tuner_absent` | a live reading was needed and there is none | the `TunerUnavailable` cause — one of the five — and the tuner's own reason text |
+| `tuner_absent` | a live reading was needed and there is none | the `TunerUnavailable` cause — one of the six, after §4.6 — and the tuner's own reason text |
 | `ruleset_unavailable` | this game ships no ruleset, or the file could not be opened | `RulesetProvider.reason` |
 | `no_such_row` | the ruleset has no row for that key | the key and the table |
 | `oracle_hidden` | the answer exists and Oracle is off | which capability |
@@ -249,6 +249,71 @@ given the same list and instructed to say what it could not find rather than
 fill it. Both are then held to §4.3: an absence contains no numbers, so an
 answer that explains an absence and invents a figure to compensate is
 rejected.
+
+### 4.6 Absence must be established too: the `EnableTuner` defect
+
+"It says it doesn't know" is itself a claim, and it is held to the same rule as
+every other: established from a source, never inferred from one observation
+when an authoritative source is at hand and unread. The tuner package has a
+defect of exactly this shape today, confirmed against the live game on
+2026-09-13, and it is fixed as part of this design because it is the copilot's
+subject.
+
+**The defect.** `open_tuner` returns `TUNER_OFF` — *"its tuner socket, which is
+off. Set `EnableTuner 1` under `[Debug]` in the game's `AppOptions.txt` and
+restart the game"* — whenever `socket.create_connection` is refused. But
+refused does not mean off. With `EnableTuner 1` set on this machine, refused
+connections still occur, and the advisor would tell the player to change a
+setting they have already changed: a false reason for absence, inferred from
+one observation.
+
+**What was established by running it:**
+
+| Observation | Consequence |
+| --- | --- |
+| A second connection opened while the first is held succeeds. | The socket is multi-client. No design may assume one client at a time, and holding a connection is never the cause of another's refusal. |
+| A reconnect 0.2 s after closing succeeds; one 3 s later was refused. | Refusals are not a rate limit. |
+| Refusals cycle while the game sits at the **main menu**. In a loaded match, during the read spike, the listener was stable across many connections and queries. | A refused connection has at least three causes: the flag is 0; the flag is 1 but the game is at the menu, between screens, or not running; or the file cannot be read to say which. |
+
+**The fix.** Establish the flag by reading `AppOptions.txt` — on this install
+`~/Library/Application Support/Sid Meier's Civilization VI/Firaxis Games/Sid
+Meier's Civilization VI/AppOptions.txt`, the parent of the game's `Logs/`
+directory, where line 75 reads `EnableTuner 1` under `[Debug]` (line 73),
+preceded by the comment `;Enable FireTuner.`. Reading it is permitted, and the
+distinction must be stated plainly because it is easy to misread: **the
+read-only rule forbids writing under either game's directories. It has never
+forbidden reading there** — the program already reads the logs and
+`DebugGameplay.sqlite` from inside those directories. The advisor opens
+`AppOptions.txt` read-only, parses the `[Debug]` section only, and never writes
+it.
+
+Then, on a refused connection:
+
+| The file says | Cause | Reason shown |
+| --- | --- | --- |
+| `EnableTuner 0`, or no such line | `not_enabled` — now **true** | the existing sentence: set `EnableTuner 1` and restart the game |
+| `EnableTuner 1` | `not_answering` | *the tuner is enabled but the game is not answering; it may be at the main menu, between screens, or not running.* The player is not told to change a setting that is already correct. |
+| the file is absent or unreadable | `unestablished` — new | *the tuner socket refused the connection and `AppOptions.txt` could not be read to say whether the tuner is enabled* — naming the path tried. The two possibilities are stated; neither is asserted. |
+
+`NOT_ENABLED` and `NOT_ANSWERING` keep their names and now carry their true
+meanings: the first is asserted only when the file was read and says so; the
+second covers both "connected but no reply" (as today) and "flag on, connection
+refused", with the detail sentence saying which. One new member,
+`UNESTABLISHED`, is needed for the case where the advisor genuinely cannot tell,
+because collapsing it into either of the others would repeat the defect. The
+five ways a tuner figure can be absent become six, and the README's list is
+updated to say so.
+
+The file is consulted only when a connection is refused, and only for the game
+whose default directory it lives in — a `--logs-dir` override points at logs,
+not at the game, and says nothing about where `AppOptions.txt` is.
+
+**The general rule this adds to §4.** An `Absence` is a claim about a source.
+Its `kind` and `detail` must come from having consulted that source — the
+profile's declaration, the tuner's own reply or the file that configures it,
+the ruleset's own rows — and never from the shape of a failure alone. Where the
+advisor cannot consult the source, the absence says that, as `unestablished`
+does, rather than choosing the likeliest story.
 
 ## 5. Acting: the design, contingent on the spike
 
@@ -469,8 +534,8 @@ Four things can be off, and each is said as itself:
   buttons; every answer is deterministic and says so. Nothing pretends to
   understand the player's sentence.
 - **No tuner**: every live question resolves to `Absence(tuner_absent)` with
-  its `TunerUnavailable` cause — the five reasons stay five. Acting is
-  `not_sent` with the same cause.
+  its `TunerUnavailable` cause — six after §4.6, each established rather than
+  inferred. Acting is `not_sent` with the same cause.
 - **No ruleset** (Civ VII, or an unreadable file): every ruleset question
   resolves to `Absence(ruleset_unavailable)` with the provider's reason.
 - **Acting off** (the default): proposals are not offered; the act endpoint
@@ -504,6 +569,11 @@ Consequences:
   excluded, citations stripped, numbers in notes admitted, numbers in the
   player's text not admitted, numbers with no citation rejected. Plus the
   existing `questions.validate` tests extended with an ungrounded number.
+- **The flag** — `read_enable_tuner` against temporary files: `1`, `0`, no
+  line, no `[Debug]` section, a commented-out line, an absent file, an
+  unreadable file; and `open_tuner` against a refused port with each file
+  state, asserting the cause and that the `EnableTuner 1` instruction appears
+  only when the file says 0.
 - **Catalog** — every entry declares its parameter kinds and a verified date;
   a parameter outside its set is `Absence(bad_parameter)` and never reaches a
   resolver; each resolver's facts carry the expected `SourceKind`; each

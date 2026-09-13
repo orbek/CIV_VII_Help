@@ -15,7 +15,7 @@
 - **Task 1 runs first and its result gates Tasks 10–12.** Nothing about acting is implemented until `docs/research/2026-09-13-civ6-tuner-write-spike.md` exists and names an outcome A–F from spec §6. Tasks 10–12 each open by stating which outcome they assume; if the recorded outcome is B, C or F, Tasks 10–12 are **not performed** and Task 9's proposal card renders with no confirm button.
 - **The program is read-only with respect to both games' directories.** It never writes `AppOptions.txt`, never leaves a file under a game folder, never touches a save. Acting sends a command into a running game over a socket the player opened; it writes no file of the game's. The journal lives under `~/.civ-advisor/<game>/`.
 - **The model never writes SQL and never writes Lua.** It names a catalog question or a catalog operation and supplies parameter values. Every parameter is validated against a set the program computed (`YIELD_STATS`, this snapshot's city names, `RULE_PARAMETERS`) or a regex for a bound SQL value. No player text is ever a parameter.
-- **Every number in generated prose must appear in a cited fact** — `value`, `observed_turn`, or a numeral in `note` — or the prose is rejected and the deterministic answer is shown. Spec §4.3 is the definition; `copilot/grounding.py:check` is the implementation; `questions.validate` and `conversation.validate_answer` both call it.
+- **Every number in generated prose must appear in a cited fact** — `value`, `observed_turn`, or a numeral in `note` — or the prose is rejected and the deterministic answer is shown. Spec §4.3 is the definition; `copilot/grounding.py:check` is the implementation; `questions.validate` and `conversation.validate_answer` both call it. A figure only the player reported is attributed as theirs (rule 6); a number the player just typed is never a citation, may be repeated only as their claim, and a cited figure is stated beside it rather than dropped (rule 7).
 - **Provenance is never blended.** Five `SourceKind`s exist; this plan adds none and every fact it produces uses the existing builders.
 - **Absence is declared, never inferred, and names the real cause.** An `Absence` carries a kind the page branches on; a tuner absence carries the `TunerUnavailable` enum; a ruleset absence carries the provider's reason; a `not_logged` absence carries the profile's own `unsupported` text. An absence is ESTABLISHED from its source, never read off the shape of a failure: a refused connection does not mean the tuner is off (spec §4.6), and where the source cannot be consulted the absence says so rather than picking the likeliest story.
 - **A figure is never attached to a turn it did not come from.** Conversation history is context, not evidence: the current answer cites facts resolved from the current snapshot. A proposal built on turn N is not sent into turn N+1.
@@ -851,6 +851,38 @@ def test_a_figure_the_game_also_states_needs_no_attribution():
     assert check("Your net gold is 7 per turn.", cited("gold.net.59", "report.net"), facts).ok
 
 
+def test_a_number_the_player_just_typed_is_not_a_citation():
+    """Spec 4.3 rule 7: typed into the box, it is neither dated nor stored."""
+    got = check("The Granary takes 8 turns.", cited("gold.net.59"), FACTS,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.ungrounded == ("8",)
+
+
+def test_a_typed_number_may_be_repeated_as_the_players_claim():
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    text = ("You mention 8 turns; the tuner read 4 for the Granary in Rome on turn 49. "
+            "Both are reported here and neither has been corrected to the other.")
+    assert check(text, cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                 player_text="should I take the 8-turn Granary?").ok
+
+
+def test_a_typed_number_repeated_without_the_claim_phrase_is_rejected():
+    got = check("So 8 turns it is, then, and that settles the question here.", (), FACTS,
+                player_text="8 turns for the Granary")
+    assert not got.ok and got.ungrounded == ("8",)
+
+
+def test_a_typed_number_repeated_while_the_cited_figure_goes_unstated_is_rejected():
+    """The disagreement must be NAMED: the player's 8 beside the game's 4, never 8 alone."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("You mention 8 turns, which is quick enough to be worth taking now.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.unreconciled == ("8",)
+
+
 def test_every_ungrounded_numeral_is_reported_once_in_order():
     got = check("First 9, then 9 again, then 11.", cited("gold.net.59"), FACTS)
     assert got.ungrounded == ("9", "11")
@@ -944,7 +976,12 @@ class Numeral:
 # How prose must own up to a figure the PLAYER supplied. A player report is citable --
 # it is dated, labelled and stored -- but the game did not say it, and the sentence
 # must not read as though it did. Lower-cased comparison; the phrases are fixed.
-ATTRIBUTION = ("you reported", "your report", "you told the advisor", "you entered", "you said")
+ATTRIBUTION = ("you reported", "your report", "you told the advisor", "you entered", "you recorded")
+
+# How prose may repeat a number the player JUST TYPED. Kept apart from ATTRIBUTION on
+# purpose: a report is a dated observation the advisor holds; this is an unverified
+# assertion made a moment ago in conversation, and the words must say which it is.
+CLAIM = ("you mention", "you mentioned", "you say", "you wrote", "your message")
 
 
 @dataclass(frozen=True)
@@ -952,6 +989,7 @@ class Grounding:
     ok: bool
     ungrounded: tuple[str, ...] = ()     # numerals no cited fact carries, once, in order
     unattributed: tuple[str, ...] = ()   # numerals grounded ONLY by a player report, unattributed
+    unreconciled: tuple[str, ...] = ()   # the player's typed numerals repeated while every cited figure goes unstated
 
     def describe(self) -> str:
         if self.ok:
@@ -963,6 +1001,10 @@ class Grounding:
         if self.unattributed:
             parts.append(f"the answer states {', '.join(self.unattributed)} as though the game "
                          "said it, when only your own report does; it must say you reported it")
+        if self.unreconciled:
+            parts.append(f"the answer repeats your {', '.join(self.unreconciled)} without "
+                         "stating the figure the evidence holds; a disagreement is named, "
+                         "never resolved by dropping one side")
         return "; ".join(parts) + " -- a number the evidence does not state is not shown"
 
 
@@ -1033,36 +1075,57 @@ def _matches(numeral: Numeral, candidate: Admitted) -> bool:
     return False
 
 
-def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping]) -> Grounding:
+def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
+          player_text: str = "") -> Grounding:
     """Spec section 4.3. `facts` is the full payload list; only those whose id is in
-    `cited_ids` may ground a number."""
+    `cited_ids` may ground a number. `player_text` is what the player typed: its numbers
+    are never citations (rule 7), may be repeated only as the player's claim, and when
+    the answer cites a numeric fact at all, at least one cited value must appear in the
+    prose beside the claim -- the disagreement is named, never resolved by omission."""
     cited = set(cited_ids)
     pool = admitted(f for f in facts if f.get("id") in cited)
-    attributed = any(phrase in text.lower() for phrase in ATTRIBUTION)
+    typed = {n.value for n in numerals_in(player_text)}
+    lowered = text.lower()
+    attributed = any(phrase in lowered for phrase in ATTRIBUTION)
+    claimed = any(phrase in lowered for phrase in CLAIM)
     ungrounded: list[str] = []
     unattributed: list[str] = []
-    for numeral in numerals_in(text, strip_ids=cited):
+    unreconciled: list[str] = []
+    numerals = numerals_in(text, strip_ids=cited)
+    states_a_cited_value = any(
+        _matches(n, c) for n in numerals for c in pool if not c.player)
+    pool_has_values = any(not c.player for c in pool)
+    for numeral in numerals:
         matches = [c for c in pool if _matches(numeral, c)]
-        if not matches:
-            if numeral.text not in ungrounded:
-                ungrounded.append(numeral.text)
-        elif all(c.player for c in matches) and not attributed:
-            # Only the player's own report carries this number. Spec 4.3 rule 6: the
-            # prose must say so, or it is stating the player's figure as the game's.
-            if numeral.text not in unattributed:
-                unattributed.append(numeral.text)
-    return Grounding(ok=not ungrounded and not unattributed, ungrounded=tuple(ungrounded),
-                     unattributed=tuple(unattributed))
+        if matches:
+            if all(c.player for c in matches) and not attributed:
+                # Only the player's own report carries this number. Spec 4.3 rule 6: the
+                # prose must say so, or it is stating the player's figure as the game's.
+                if numeral.text not in unattributed:
+                    unattributed.append(numeral.text)
+            continue
+        if numeral.value in typed and claimed:
+            # The player's own typed figure, repeated as their claim. Allowed -- but
+            # not while a cited figure it might disagree with goes unstated.
+            if pool_has_values and not states_a_cited_value and numeral.text not in unreconciled:
+                unreconciled.append(numeral.text)
+            continue
+        if numeral.text not in ungrounded:
+            ungrounded.append(numeral.text)
+    return Grounding(ok=not ungrounded and not unattributed and not unreconciled,
+                     ungrounded=tuple(ungrounded), unattributed=tuple(unattributed),
+                     unreconciled=tuple(unreconciled))
 
 
-__all__ = ["ATTRIBUTION", "Admitted", "Grounding", "NUMBER_WORDS", "Numeral", "admitted",
-           "check", "numerals_in"]
+__all__ = ["ATTRIBUTION", "CLAIM", "Admitted", "Grounding", "NUMBER_WORDS", "Numeral",
+           "admitted", "check", "numerals_in"]
 ```
 
 In `civ_advisor/llm/questions.py`, add `from civ_advisor.copilot import grounding` and, in `validate`, after the URL check and before constructing `Answer`:
 
 ```python
-    grounded = grounding.check(text, evidence, request.payload["evidence"])
+    grounded = grounding.check(text, evidence, request.payload["evidence"],
+                               player_text=request.player_text)
     if not grounded.ok:
         # Spec 2026-09-13-civ6-copilot-design section 4.3. This is the check on
         # CONTENT the structural checks above are not: a number the cited evidence
@@ -1075,7 +1138,7 @@ Update the module docstring's list of three guarantees to four, adding: "**Every
 - [ ] **Step 4: Run to verify pass, then the whole suite**
 
 Run: `uv run pytest tests/test_copilot_grounding.py tests/test_questions.py -v && uv run pytest -q`
-Expected: PASS, 21 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
+Expected: PASS, 25 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
 
 - [ ] **Step 5: Commit**
 
@@ -2504,6 +2567,12 @@ def test_the_fallback_with_nothing_resolved_says_it_cannot_see_that(context):
     assert conv.grounding.check(answer.text, (), []).ok
 
 
+def test_the_fallback_repeats_a_typed_number_only_as_the_players_statement(context):
+    answer = conv.fallback(request(context, text="is 8 turns for a Granary good?"), conv.Resolved())
+    assert "You mention 8" in answer.text and "your statement" in answer.text
+    assert conv.grounding.check(answer.text, (), [], player_text="is 8 turns for a Granary good?").ok
+
+
 def test_source_phrases_keep_the_five_kinds_apart(context):
     resolved = conv.resolve(request(context), (conv.Selected("empire.comparison", {"stat": "culture"}),))
     phrases = {conv.source_phrase(f) for f in resolved.facts}
@@ -2776,8 +2845,10 @@ def compose_prompt(request: ChatRequest, resolved: Resolved) -> str:
         "estimate or recall a figure; if a figure is not in the facts, say the advisor "
         "cannot see it. A fact whose kind is player_report is the player's own figure: when "
         "you use it, say so -- 'the 8 turns you reported on turn 59' -- never as though the "
-        "game said it. Where `cannot_answer` lists something, say so plainly rather than "
-        "filling it. The `earlier` exchanges are context only, from earlier turns: do not "
+        "game said it. A number in the player's own message is their claim, not a fact: you "
+        "may repeat it only as 'you mention ...', and if a fact gives a different figure for "
+        "the same thing you must state both and say they disagree, never adopt either. Where "
+        "`cannot_answer` lists something, say so plainly rather than filling it. The `earlier` exchanges are context only, from earlier turns: do not "
         "repeat a number from them. Do not write a URL.\n"
         "Return JSON only, shaped: {\"text\":\"...\",\"evidence_ids\":[\"...\"],"
         "\"unknowns\":[\"...\"]}.\n"
@@ -2824,7 +2895,8 @@ def validate_answer(request: ChatRequest, resolved: Resolved, data: dict) -> Cha
     if invented:
         raise ValueError("evidence_ids cites ids that were not supplied: " + ", ".join(invented))
     cited = tuple(dict.fromkeys(ids))
-    grounded = grounding.check(text, cited, [fact_payload(f) for f in resolved.facts])
+    grounded = grounding.check(text, cited, [fact_payload(f) for f in resolved.facts],
+                               player_text=request.text)
     if not grounded.ok:
         raise ValueError(grounded.describe())
     unknowns = tuple(u for u in data.get("unknowns", []) if isinstance(u, str) and u.strip())
@@ -2849,6 +2921,13 @@ def fallback(request: ChatRequest, resolved: Resolved, reason: str = "") -> Chat
     for fact in resolved.facts:
         parts.append(f"{fact.label}: {_value(fact)} ({source_phrase(fact)}).")
     parts.extend(resolved.notes)
+    typed = [n.text for n in grounding.numerals_in(request.text)]
+    if typed:
+        # Spec 4.3 rule 7: the player's own figure is on screen as THEIR statement, beside
+        # every grounded figure above, so a disagreement is visible whether or not a model
+        # writes it. It is never a fact and never quietly adopted.
+        parts.append(f"You mention {', '.join(typed)}: that is your statement, not a figure "
+                     "the advisor holds; the figures above are what it can establish.")
     for absence in resolved.absences:
         parts.append(f"Not available — {absence.describe()}.")
     if not parts:
@@ -2883,7 +2962,7 @@ __all__ = ["ASK_LIMIT", "CANNOT", "ChatAnswer", "ChatRequest", "Exchange", "HIST
 - [ ] **Step 4: Run to verify pass, then the whole suite**
 
 Run: `uv run pytest tests/test_copilot_conversation.py -v && uv run pytest -q`
-Expected: PASS, 16 tests.
+Expected: PASS, 17 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -4269,7 +4348,7 @@ git commit -m "Say what the copilot can answer, what acting does, and what it ca
 
 ## Self-review notes
 
-- **Spec coverage:** §4.6 establishing absence → Task 2 (the file) and Task 3 (the bounded retry); §10 isolation → landed as `1e78a2f`, kept honest by Task 2; §4.3 rule 6 (player figures attributed) → Task 4; §3 interaction → Tasks 8, 9; §4.1 catalog → Tasks 5, 6, 7; §4.2 allowlist growth → Task 6 (every table verified against the installed file on 2026-09-13, and re-verified by the real-file test); §4.3 number rule → Task 4, applied in Tasks 4 and 8; §4.4 sources distinct → `source_phrase` in Task 8 and the badges in Task 9; §4.5 absence kinds → Task 5's `Unanswerable`, exercised in Tasks 5, 6, 7; §5.1–5.8 acting → Tasks 10, 11; §5.7 saving → Task 11's `save_acknowledged`; §6 the spike → Task 1 and the decision gate; §8 honesty when off → Tasks 7, 9, 11; §9 security → the global constraints and Task 11's loopback refusal; §10 testing → each task; §11 scope → one operation, in `COMMANDS`.
+- **Spec coverage:** §4.6 establishing absence → Task 2 (the file) and Task 3 (the bounded retry); §10 isolation → landed as `1e78a2f`, kept honest by Task 2; §4.3 rules 6 and 7 (player figures attributed; typed numbers as claims, disagreements named) → Task 4, with the fallback half in Task 8; §3 interaction → Tasks 8, 9; §4.1 catalog → Tasks 5, 6, 7; §4.2 allowlist growth → Task 6 (every table verified against the installed file on 2026-09-13, and re-verified by the real-file test); §4.3 number rule → Task 4, applied in Tasks 4 and 8; §4.4 sources distinct → `source_phrase` in Task 8 and the badges in Task 9; §4.5 absence kinds → Task 5's `Unanswerable`, exercised in Tasks 5, 6, 7; §5.1–5.8 acting → Tasks 10, 11; §5.7 saving → Task 11's `save_acknowledged`; §6 the spike → Task 1 and the decision gate; §8 honesty when off → Tasks 7, 9, 11; §9 security → the global constraints and Task 11's loopback refusal; §10 testing → each task; §11 scope → one operation, in `COMMANDS`.
 - **Type consistency:** `EvidenceFact` is the only fact type; `Absence` is the only absence type; `Resolution`/`Resolved` carry both; `ChatRequest.acting` is `ActingOffer | None` and is the single seam between conversation and acting, so Tasks 8 and 9 compile and pass with acting never built.
 - **Contingency:** Tasks 10–12 open by naming the outcome they assume. If Task 1 rules acting out, the deliverable is Tasks 4–9 plus Task 12's README in the past tense, and nothing in those tasks references a module that was not written.
 - **Known risks:** Task 10's Lua names `VALUE_EXCLUSIVE`, `CanStartOperation`, `FindID` and `GetCurrentProductionTypeHash`, none verified over the socket before Task 1 runs. Task 1's probe records which of them exist; if the game accepted a different insert mode, the constant in Task 10 is the one the findings document recorded, and the fixture `write_set_production.bin` is its reply. Task 7's parser expects six tab-separated fields from `build_options_ids`; if the spike found `RequiresPlacement` prints differently than `true`/`false`, the parser's comparison follows the capture. Two shipped tests failed while a live game held port 4318; `1e78a2f` isolated them and Task 2 removes the inference they shared with the client.

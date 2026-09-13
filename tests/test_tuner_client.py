@@ -112,9 +112,12 @@ def replies(turn: int = 59) -> dict[int, bytes]:
     }
 
 
-def test_a_closed_port_is_reported_as_not_enabled():
-    # Port 1 is reserved and nothing listens there.
-    t = open_tuner(port=1, timeout=0.5)
+def test_a_closed_port_is_reported_as_not_enabled(tmp_path):
+    # Port 1 is reserved and nothing listens there. A bare refusal alone no longer
+    # asserts NOT_ENABLED -- it must be read from a file that says the flag is 0.
+    app_options = tmp_path / "AppOptions.txt"
+    app_options.write_text("[Debug]\nEnableTuner 0\n")
+    t = open_tuner(port=1, timeout=0.5, app_options=app_options)
     assert t.available is False
     assert t.unavailable is TunerUnavailable.NOT_ENABLED
     assert "EnableTuner" in t.reason
@@ -292,6 +295,7 @@ def test_a_failure_does_not_leak_into_the_next_call_on_the_same_instance():
 
 
 def test_an_out_of_range_port_does_not_raise():
+    # No app_options supplied: the refusal cannot be established as either cause.
     t = open_tuner(port=99999, timeout=0.5)
     assert t.available is False
-    assert t.unavailable is TunerUnavailable.NOT_ENABLED
+    assert t.unavailable is TunerUnavailable.UNESTABLISHED

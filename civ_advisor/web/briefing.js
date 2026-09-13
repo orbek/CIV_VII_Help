@@ -184,6 +184,14 @@
   /* What the Economy tab shows from a live tuner reading, and what it says where the
      tuner could not supply a figure.
 
+     Every absence -- off, not answering, no socket, not asked, unreachable, or
+     unestablished (a refusal whose AppOptions.txt could not be read) -- is passed
+     through as the server's own `reason` sentence below, never re-worded here. In
+     particular, "not answering" carries its own prose from the server (it may name
+     the main menu when the flag reads on) and this file adds no "set EnableTuner"
+     hint of its own for it: that hint belongs only to the NOT_ENABLED cause, and only
+     the server knows which cause a given refusal actually was.
+
      Turning the tuner ON used to REPLACE an honest notice with a blank: the capability
      report flips happiness and maintenance to supported the moment the socket answers,
      which removes the "Civ VI writes no amenities log" notice -- and nothing rendered

@@ -18,6 +18,7 @@ from civ_advisor.ingest.tactical import (
 from civ_advisor.ingest.textlogs import read_player_identities
 from civ_advisor.ruleset.civ6 import open_ruleset
 from civ_advisor.tuner.client import open_tuner
+from civ_advisor.tuner.options import DEFAULT_APP_OPTIONS
 
 from ..base import Capability, GameProfile, LogReader, simple
 from ..registry import register
@@ -32,6 +33,16 @@ from .readers import (
 # only by whichever module a run happened to import first. One list still governs
 # both the profile's declaration and the conformance test that keeps them honest.
 TUNER_BACKED = frozenset({Capability.HAPPINESS, Capability.MAINTENANCE})
+
+
+def _open_civ6_tuner():
+    """Open the tuner against Civ VI's own AppOptions.txt.
+
+    `DEFAULT_APP_OPTIONS` is the game's own default install directory -- it is NOT
+    derived from `--logs-dir`, which points at where logs are read from and says
+    nothing about where the game itself is installed.
+    """
+    return open_tuner(app_options=DEFAULT_APP_OPTIONS)
 
 DEFAULT_LOGS_DIR = (
     Path.home()
@@ -97,7 +108,7 @@ CIV6 = GameProfile(
     }),
     ruleset=open_ruleset,
     tuner_backed=TUNER_BACKED,
-    tuner=open_tuner,
+    tuner=_open_civ6_tuner,
     unsupported=(
         (Capability.VICTORY_PATHS,
          "Civ VI's AI_Victories.csv records era and posture strategies "

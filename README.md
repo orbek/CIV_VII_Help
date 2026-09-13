@@ -157,12 +157,21 @@ the rest of the brief is about. The reverse is not normal: a reading dated
 different game answering the socket, so the advisor reports both numbers and
 says they disagree instead of picking one.
 
-**A figure it cannot date is withheld**, not shown bare. Each of the five ways
+**A figure it cannot date is withheld**, not shown bare. Each of the six ways
 a tuner figure can be missing is reported as itself: the tuner is off, this run
 passed `--no-tuner`, this game has no socket at all, the socket is open but
-nothing answered, or the game simply does not implement that call. Only the
-first is something you can fix, which is why they are never collapsed into one
-message.
+nothing answered, the game simply does not implement that call, or the socket
+refused the connection and `AppOptions.txt` could not be read to say whether
+the tuner is on. Only the first is something you can fix, which is why they
+are never collapsed into one message.
+
+**A refused connection is not "off."** With `EnableTuner 1` already set, the
+game still refuses connections while it sits at the main menu — confirmed
+live: the listener only answers reliably inside a loaded match, and cycles
+during menus and load transitions. So "enabled but not answering" is the
+message to expect until a match is loaded, not "set `EnableTuner 1`" — the
+advisor reads the file to tell these two apart rather than guessing from the
+refusal alone.
 
 **One thing is unverified.** Reading the current turn is confirmed in the
 gameplay VM but not in the UI VM that build options use. If it turns out to be

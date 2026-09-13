@@ -71,10 +71,11 @@ def test_the_off_singleton_says_which_absence_it_is():
 
 
 def test_every_absence_is_a_distinct_cause_worded_differently():
-    """Told apart on purpose: only NOT_ENABLED is fixable by changing the game, a game
-    with no socket at all is not a game whose socket is switched off, and a run that
-    never asked is neither. The count is not the claim -- one DIFFERENT statement per
-    cause is, so the prose each one carries is checked for being distinct too."""
+    """Told apart on purpose: only NOT_ENABLED is fixable by changing the game, and it
+    is asserted only when the file was read and says so. A game with no socket at all
+    is not a game whose socket is switched off, and a run that never asked is neither.
+    The count is not the claim -- one DIFFERENT statement per cause is, so the prose
+    each one carries is checked for being distinct too."""
     from civ_advisor.store import NO_TUNER_THIS_RUN
 
     said = {
@@ -85,6 +86,8 @@ def test_every_absence_is_a_distinct_cause_worded_differently():
             TunerUnavailable.NOT_ANSWERING, "the game did not answer").reason,
         TunerUnavailable.UNREACHABLE: NullTuner(
             TunerUnavailable.UNREACHABLE, "no VM implements this call").reason,
+        TunerUnavailable.UNESTABLISHED: NullTuner(
+            TunerUnavailable.UNESTABLISHED, "the file could not be read").reason,
     }
     # Every member is accounted for above: a new cause must be given its own words
     # here rather than quietly inheriting another's.

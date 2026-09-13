@@ -10,11 +10,13 @@ import socket
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 
 from .base import (
-    CityAmenities, Maintenance, NullTuner, SettlementOptions, TUNER_OFF,
-    TunerProvider, TunerReading, TunerUnavailable,
+    CityAmenities, Maintenance, NullTuner, SettlementOptions, TUNER_NOT_ANSWERING_ENABLED,
+    TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable, tuner_unestablished,
 )
+from .options import TunerFlag, read_enable_tuner
 from .protocol import TAG_COMMAND, TAG_HANDSHAKE, consume, frame, output_text, parse_states
 from .queries import CATALOG, looks_unreachable, split_turn
 
@@ -191,7 +193,8 @@ class Civ6Tuner:
         return self._answer("build_options") or ()
 
 
-def open_tuner(port: int = PORT, timeout: float = 3.0) -> TunerProvider:
+def open_tuner(port: int = PORT, timeout: float = 3.0,
+               app_options: Path | None = None) -> TunerProvider:
     """Connect and handshake, or return a NullTuner saying why not.
 
     Never raises. A tuner failure must not cost a poll that read the logs fine.
@@ -199,12 +202,18 @@ def open_tuner(port: int = PORT, timeout: float = 3.0) -> TunerProvider:
     try:
         sock = socket.create_connection((HOST, port), timeout=timeout)
     except (OSError, OverflowError, TypeError, ValueError):
-        # Closed port and refused connection are the same thing to a player:
-        # the setting is off, or the game is not running. An out-of-range or
-        # malformed port is not something a socket error would ever raise for
-        # -- create_connection raises OverflowError/TypeError/ValueError for
-        # those instead -- but open_tuner must never raise regardless of why.
-        return TUNER_OFF
+        # Refused is ONE observation. Which of three things it means is read from the
+        # file that enables the tuner, never inferred -- with the flag on, the game
+        # refuses connections at the main menu, and telling that player to set a flag
+        # they have set is the false reason this branch used to give.
+        if app_options is None:
+            return tuner_unestablished("no AppOptions.txt path was supplied for this game")
+        flag, detail = read_enable_tuner(app_options)
+        if flag is TunerFlag.ON:
+            return TUNER_NOT_ANSWERING_ENABLED
+        if flag is TunerFlag.OFF:
+            return TUNER_OFF
+        return tuner_unestablished(detail)
 
     try:
         sock.sendall(frame(TAG_HANDSHAKE, "APP:civ-advisor"))

@@ -20,16 +20,22 @@ from typing import Callable, Protocol, runtime_checkable
 
 
 class TunerUnavailable(StrEnum):
-    """Why there is no reading. Five genuinely different situations.
+    """Why there is no reading. Six genuinely different situations.
 
-    Only NOT_ENABLED is something the player can fix by changing the game. Saying the
-    wrong one would send them to change a setting that is already correct -- or, for
-    NO_SOCKET, a setting that does not exist in the game they are playing, or, for
-    NOT_ASKED, a setting that is fine and was simply never consulted.
+    Only NOT_ENABLED is something the player can fix by changing the game, and it is
+    asserted only when the file was read and says so. Saying the wrong one would send
+    them to change a setting that is already correct -- or, for NO_SOCKET, a setting
+    that does not exist in the game they are playing, or, for NOT_ASKED, a setting that
+    is fine and was simply never consulted.
 
     Each member is a machine-readable cause a consumer branches on. A distinct cause
     carrying another cause's enum is the same defect as carrying another cause's prose,
     just harder to see: the page would act on one story while the player reads another.
+
+    UNESTABLISHED is the honest answer when a connection was refused and
+    AppOptions.txt could not be read: asserting either NOT_ENABLED or NOT_ANSWERING
+    there would be inferring from the refusal alone, which is the defect that made
+    this member necessary.
     """
 
     NOT_ENABLED = "not_enabled"          # the socket is closed; EnableTuner is 0
@@ -37,6 +43,7 @@ class TunerUnavailable(StrEnum):
     UNREACHABLE = "unreachable"          # answered, but this figure exists in no VM
     NO_SOCKET = "no_socket"              # this game has no tuner socket to enable at all
     NOT_ASKED = "not_asked"              # the socket was never contacted; this run chose not to
+    UNESTABLISHED = "unestablished"      # refused, and the file that would say why could not be read
 
 
 @dataclass(frozen=True)
@@ -203,6 +210,24 @@ TUNER_OFF = NullTuner(
 )
 
 
+TUNER_NOT_ANSWERING_ENABLED = NullTuner(
+    TunerUnavailable.NOT_ANSWERING,
+    "The tuner is enabled (AppOptions.txt says `EnableTuner 1`) but the game is not "
+    "answering on its socket. It may be at the main menu, between screens, or not "
+    "running; the listener only answers reliably inside a loaded match. Nothing needs "
+    "changing in the file.",
+)
+
+
+def tuner_unestablished(detail: str) -> NullTuner:
+    return NullTuner(
+        TunerUnavailable.UNESTABLISHED,
+        "The tuner socket refused the connection, and whether the tuner is enabled could "
+        f"not be established: {detail}. Either the flag is off or the game is not "
+        "answering; the advisor does not know which and will not guess.",
+    )
+
+
 TUNER_ABSENT = NullTuner(
     TunerUnavailable.NO_SOCKET,
     "This game has no tuner socket. These figures have no source here, and there is "
@@ -326,6 +351,6 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
 
 
 __all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
-           "SettlementOptions", "TUNER_ABSENT", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
-           "TunerProvider", "TunerReading", "TunerSnapshot", "TunerUnavailable",
-           "capture"]
+           "SettlementOptions", "TUNER_ABSENT", "TUNER_NOT_ANSWERING_ENABLED",
+           "TUNER_OFF", "TUNER_SNAPSHOT_OFF", "TunerProvider", "TunerReading",
+           "TunerSnapshot", "TunerUnavailable", "capture", "tuner_unestablished"]

@@ -352,6 +352,24 @@ def human_identity_fact(ledger: EvidenceLedger, state: GameState) -> EvidenceFac
     ))
 
 
+def analysis_turn_fact(ledger: EvidenceLedger, state: GameState) -> EvidenceFact:
+    """The turn the logs are complete through, as a citable fact.
+
+    Exists so a generated answer may say "turn 59" and be grounded: spec section 4.3
+    admits a number only from a cited fact, and the frame of the whole answer is a
+    number. LOG, not DERIVED: it is the newest turn Player_Stats.csv has a complete
+    row for, read off that file.
+    """
+    turn = state.complete_through_turn
+    return ledger.add(EvidenceFact(
+        id=f"turn.analysis.{turn}", label="The turn the logs are complete through",
+        source_kind=SourceKind.LOG, provenance=Provenance.FAIR, observed_turn=turn,
+        value=turn, unit="turn", source_file=STATS_FILE, record_key=(STATS_FILE, turn),
+        note=("The logs are complete through this turn. A live tuner reading may be one "
+              "turn ahead of it; that is normal and is reported beside each reading."),
+    ))
+
+
 # ---- the installed ruleset -------------------------------------------------------
 
 def ruleset_fact(ledger: EvidenceLedger, figure: RulesetFigure) -> EvidenceFact:
@@ -507,4 +525,5 @@ def build_ledger(state: GameState, stats: tuple[str, ...] = YIELD_STATS) -> Evid
     age_fact(ledger, state)
     human_identity_fact(ledger, state)
     defense_facts(ledger, state)
+    analysis_turn_fact(ledger, state)
     return ledger

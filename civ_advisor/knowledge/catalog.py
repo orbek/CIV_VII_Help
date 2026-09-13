@@ -96,6 +96,7 @@ class GuideEntry:
 class Catalog:
     revision: str
     entries: tuple[GuideEntry, ...]
+    game: str = "civ7"
 
     def get(self, guide_id: str) -> GuideEntry | None:
         return next((e for e in self.entries if e.id == guide_id), None)
@@ -228,7 +229,7 @@ def load_catalog(raw: str | None = None, package: str = DEFAULT_CATALOG_PACKAGE,
         raise CatalogError(f"duplicate guide ids: {', '.join(sorted(duplicates))}")
     if not entries and package == DEFAULT_CATALOG_PACKAGE:
         raise CatalogError("guide catalog is empty")
-    return Catalog(revision=revision, entries=entries)
+    return Catalog(revision=revision, entries=entries, game=expected_game)
 
 
 __all__ = ["Catalog", "CatalogError", "GuideEntry", "NAVIGATION_REVIEWED", "load_catalog"]

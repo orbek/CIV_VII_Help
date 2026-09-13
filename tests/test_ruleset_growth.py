@@ -1,19 +1,15 @@
-"""The allowlist grew by the tables spec section 4.2 names -- and only those.
-
-NOTE: the catalog-level tests from the task-6 brief (`ruleset.building` etc. resolving
-through `civ_advisor.copilot.catalog.ask`) are not included here. That module does not
-exist in this tree yet -- Task 5, which produces `civ_advisor/copilot/catalog.py`, has
-not landed on this branch. See task-6-report.md for the discrepancy; wiring these
-questions into the catalog is left for whichever task lands `civ_advisor/copilot`.
-"""
+"""The allowlist grew by the tables spec section 4.2 names -- and only those."""
 import sqlite3
 from pathlib import Path
 
 import pytest
 
+from civ_advisor.copilot.catalog import Unanswerable, ask
+from civ_advisor.decisions.context import build_context
+from civ_advisor.decisions.models import SourceKind
 from civ_advisor.ruleset.base import RulesetMention
 from civ_advisor.ruleset.civ6 import (
-    DEFAULT_DATABASE, READABLE_COLUMNS, RULE_PARAMETERS, Civ6Ruleset,
+    DEFAULT_DATABASE, READABLE_COLUMNS, RULE_PARAMETERS, Civ6Ruleset, open_ruleset,
 )
 from tests.ruleset_fixture import build_fixture
 
@@ -86,6 +82,30 @@ def test_a_building_now_states_housing_and_placement(ruleset):
 def test_a_unit_now_states_moves_and_range(ruleset):
     facts = ruleset.unit("UNIT_ARCHER")
     assert facts.moves.value == 2 and facts.range.value == 2
+
+
+def test_ruleset_questions_resolve_to_installed_ruleset_facts(civ6_store, tmp_path):
+    from civ_advisor.ruleset.civ6 import clear_cache
+    path = build_fixture(tmp_path / "DebugGameplay.sqlite")
+    context = build_context(civ6_store.rebuild(), ruleset=open_ruleset(path))
+    try:
+        got = ask(context, "ruleset.building", {"item": "BUILDING_GRANARY"})
+        assert got.absence is None
+        assert all(f.source_kind is SourceKind.INSTALLED_RULESET for f in got.facts)
+        assert any(f.value == 2 and "Housing" in f.record_key for f in got.facts)
+        got = ask(context, "ruleset.building", {"item": "BUILDING_NOT_A_THING"})
+        assert got.absence.kind is Unanswerable.NO_SUCH_ROW
+        got = ask(context, "ruleset.parameter", {"name": "CITY_AMENITIES_FOR_FREE"})
+        assert got.facts[0].value == 0
+    finally:
+        clear_cache()
+
+
+def test_civ7_has_no_ruleset_and_says_so(civ7_store):
+    context = build_context(civ7_store.rebuild())
+    got = ask(context, "ruleset.building", {"item": "BUILDING_GRANARY"})
+    assert got.absence.kind is Unanswerable.RULESET_UNAVAILABLE
+    assert "no queryable ruleset" in got.absence.detail
 
 
 @pytest.mark.skipif(not DEFAULT_DATABASE.is_file(), reason="no installed Civ VI ruleset here")

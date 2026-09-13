@@ -883,6 +883,17 @@ def test_a_typed_number_repeated_while_the_cited_figure_goes_unstated_is_rejecte
     assert not got.ok and got.unreconciled == ("8",)
 
 
+def test_the_cited_figure_stated_while_the_players_claim_is_silently_dropped_is_rejected():
+    """The mirror case: neither side may be used alone. The game's 4 without the
+    player's 8 quietly overrides them; the 8 without the 4 quietly adopts them."""
+    facts = FACTS + [{"id": "tuner.build_option.Rome.BUILDING_GRANARY.49", "kind": "live_reading",
+                      "value": 4, "unit": "turns", "observed_turn": 49, "note": None}]
+    got = check("The tuner read 4 turns for the Granary in Rome on turn 49, so take it.",
+                cited("tuner.build_option.Rome.BUILDING_GRANARY.49"), facts,
+                player_text="should I take the 8-turn Granary?")
+    assert not got.ok and got.unreconciled == ("8",)
+
+
 def test_every_ungrounded_numeral_is_reported_once_in_order():
     got = check("First 9, then 9 again, then 11.", cited("gold.net.59"), FACTS)
     assert got.ungrounded == ("9", "11")
@@ -989,7 +1000,10 @@ class Grounding:
     ok: bool
     ungrounded: tuple[str, ...] = ()     # numerals no cited fact carries, once, in order
     unattributed: tuple[str, ...] = ()   # numerals grounded ONLY by a player report, unattributed
-    unreconciled: tuple[str, ...] = ()   # the player's typed numerals repeated while every cited figure goes unstated
+    # The player's typed numerals when the prose used one side alone: repeated them while
+    # every cited figure went unstated, OR stated a cited figure while never acknowledging
+    # them. Spec 4.3 rule 7: both numbers, the disagreement named, neither preferred.
+    unreconciled: tuple[str, ...] = ()
 
     def describe(self) -> str:
         if self.ok:
@@ -1002,9 +1016,9 @@ class Grounding:
             parts.append(f"the answer states {', '.join(self.unattributed)} as though the game "
                          "said it, when only your own report does; it must say you reported it")
         if self.unreconciled:
-            parts.append(f"the answer repeats your {', '.join(self.unreconciled)} without "
-                         "stating the figure the evidence holds; a disagreement is named, "
-                         "never resolved by dropping one side")
+            parts.append(f"you mentioned {', '.join(self.unreconciled)} and the evidence holds "
+                         "a figure of its own; the answer used one side alone, and a "
+                         "disagreement is named, never resolved by dropping either")
         return "; ".join(parts) + " -- a number the evidence does not state is not shown"
 
 
@@ -1095,6 +1109,13 @@ def check(text: str, cited_ids: Iterable[str], facts: Iterable[Mapping],
     states_a_cited_value = any(
         _matches(n, c) for n in numerals for c in pool if not c.player)
     pool_has_values = any(not c.player for c in pool)
+    repeats_a_claim = claimed and any(n.value in typed for n in numerals)
+    if typed and pool_has_values and states_a_cited_value and not repeats_a_claim:
+        # The mirror of the case below: the game's figure stated, the player's number
+        # never acknowledged. Quietly overriding them is the same defect as quietly
+        # adopting them, so both numbers must be on the page.
+        unreconciled.extend(n.text for n in numerals_in(player_text)
+                            if n.text not in unreconciled)
     for numeral in numerals:
         matches = [c for c in pool if _matches(numeral, c)]
         if matches:
@@ -1138,7 +1159,7 @@ Update the module docstring's list of three guarantees to four, adding: "**Every
 - [ ] **Step 4: Run to verify pass, then the whole suite**
 
 Run: `uv run pytest tests/test_copilot_grounding.py tests/test_questions.py -v && uv run pytest -q`
-Expected: PASS, 25 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
+Expected: PASS, 26 grounding tests; the two new question tests pass; existing `test_questions.py` cases still pass (their fixtures' numbers — 0.44, 81 — are all in `FAIR_FACT`). Any existing test whose generated text carried an uncited number must be updated to cite a fact that carries it, never by weakening the check.
 
 - [ ] **Step 5: Commit**
 

@@ -1,7 +1,9 @@
 """What a tuner reading is allowed to be, and what absence looks like."""
+import subprocess
+import sys
+
 import pytest
 
-from civ_advisor.games.base import Capability
 from civ_advisor.tuner.base import (
     BuildOption, CityAmenities, Maintenance, NullTuner, SettlementOptions,
     TUNER_OFF, TunerProvider, TunerReading, TunerUnavailable,
@@ -77,10 +79,47 @@ def test_null_tuner_satisfies_the_protocol():
     assert isinstance(TUNER_OFF, TunerProvider)
 
 
-def test_the_capabilities_a_tuner_can_back_are_named_here():
-    from civ_advisor.tuner.base import TUNER_BACKED
-    assert Capability.HAPPINESS in TUNER_BACKED
-    assert Capability.MAINTENANCE in TUNER_BACKED
+def test_the_tuner_package_imports_on_its_own():
+    """In a SUBPROCESS, and importing the tuner FIRST.
+
+    `civ_advisor.tuner.base` used to import `civ_advisor.games.base`, which runs
+    `civ_advisor/games/__init__.py`, which imports civ6, which imports this module
+    while it is still half-built. Importing civ6 first happens to initialise `games`
+    before the tuner and hides the cycle entirely -- which is exactly what every test
+    in this suite does, because pytest has already imported other modules by the time
+    one of them runs. Only a fresh interpreter that touches the tuner first can catch
+    it, so this test spends a subprocess on it.
+    """
+    done = subprocess.run(
+        [sys.executable, "-c", "import civ_advisor.tuner.base, civ_advisor.tuner.client"],
+        capture_output=True, text=True, timeout=60)
+    assert done.returncode == 0, done.stderr
+
+
+def test_the_tuner_package_names_no_game():
+    """The tuner asks a socket questions; it has no opinion about which game's
+    capabilities an answer backs. Nothing under civ_advisor/tuner/ may import
+    anything under civ_advisor/games/ -- that edge is the cycle above.
+
+    Read as imports rather than as text, so a comment explaining the rule cannot
+    fail it and a `from civ_advisor import games` cannot slip past it.
+    """
+    import ast
+    import pathlib
+
+    package = pathlib.Path(__file__).resolve().parents[1] / "civ_advisor" / "tuner"
+    for module in package.glob("*.py"):
+        for node in ast.walk(ast.parse(module.read_text())):
+            if isinstance(node, ast.Import):
+                names = [a.name for a in node.names]
+            elif isinstance(node, ast.ImportFrom):
+                names = [node.module or ""] + [f"{node.module or ''}.{a.name}"
+                                               for a in node.names]
+            else:
+                continue
+            for name in names:
+                assert not name.startswith("civ_advisor.games"), f"{module.name}: {name}"
+                assert name != "civ_advisor", f"{module.name}: {name}"
 
 
 def test_capturing_an_unavailable_provider_carries_its_own_reason():

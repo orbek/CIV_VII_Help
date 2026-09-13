@@ -17,7 +17,6 @@ from civ_advisor.ingest.tactical import (
 )
 from civ_advisor.ingest.textlogs import read_player_identities
 from civ_advisor.ruleset.civ6 import open_ruleset
-from civ_advisor.tuner.base import TUNER_BACKED
 from civ_advisor.tuner.client import open_tuner
 
 from ..base import Capability, GameProfile, LogReader, simple
@@ -26,6 +25,13 @@ from .readers import (
     read_build_queue_civ6, read_city_ownership_status, read_player_stats_civ6,
     read_unit_operations_civ6,
 )
+
+# Capabilities a live tuner reading can back for THIS game. Declared here rather
+# than in civ_advisor/tuner/, which must not import civ_advisor.games at all: the
+# tuner package knowing about game capabilities was a genuine import cycle, hidden
+# only by whichever module a run happened to import first. One list still governs
+# both the profile's declaration and the conformance test that keeps them honest.
+TUNER_BACKED = frozenset({Capability.HAPPINESS, Capability.MAINTENANCE})
 
 DEFAULT_LOGS_DIR = (
     Path.home()

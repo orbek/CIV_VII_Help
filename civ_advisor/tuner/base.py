@@ -11,12 +11,12 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Callable, Protocol, runtime_checkable
 
-from civ_advisor.games.base import Capability
 
-# Capabilities a tuner reading can support. Declared here rather than in the
-# profile so one list governs both the profile's declaration and the conformance
-# test that keeps them honest.
-TUNER_BACKED = frozenset({Capability.HAPPINESS, Capability.MAINTENANCE})
+# Nothing here imports civ_advisor.games. Which capabilities a tuner reading can
+# back is a statement about one GAME, so it lives with that game's profile
+# (civ_advisor/games/civ6/__init__.py) rather than here. Importing games.base for
+# it made this module depend on a package whose __init__ imports civ6, which
+# imports this module -- a real cycle that only import order was hiding.
 
 
 class TunerUnavailable(StrEnum):
@@ -272,6 +272,6 @@ def capture(provider: TunerProvider) -> TunerSnapshot:
 
 
 __all__ = ["BuildOption", "CityAmenities", "Maintenance", "NullTuner",
-           "SettlementOptions", "TUNER_BACKED", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
+           "SettlementOptions", "TUNER_OFF", "TUNER_SNAPSHOT_OFF",
            "TunerProvider", "TunerReading", "TunerSnapshot", "TunerUnavailable",
            "capture"]

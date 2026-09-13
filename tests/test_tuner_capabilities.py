@@ -1,9 +1,9 @@
 """A tuner-backed capability is live only when the socket answered."""
 from civ_advisor.api.serialize import capability_report
 from civ_advisor.games.base import Capability
-from civ_advisor.games.civ6 import CIV6
+from civ_advisor.games.civ6 import CIV6, TUNER_BACKED
 from civ_advisor.games.civ7 import CIV7
-from civ_advisor.tuner.base import NullTuner, TUNER_BACKED, TUNER_OFF, TunerUnavailable
+from civ_advisor.tuner.base import NullTuner, TUNER_OFF, TunerUnavailable
 
 
 def test_civ6_declares_the_tuner_backed_capabilities():

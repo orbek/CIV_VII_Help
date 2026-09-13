@@ -37,6 +37,25 @@ def _default_game() -> str:
     return "civ7" if Path(sys.argv[0]).name == LEGACY_ENTRY_POINT else AUTO
 
 
+def _disable_tuner() -> None:
+    """Strip every registered profile's tuner factory so `--no-tuner` reaches it.
+
+    Profiles are process-wide singletons -- `register()` refuses a second one for
+    the same id -- so mutating them here, once, before anything is selected or
+    detected, reaches every later path that might ask for a tuner: a pinned game
+    and an auto-detected one alike. That is also why this lives here rather than
+    as a parameter threaded through the store or the profile itself: one flag, at
+    the one place a run starts, is enough to make the factory disappear everywhere
+    it would otherwise be called.
+
+    `tuner` is a plain `Callable | None` field on an otherwise-frozen
+    `GameProfile`; frozen only blocks ordinary attribute assignment, not
+    `object.__setattr__`.
+    """
+    for game_id in profile_ids():
+        object.__setattr__(get_profile(game_id), "tuner", None)
+
+
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if argv[:1] == ["archive"]:
@@ -75,7 +94,13 @@ def main(argv: list[str] | None = None) -> int:
                              f"(default: {DEFAULT_ROOT}/<game>/player-context.json)")
     parser.add_argument("--no-context-file", action="store_true",
                         help="keep goals and acknowledgements for this run only")
+    parser.add_argument("--no-tuner", action="store_true",
+                        help="Never contact Civilization VI's tuner socket, even if "
+                             "it is open.")
     args = parser.parse_args(argv)
+
+    if args.no_tuner:
+        _disable_tuner()
 
     if args.logs_dir is not None and args.game is None:
         print(

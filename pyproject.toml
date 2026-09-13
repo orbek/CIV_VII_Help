@@ -36,7 +36,11 @@ pythonpath = ["."]
 # starts a server. `uv run pytest` stays offline and fast; run the browser checks with
 #   uv sync --group browser && uv run playwright install chromium
 #   uv run pytest tests/browser -p playwright.pytest_plugin
-addopts = "--ignore=tests/browser"
+# The live suite is opt-in too: it needs a running Civilization VI with the tuner
+# enabled (see tests/live/README.md), so it cannot be part of an offline run. Run it
+# with:
+#   uv run pytest tests/live -p no:cacheprovider
+addopts = "--ignore=tests/browser --ignore=tests/live"
 filterwarnings = [
     # Anything new must fail loudly rather than pile up in the summary.
     "error",
